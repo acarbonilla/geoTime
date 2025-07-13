@@ -3,7 +3,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView, RetrieveAPIView, CreateAPIView, UpdateAPIView, DestroyAPIView
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, login, logout
 from django.db.models import Count, Q
 from .models import Location, Department, Employee, TimeEntry
 from .serializers import (
@@ -13,6 +15,105 @@ from .serializers import (
     UserSerializer, TimeEntrySerializer, TimeEntryListSerializer,
     TimeInOutSerializer, TimeReportSerializer
 )
+
+
+class LoginAPIView(APIView):
+    """API View for user login"""
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        """Handle user login"""
+        username = request.data.get('username')
+        password = request.data.get('password')
+        
+        if not username or not password:
+            return Response({
+                'error': 'Username and password are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Authenticate user
+        user = authenticate(username=username, password=password)
+        
+        if user is not None:
+            # Login user (creates session)
+            login(request, user)
+            
+            # Get employee info if exists
+            try:
+                employee = user.employee_profile
+                employee_data = {
+                    'id': employee.id,
+                    'employee_id': employee.employee_id,
+                    'position': employee.position,
+                    'department': employee.department.name,
+                    'location': employee.department.location.name
+                }
+            except Employee.DoesNotExist:
+                employee_data = None
+            
+            return Response({
+                'message': 'Login successful',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'email': user.email,
+                    'is_staff': user.is_staff
+                },
+                'employee': employee_data
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': 'Invalid username or password'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class LogoutAPIView(APIView):
+    """API View for user logout"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        """Handle user logout"""
+        logout(request)
+        return Response({
+            'message': 'Logout successful'
+        }, status=status.HTTP_200_OK)
+
+
+class UserProfileAPIView(APIView):
+    """API View for getting current user profile"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get current user profile"""
+        user = request.user
+        
+        try:
+            employee = user.employee_profile
+            employee_data = {
+                'id': employee.id,
+                'employee_id': employee.employee_id,
+                'position': employee.position,
+                'department': employee.department.name,
+                'location': employee.department.location.name,
+                'hire_date': employee.hire_date,
+                'employment_status': employee.employment_status
+            }
+        except Employee.DoesNotExist:
+            employee_data = None
+        
+        return Response({
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'email': user.email,
+                'is_staff': user.is_staff
+            },
+            'employee': employee_data
+        }, status=status.HTTP_200_OK)
 
 
 class LocationViewSet(viewsets.ModelViewSet):

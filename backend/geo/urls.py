@@ -4,7 +4,11 @@ from .views import (
     LocationViewSet, DepartmentViewSet, EmployeeViewSet,
     DashboardAPIView, SearchAPIView, EmployeeHierarchyAPIView,
     TimeEntryViewSet, TimeInOutAPIView, TimeReportAPIView,
-    GeofenceValidationAPIView
+    GeofenceValidationAPIView, LoginAPIView, LogoutAPIView, UserProfileAPIView
+)
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
 )
 
 # Create a router and register our viewsets with it
@@ -16,6 +20,16 @@ router.register(r'time-entries', TimeEntryViewSet, basename='timeentry')
 
 # The API URLs are now determined automatically by the router
 urlpatterns = [
+    # Authentication endpoints
+    path('api/login/', LoginAPIView.as_view(), name='login'),
+    path('api/logout/', LogoutAPIView.as_view(), name='logout'),
+    path('api/profile/', UserProfileAPIView.as_view(), name='profile'),
+    
+    # JWT endpoints
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+    # API endpoints
     path('api/', include(router.urls)),
     path('api/dashboard/', DashboardAPIView.as_view(), name='dashboard'),
     path('api/search/', SearchAPIView.as_view(), name='search'),
