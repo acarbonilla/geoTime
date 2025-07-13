@@ -56,18 +56,7 @@ def get_internal_employee_id(employee_id_field):
         for emp in results:
             if emp.get('employee_id') == employee_id_field:
                 return emp.get('id')
-    print(f"❌ ERROR: Could not find internal ID for employee_id '{employee_id_field}'")
-    return None
-
-def test_geofence_validation():
-    """Test the geofence validation endpoint"""
-    print("🧪 Testing Geofence Validation...")
-    
-    # Look up Jane Doe's internal employee ID
-    internal_id = get_internal_employee_id(EMPLOYEE_ID_FIELD)
-    if not internal_id:
-        print("❌ ERROR: Cannot run geofencing tests without valid employee ID.")
-        return
+    print(f"❌ ERROR: Could not find internal ID for
     
     # Test data - coordinates near MHT
     test_cases = [
