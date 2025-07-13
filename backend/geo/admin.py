@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Location, Department, Employee
+from .models import Location, Department, Employee, TimeEntry
 
 
 @admin.register(Location)
@@ -17,6 +17,9 @@ class LocationAdmin(admin.ModelAdmin):
         }),
         ('Timezone', {
             'fields': ('timezone_name', 'timezone_offset')
+        }),
+        ('Geofencing', {
+            'fields': ('geofence_radius',)
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
@@ -76,3 +79,29 @@ class EmployeeAdmin(admin.ModelAdmin):
     def full_name(self, obj):
         return obj.full_name
     full_name.short_description = 'Full Name'
+
+
+@admin.register(TimeEntry)
+class TimeEntryAdmin(admin.ModelAdmin):
+    list_display = ('employee_name', 'entry_type', 'timestamp', 'location', 'ip_address')
+    list_filter = ('entry_type', 'timestamp', 'location', 'employee__department')
+    search_fields = ('employee__user__first_name', 'employee__user__last_name', 'employee__employee_id', 'notes')
+    readonly_fields = ('timestamp', 'ip_address', 'device_info')
+    date_hierarchy = 'timestamp'
+    
+    fieldsets = (
+        ('Employee Information', {
+            'fields': ('employee',)
+        }),
+        ('Time Entry Details', {
+            'fields': ('entry_type', 'timestamp', 'location')
+        }),
+        ('Additional Information', {
+            'fields': ('notes', 'ip_address', 'device_info'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def employee_name(self, obj):
+        return obj.employee.full_name
+    employee_name.short_description = 'Employee'

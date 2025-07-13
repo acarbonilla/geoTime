@@ -11,6 +11,7 @@ class Location(models.Model):
     longitude = models.DecimalField(max_digits=11, decimal_places=8)
     timezone_name = models.CharField(max_length=100, default='UTC')
     timezone_offset = models.IntegerField(default=0)
+    geofence_radius = models.IntegerField(default=100, help_text='Radius in meters for geofencing')
     city = models.CharField(max_length=255, blank=True, null=True)
     country = models.CharField(max_length=255, blank=True, null=True)
     state = models.CharField(max_length=255, blank=True, null=True)
@@ -29,6 +30,37 @@ class Location(models.Model):
     @property
     def coordinates(self):
         return f"{self.latitude}, {self.longitude}"
+    
+    def calculate_distance_to(self, lat, lng):
+        """
+        Calculate distance from this location to given coordinates using Haversine formula.
+        Returns distance in meters.
+        """
+        import math
+        
+        # Convert to radians
+        lat1, lon1 = math.radians(float(self.latitude)), math.radians(float(self.longitude))
+        lat2, lon2 = math.radians(float(lat)), math.radians(float(lng))
+        
+        # Haversine formula
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        
+        # Earth's radius in meters
+        R = 6371000
+        distance = R * c
+        
+        return distance
+    
+    def is_within_geofence(self, lat, lng):
+        """
+        Check if given coordinates are within the geofence radius.
+        Returns True if within radius, False otherwise.
+        """
+        distance = self.calculate_distance_to(lat, lng)
+        return distance <= self.geofence_radius
 
 
 class Department(models.Model):
@@ -89,3 +121,43 @@ class Employee(models.Model):
     @property
     def email(self):
         return self.user.email
+
+
+class TimeEntry(models.Model):
+    """Model for tracking employee time in/out"""
+    
+    ENTRY_TYPE_CHOICES = [
+        ('time_in', 'Time In'),
+        ('time_out', 'Time Out'),
+    ]
+    
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='time_entries')
+    entry_type = models.CharField(max_length=10, choices=ENTRY_TYPE_CHOICES)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    location = models.ForeignKey(Location, on_delete=models.CASCADE, null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    device_info = models.CharField(max_length=255, blank=True, null=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = 'Time Entry'
+        verbose_name_plural = 'Time Entries'
+    
+    def __str__(self):
+        return f"{self.employee.full_name} - {self.entry_type} at {self.timestamp}"
+    
+    @property
+    def formatted_timestamp(self):
+        """Return formatted timestamp in local timezone"""
+        return self.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+    
+    @property
+    def is_time_in(self):
+        """Check if this is a time in entry"""
+        return self.entry_type == 'time_in'
+    
+    @property
+    def is_time_out(self):
+        """Check if this is a time out entry"""
+        return self.entry_type == 'time_out'

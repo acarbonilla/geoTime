@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Location, Department, Employee
+from .models import Location, Department, Employee, TimeEntry
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -96,4 +96,57 @@ class LocationListSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
     
     def get_department_count(self, obj):
-        return obj.departments.count() 
+        return obj.departments.count()
+
+
+class TimeEntrySerializer(serializers.ModelSerializer):
+    """Serializer for TimeEntry model"""
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
+    department_name = serializers.CharField(source='employee.department.name', read_only=True)
+    location_name = serializers.CharField(source='location.name', read_only=True)
+    formatted_timestamp = serializers.CharField(read_only=True)
+    
+    class Meta:
+        model = TimeEntry
+        fields = '__all__'
+        read_only_fields = ['id', 'timestamp', 'ip_address', 'device_info']
+
+
+class TimeEntryListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for TimeEntry list views"""
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
+    department_name = serializers.CharField(source='employee.department.name', read_only=True)
+    location_name = serializers.CharField(source='location.name', read_only=True)
+    
+    class Meta:
+        model = TimeEntry
+        fields = [
+            'id', 'employee_name', 'employee_id', 'department_name', 'entry_type',
+            'timestamp', 'location_name', 'notes', 'ip_address'
+        ]
+        read_only_fields = ['id', 'timestamp', 'ip_address']
+
+
+class TimeInOutSerializer(serializers.ModelSerializer):
+    """Serializer for time in/out operations"""
+    employee_id = serializers.IntegerField(write_only=True)
+    location_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    latitude = serializers.FloatField(write_only=True, required=False, allow_null=True)
+    longitude = serializers.FloatField(write_only=True, required=False, allow_null=True)
+    
+    class Meta:
+        model = TimeEntry
+        fields = ['employee_id', 'location_id', 'latitude', 'longitude', 'notes', 'entry_type']
+        read_only_fields = ['entry_type']
+
+
+class TimeReportSerializer(serializers.Serializer):
+    """Serializer for time reports"""
+    employee_id = serializers.IntegerField()
+    employee_name = serializers.CharField()
+    total_hours = serializers.FloatField()
+    total_days = serializers.IntegerField()
+    average_hours_per_day = serializers.FloatField()
+    time_entries = TimeEntryListSerializer(many=True) 
