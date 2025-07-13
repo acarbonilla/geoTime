@@ -665,7 +665,15 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def today(self, request):
         """Get today's time entries"""
-        today_entries = self.get_queryset().filter(timestamp__date=timezone.now().date())
+        # Use timezone-aware date filtering
+        from datetime import datetime
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timezone.timedelta(days=1)
+        
+        today_entries = self.get_queryset().filter(
+            timestamp__gte=today_start,
+            timestamp__lt=today_end
+        )
         serializer = self.get_serializer(today_entries, many=True)
         return Response(serializer.data)
 
@@ -705,9 +713,14 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
             return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
         
         employee = user.employee_profile
+        # Use timezone-aware date filtering
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timezone.timedelta(days=1)
+        
         today_entries = self.get_queryset().filter(
             employee=employee,
-            timestamp__date=timezone.now().date()
+            timestamp__gte=today_start,
+            timestamp__lt=today_end
         ).order_by('timestamp')
         
         if not today_entries.exists():
