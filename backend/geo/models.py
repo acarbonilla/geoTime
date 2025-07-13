@@ -94,10 +94,19 @@ class Employee(models.Model):
         ('on_leave', 'On Leave'),
     ]
     
+    ROLE_CHOICES = [
+        ('employee', 'Employee'),
+        ('team_leader', 'Team Leader'),
+        ('supervisor', 'Supervisor'),
+        ('management', 'Management'),
+        ('it_support', 'IT Support'),
+    ]
+    
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='employee_profile')
     employee_id = models.CharField(max_length=20, unique=True)  # Company employee ID
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='employees')
     position = models.CharField(max_length=255, blank=True, null=True)
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='employee')
     hire_date = models.DateField()
     employment_status = models.CharField(max_length=20, choices=EMPLOYMENT_STATUS_CHOICES, default='active')
     manager = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates')
@@ -112,7 +121,7 @@ class Employee(models.Model):
         verbose_name_plural = 'Employees'
     
     def __str__(self):
-        return f"{self.user.get_full_name()} - {self.employee_id}"
+        return f"{self.user.get_full_name()} - {self.employee_id} ({self.get_role_display()})"
     
     @property
     def full_name(self):
@@ -121,6 +130,41 @@ class Employee(models.Model):
     @property
     def email(self):
         return self.user.email
+    
+    @property
+    def role_display(self):
+        return self.get_role_display()
+    
+    def can_view_team_data(self):
+        """Check if employee can view team data"""
+        return self.role in ['team_leader', 'supervisor', 'management', 'it_support']
+    
+    def can_view_department_data(self):
+        """Check if employee can view department data"""
+        return self.role in ['supervisor', 'management', 'it_support']
+    
+    def can_view_company_data(self):
+        """Check if employee can view company-wide data"""
+        return self.role in ['management', 'it_support']
+    
+    def can_manage_users(self):
+        """Check if employee can manage users"""
+        return self.role in ['management', 'it_support']
+    
+    def get_subordinates(self):
+        """Get all subordinates for this employee"""
+        if self.role in ['team_leader', 'supervisor', 'management']:
+            return Employee.objects.filter(manager=self)
+        return Employee.objects.none()
+    
+    def get_team_members(self):
+        """Get all team members (including subordinates)"""
+        if self.role in ['team_leader', 'supervisor', 'management']:
+            return Employee.objects.filter(
+                models.Q(manager=self) | 
+                models.Q(department=self.department, role='employee')
+            ).distinct()
+        return Employee.objects.none()
 
 
 class TimeEntry(models.Model):

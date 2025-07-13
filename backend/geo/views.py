@@ -15,6 +15,33 @@ from .serializers import (
     UserSerializer, TimeEntrySerializer, TimeEntryListSerializer,
     TimeInOutSerializer, TimeReportSerializer
 )
+from django.utils import timezone
+
+
+class RoleBasedPermissionMixin:
+    """Mixin to add role-based permissions to views"""
+    
+    def get_queryset(self):
+        """Filter queryset based on user's role"""
+        user = self.request.user
+        if not hasattr(user, 'employee_profile'):
+            return self.model.objects.none()
+        
+        employee = user.employee_profile
+        
+        if employee.can_view_company_data():
+            # Management and IT Support can view all data
+            return super().get_queryset()
+        elif employee.can_view_department_data():
+            # Supervisor can view department data
+            return super().get_queryset().filter(department=employee.department)
+        elif employee.can_view_team_data():
+            # Team Leader can view team data
+            team_members = employee.get_team_members()
+            return super().get_queryset().filter(id__in=team_members.values_list('id', flat=True))
+        else:
+            # Employee can only view their own data
+            return super().get_queryset().filter(id=employee.id)
 
 
 class LoginAPIView(APIView):
@@ -45,8 +72,14 @@ class LoginAPIView(APIView):
                     'id': employee.id,
                     'employee_id': employee.employee_id,
                     'position': employee.position,
+                    'role': employee.role,
+                    'role_display': employee.role_display,
                     'department': employee.department.name,
-                    'location': employee.department.location.name
+                    'location': employee.department.location.name,
+                    'can_view_team_data': employee.can_view_team_data(),
+                    'can_view_department_data': employee.can_view_department_data(),
+                    'can_view_company_data': employee.can_view_company_data(),
+                    'can_manage_users': employee.can_manage_users(),
                 }
             except Employee.DoesNotExist:
                 employee_data = None
@@ -197,13 +230,15 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return Response(stats)
 
 
-class EmployeeViewSet(viewsets.ModelViewSet):
+class EmployeeViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
     """
     ViewSet for Employee model with full CRUD operations.
     Provides filtering by department, status, and search functionality.
+    Role-based access control implemented.
     """
+    model = Employee
     queryset = Employee.objects.all()
-    filterset_fields = ['department', 'employment_status', 'manager', 'hire_date']
+    filterset_fields = ['department', 'employment_status', 'manager', 'hire_date', 'role']
     search_fields = ['user__first_name', 'user__last_name', 'user__email', 'employee_id', 'position']
     ordering_fields = ['user__first_name', 'user__last_name', 'employee_id', 'hire_date', 'created_at']
     ordering = ['user__first_name', 'user__last_name']
@@ -216,77 +251,318 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def active(self, request):
         """Get only active employees"""
-        employees = self.queryset.filter(employment_status='active')
+        employees = self.get_queryset().filter(employment_status='active')
         serializer = self.get_serializer(employees, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def by_department(self, request):
         """Get employees grouped by department"""
-        department_id = request.query_params.get('department_id')
-        if department_id:
-            employees = self.queryset.filter(department_id=department_id)
-        else:
-            employees = self.queryset.all()
+        user = request.user
+        if not hasattr(user, 'employee_profile'):
+            return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = self.get_serializer(employees, many=True)
-        return Response(serializer.data)
+        employee = user.employee_profile
+        queryset = self.get_queryset()
+        
+        departments = Department.objects.filter(employees__in=queryset).distinct()
+        result = []
+        
+        for dept in departments:
+            dept_employees = queryset.filter(department=dept)
+            result.append({
+                'department': dept.name,
+                'employee_count': dept_employees.count(),
+                'employees': EmployeeListSerializer(dept_employees, many=True).data
+            })
+        
+        return Response(result)
 
     @action(detail=False, methods=['get'])
     def by_location(self, request):
-        """Get employees by location"""
-        location_id = request.query_params.get('location_id')
-        if location_id:
-            employees = self.queryset.filter(department__location_id=location_id)
-        else:
-            employees = self.queryset.all()
+        """Get employees grouped by location"""
+        user = request.user
+        if not hasattr(user, 'employee_profile'):
+            return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = self.get_serializer(employees, many=True)
-        return Response(serializer.data)
+        employee = user.employee_profile
+        queryset = self.get_queryset()
+        
+        locations = Location.objects.filter(departments__employees__in=queryset).distinct()
+        result = []
+        
+        for location in locations:
+            location_employees = queryset.filter(department__location=location)
+            result.append({
+                'location': location.name,
+                'employee_count': location_employees.count(),
+                'employees': EmployeeListSerializer(location_employees, many=True).data
+            })
+        
+        return Response(result)
 
     @action(detail=True, methods=['get'])
     def subordinates(self, request, pk=None):
         """Get all subordinates for a specific employee"""
         employee = self.get_object()
-        subordinates = employee.subordinates.all()
-        serializer = self.get_serializer(subordinates, many=True)
+        if not employee.can_view_team_data():
+            return Response({'error': 'Insufficient permissions'}, status=status.HTTP_403_FORBIDDEN)
+        
+        subordinates = employee.get_subordinates()
+        serializer = EmployeeListSerializer(subordinates, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
     def profile(self, request, pk=None):
-        """Get detailed employee profile"""
+        """Get detailed profile of an employee"""
         employee = self.get_object()
         serializer = EmployeeSerializer(employee)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):
-        """Get employee statistics"""
+        """Get employee statistics based on user role"""
+        user = request.user
+        if not hasattr(user, 'employee_profile'):
+            return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        employee = user.employee_profile
+        queryset = self.get_queryset()
+        
         stats = {
-            'total_employees': self.queryset.count(),
-            'active_employees': self.queryset.filter(employment_status='active').count(),
-            'inactive_employees': self.queryset.filter(employment_status='inactive').count(),
-            'terminated_employees': self.queryset.filter(employment_status='terminated').count(),
-            'on_leave_employees': self.queryset.filter(employment_status='on_leave').count(),
+            'total_employees': queryset.count(),
+            'active_employees': queryset.filter(employment_status='active').count(),
+            'by_role': queryset.values('role').annotate(count=Count('id')),
+            'by_department': queryset.values('department__name').annotate(count=Count('id')),
         }
+        
+        if employee.can_view_company_data():
+            stats.update({
+                'by_location': queryset.values('department__location__name').annotate(count=Count('id')),
+                'recent_hires': queryset.filter(hire_date__gte=timezone.now().date() - timezone.timedelta(days=30)).count(),
+            })
+        
         return Response(stats)
 
 
 # API Views for specific functionality
 class DashboardAPIView(APIView):
-    """API View for dashboard statistics"""
+    """API View for dashboard data based on user role"""
+    permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        """Get overall dashboard statistics"""
-        stats = {
-            'total_locations': Location.objects.count(),
-            'total_departments': Department.objects.count(),
+        """Get dashboard data based on user's role"""
+        user = request.user
+        try:
+            employee = user.employee_profile
+        except Employee.DoesNotExist:
+            return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Base dashboard data
+        dashboard_data = {
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'email': user.email,
+            },
+            'employee': {
+                'id': employee.id,
+                'employee_id': employee.employee_id,
+                'position': employee.position,
+                'role': employee.role,
+                'role_display': employee.role_display,
+                'department': employee.department.name,
+                'location': employee.department.location.name,
+            },
+            'permissions': {
+                'can_view_team_data': employee.can_view_team_data(),
+                'can_view_department_data': employee.can_view_department_data(),
+                'can_view_company_data': employee.can_view_company_data(),
+                'can_manage_users': employee.can_manage_users(),
+            }
+        }
+        
+        # Role-specific data
+        if employee.role == 'employee':
+            dashboard_data.update(self._get_employee_dashboard(employee))
+        elif employee.role == 'team_leader':
+            dashboard_data.update(self._get_team_leader_dashboard(employee))
+        elif employee.role == 'supervisor':
+            dashboard_data.update(self._get_supervisor_dashboard(employee))
+        elif employee.role == 'management':
+            dashboard_data.update(self._get_management_dashboard(employee))
+        elif employee.role == 'it_support':
+            dashboard_data.update(self._get_it_support_dashboard(employee))
+        
+        return Response(dashboard_data)
+    
+    def _get_employee_dashboard(self, employee):
+        """Get dashboard data for regular employees"""
+        today_entries = TimeEntry.objects.filter(
+            employee=employee,
+            timestamp__date=timezone.now().date()
+        ).order_by('timestamp')
+        
+        return {
+            'dashboard_type': 'employee',
+            'today_entries': TimeEntryListSerializer(today_entries, many=True).data,
+            'current_status': self._get_current_status(employee),
+            'recent_entries': TimeEntryListSerializer(
+                TimeEntry.objects.filter(employee=employee).order_by('-timestamp')[:10], 
+                many=True
+            ).data,
+        }
+    
+    def _get_team_leader_dashboard(self, employee):
+        """Get dashboard data for team leaders"""
+        team_members = employee.get_team_members()
+        team_entries = TimeEntry.objects.filter(
+            employee__in=team_members,
+            timestamp__date=timezone.now().date()
+        ).order_by('timestamp')
+        
+        return {
+            'dashboard_type': 'team_leader',
+            'team_members_count': team_members.count(),
+            'team_attendance': self._get_team_attendance(team_members),
+            'team_entries': TimeEntryListSerializer(team_entries, many=True).data,
+            'pending_approvals': 0,  # Placeholder for future approval system
+        }
+    
+    def _get_supervisor_dashboard(self, employee):
+        """Get dashboard data for supervisors"""
+        department_employees = Employee.objects.filter(department=employee.department)
+        department_entries = TimeEntry.objects.filter(
+            employee__in=department_employees,
+            timestamp__date=timezone.now().date()
+        ).order_by('timestamp')
+        
+        return {
+            'dashboard_type': 'supervisor',
+            'department_employees_count': department_employees.count(),
+            'department_attendance': self._get_department_attendance(employee.department),
+            'department_entries': TimeEntryListSerializer(department_entries, many=True).data,
+            'department_stats': self._get_department_stats(employee.department),
+        }
+    
+    def _get_management_dashboard(self, employee):
+        """Get dashboard data for management"""
+        all_employees = Employee.objects.filter(employment_status='active')
+        all_entries = TimeEntry.objects.filter(
+            timestamp__date=timezone.now().date()
+        ).order_by('timestamp')
+        
+        return {
+            'dashboard_type': 'management',
+            'total_employees': all_employees.count(),
+            'company_attendance': self._get_company_attendance(),
+            'all_entries': TimeEntryListSerializer(all_entries, many=True).data,
+            'company_stats': self._get_company_stats(),
+        }
+    
+    def _get_it_support_dashboard(self, employee):
+        """Get dashboard data for IT support"""
+        all_employees = Employee.objects.all()
+        all_entries = TimeEntry.objects.filter(
+            timestamp__date=timezone.now().date()
+        ).order_by('timestamp')
+        
+        return {
+            'dashboard_type': 'it_support',
+            'total_employees': all_employees.count(),
+            'system_stats': self._get_system_stats(),
+            'all_entries': TimeEntryListSerializer(all_entries, many=True).data,
+            'active_users': User.objects.filter(is_active=True).count(),
+        }
+    
+    def _get_current_status(self, employee):
+        """Get current time status for employee"""
+        today_entries = TimeEntry.objects.filter(
+            employee=employee,
+            timestamp__date=timezone.now().date()
+        ).order_by('timestamp')
+        
+        if not today_entries.exists():
+            return 'not_started'
+        
+        last_entry = today_entries.last()
+        if last_entry.entry_type == 'time_in':
+            return 'clocked_in'
+        else:
+            return 'clocked_out'
+    
+    def _get_team_attendance(self, team_members):
+        """Get team attendance summary"""
+        attendance = {'present': 0, 'absent': 0, 'late': 0}
+        for member in team_members:
+            today_entries = TimeEntry.objects.filter(
+                employee=member,
+                timestamp__date=timezone.now().date()
+            )
+            if today_entries.exists():
+                attendance['present'] += 1
+            else:
+                attendance['absent'] += 1
+        return attendance
+    
+    def _get_department_attendance(self, department):
+        """Get department attendance summary"""
+        employees = Employee.objects.filter(department=department, employment_status='active')
+        attendance = {'present': 0, 'absent': 0, 'total': employees.count()}
+        for employee in employees:
+            today_entries = TimeEntry.objects.filter(
+                employee=employee,
+                timestamp__date=timezone.now().date()
+            )
+            if today_entries.exists():
+                attendance['present'] += 1
+            else:
+                attendance['absent'] += 1
+        return attendance
+    
+    def _get_company_attendance(self):
+        """Get company-wide attendance summary"""
+        employees = Employee.objects.filter(employment_status='active')
+        attendance = {'present': 0, 'absent': 0, 'total': employees.count()}
+        for employee in employees:
+            today_entries = TimeEntry.objects.filter(
+                employee=employee,
+                timestamp__date=timezone.now().date()
+            )
+            if today_entries.exists():
+                attendance['present'] += 1
+            else:
+                attendance['absent'] += 1
+        return attendance
+    
+    def _get_department_stats(self, department):
+        """Get department statistics"""
+        employees = Employee.objects.filter(department=department)
+        return {
+            'total_employees': employees.count(),
+            'active_employees': employees.filter(employment_status='active').count(),
+            'departments': Department.objects.count(),
+        }
+    
+    def _get_company_stats(self):
+        """Get company-wide statistics"""
+        return {
             'total_employees': Employee.objects.count(),
             'active_employees': Employee.objects.filter(employment_status='active').count(),
-            'locations_by_country': Location.objects.values('country').annotate(count=Count('id')).order_by('-count')[:5],
-            'departments_by_location': Department.objects.values('location__name').annotate(count=Count('id')).order_by('-count')[:5],
+            'total_departments': Department.objects.count(),
+            'total_locations': Location.objects.count(),
         }
-        return Response(stats)
+    
+    def _get_system_stats(self):
+        """Get system statistics for IT support"""
+        return {
+            'total_users': User.objects.count(),
+            'active_users': User.objects.filter(is_active=True).count(),
+            'total_time_entries': TimeEntry.objects.count(),
+            'today_entries': TimeEntry.objects.filter(timestamp__date=timezone.now().date()).count(),
+        }
 
 
 class SearchAPIView(APIView):
@@ -368,11 +644,13 @@ class EmployeeHierarchyAPIView(APIView):
         return subordinates
 
 
-class TimeEntryViewSet(viewsets.ModelViewSet):
+class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
     """
     ViewSet for TimeEntry model with full CRUD operations.
     Provides filtering by employee, entry type, and date range.
+    Role-based access control implemented.
     """
+    model = TimeEntry
     queryset = TimeEntry.objects.all()
     filterset_fields = ['employee', 'entry_type', 'location', 'timestamp']
     search_fields = ['employee__user__first_name', 'employee__user__last_name', 'employee__employee_id', 'notes']
@@ -387,59 +665,79 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def today(self, request):
         """Get today's time entries"""
-        from datetime import date
-        today = date.today()
-        entries = self.queryset.filter(timestamp__date=today)
-        serializer = self.get_serializer(entries, many=True)
+        today_entries = self.get_queryset().filter(timestamp__date=timezone.now().date())
+        serializer = self.get_serializer(today_entries, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def by_employee(self, request):
-        """Get time entries for a specific employee"""
-        employee_id = request.query_params.get('employee_id')
-        if employee_id:
-            entries = self.queryset.filter(employee_id=employee_id)
-        else:
-            entries = self.queryset.all()
+        """Get time entries grouped by employee"""
+        user = request.user
+        if not hasattr(user, 'employee_profile'):
+            return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = self.get_serializer(entries, many=True)
-        return Response(serializer.data)
+        employee = user.employee_profile
+        queryset = self.get_queryset()
+        
+        employees = Employee.objects.filter(time_entries__in=queryset).distinct()
+        result = []
+        
+        for emp in employees:
+            emp_entries = queryset.filter(employee=emp)
+            result.append({
+                'employee': {
+                    'id': emp.id,
+                    'name': emp.full_name,
+                    'employee_id': emp.employee_id,
+                    'department': emp.department.name,
+                },
+                'entry_count': emp_entries.count(),
+                'entries': TimeEntryListSerializer(emp_entries, many=True).data
+            })
+        
+        return Response(result)
 
     @action(detail=False, methods=['get'])
     def current_session(self, request):
-        """Get current working session for an employee"""
-        employee_id = request.query_params.get('employee_id')
-        if not employee_id:
-            return Response({'error': 'employee_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        """Get current time tracking session for the user"""
+        user = request.user
+        if not hasattr(user, 'employee_profile'):
+            return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        # Get the latest time in entry for today
-        from datetime import date
-        today = date.today()
-        latest_time_in = self.queryset.filter(
-            employee_id=employee_id,
-            entry_type='time_in',
-            timestamp__date=today
-        ).order_by('-timestamp').first()
+        employee = user.employee_profile
+        today_entries = self.get_queryset().filter(
+            employee=employee,
+            timestamp__date=timezone.now().date()
+        ).order_by('timestamp')
         
-        if not latest_time_in:
-            return Response({'status': 'not_clocked_in'})
-        
-        # Check if there's a time out after the latest time in
-        latest_time_out = self.queryset.filter(
-            employee_id=employee_id,
-            entry_type='time_out',
-            timestamp__date=today,
-            timestamp__gt=latest_time_in.timestamp
-        ).order_by('-timestamp').first()
-        
-        if latest_time_out:
-            return Response({'status': 'clocked_out', 'time_out': latest_time_out.timestamp})
-        else:
+        if not today_entries.exists():
             return Response({
-                'status': 'clocked_in',
-                'time_in': latest_time_in.timestamp,
-                'session_duration': (timezone.now() - latest_time_in.timestamp).total_seconds() / 3600
+                'status': 'not_started',
+                'message': 'No time entries for today'
             })
+        
+        last_entry = today_entries.last()
+        session_data = {
+            'status': 'clocked_in' if last_entry.entry_type == 'time_in' else 'clocked_out',
+            'last_entry': TimeEntryListSerializer(last_entry).data,
+            'today_entries': TimeEntryListSerializer(today_entries, many=True).data,
+        }
+        
+        # Calculate total hours if clocked out
+        if last_entry.entry_type == 'time_out':
+            time_in_entries = today_entries.filter(entry_type='time_in')
+            time_out_entries = today_entries.filter(entry_type='time_out')
+            
+            total_hours = 0
+            for i, time_in in enumerate(time_in_entries):
+                if i < len(time_out_entries):
+                    time_out = time_out_entries[i]
+                    duration = time_out.timestamp - time_in.timestamp
+                    total_hours += duration.total_seconds() / 3600
+            
+            session_data['total_hours'] = round(total_hours, 2)
+        
+        return Response(session_data)
 
 
 class TimeInOutAPIView(APIView):

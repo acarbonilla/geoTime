@@ -41,6 +41,11 @@ class EmployeeSerializer(serializers.ModelSerializer):
     manager_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     full_name = serializers.CharField(read_only=True)
     email = serializers.CharField(read_only=True)
+    role_display = serializers.CharField(read_only=True)
+    can_view_team_data = serializers.BooleanField(read_only=True)
+    can_view_department_data = serializers.BooleanField(read_only=True)
+    can_view_company_data = serializers.BooleanField(read_only=True)
+    can_manage_users = serializers.BooleanField(read_only=True)
     
     class Meta:
         model = Employee
@@ -54,12 +59,13 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     location_name = serializers.CharField(source='department.location.name', read_only=True)
     manager_name = serializers.CharField(source='manager.full_name', read_only=True)
+    role_display = serializers.CharField(read_only=True)
     
     class Meta:
         model = Employee
         fields = [
             'id', 'employee_id', 'user', 'department_name', 'location_name',
-            'position', 'employment_status', 'hire_date', 'manager_name',
+            'position', 'role', 'role_display', 'employment_status', 'hire_date', 'manager_name',
             'created_at'
         ]
         read_only_fields = ['id', 'created_at']
