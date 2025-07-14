@@ -834,7 +834,7 @@ class TimeInOutAPIView(APIView):
         else:
             return {
                 'valid': False,
-                'message': f'Outside geofence. Distance: {distance:.1f}m, Allowed: {allowed_radius}m',
+                'message': f'Too far away from allowed area: you are {distance:.1f}m from {target_location.name}, but the allowed radius is {allowed_radius}m.',
                 'distance': round(distance, 1),
                 'allowed_radius': allowed_radius,
                 'location_name': target_location.name
@@ -896,6 +896,9 @@ class TimeInOutAPIView(APIView):
                 location = Location.objects.get(id=location_id)
             except Location.DoesNotExist:
                 pass
+        else:
+            # Automatically use employee's department location
+            location = employee.department.location
         
         time_entry = TimeEntry.objects.create(
             employee=employee,

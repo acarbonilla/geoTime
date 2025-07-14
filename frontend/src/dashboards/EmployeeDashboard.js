@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { timeAPI, authAPI } from '../api';
+import GeoMap from '../GeoMap';
 
 export default function EmployeeDashboard({ user, employee, onLogout }) {
   const [loading, setLoading] = useState(true);
@@ -11,9 +12,14 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   const [isClockingIn, setIsClockingIn] = useState(false);
   const [isClockingOut, setIsClockingOut] = useState(false);
   const [geolocationStatus, setGeolocationStatus] = useState('idle'); // 'idle', 'requesting', 'success', 'error'
+  const [currentCoords, setCurrentCoords] = useState({ latitude: null, longitude: null });
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const isTimeInSubmitting = useRef(false);
+  const isTimeOutSubmitting = useRef(false);
 
   useEffect(() => {
     loadDashboardData();
+    getInitialLocation();
     
     // Update current time every second
     const timer = setInterval(() => {
@@ -22,6 +28,19 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
 
     return () => clearInterval(timer);
   }, []);
+
+  const getInitialLocation = async () => {
+    try {
+      setGeolocationStatus('requesting');
+      const position = await getCurrentPosition();
+      setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+      setGeolocationStatus('success');
+    } catch (geoError) {
+      console.warn('Initial geolocation failed:', geoError);
+      setGeolocationStatus('error');
+      setCurrentCoords({ latitude: null, longitude: null });
+    }
+  };
 
   const loadDashboardData = async () => {
     try {
@@ -48,7 +67,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
             
             // Filter for today's entries
             const today = new Date().toDateString();
-            const todayEntries = (entriesResponse.results || []).filter(entry => {
+            const todayEntries = (entriesResponse.results || entriesResponse || []).filter(entry => {
               const entryDate = new Date(entry.timestamp).toDateString();
               return entryDate === today;
             });
@@ -100,7 +119,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       // Get recent entries
       try {
         const entriesResponse = await timeAPI.getTimeEntries({ limit: 10 });
-        setRecentEntries(entriesResponse.results || []);
+        setRecentEntries(entriesResponse.results || entriesResponse || []);
       } catch (entriesError) {
         setRecentEntries([]);
       }
@@ -118,82 +137,74 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   };
 
   const handleTimeIn = async () => {
+    if (isTimeInSubmitting.current) return;
+    isTimeInSubmitting.current = true;
     try {
       setIsClockingIn(true);
-      
-      // Get current location
       let position;
       setGeolocationStatus('requesting');
       try {
         position = await getCurrentPosition();
         setGeolocationStatus('success');
+        setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
       } catch (geoError) {
         console.warn('Geolocation failed, proceeding without coordinates:', geoError);
         setGeolocationStatus('error');
-        // Continue without coordinates (backend will handle this)
         position = { coords: { latitude: null, longitude: null } };
+        setCurrentCoords({ latitude: null, longitude: null });
       }
-      
       await timeAPI.timeIn({
         employee_id: employee.id,
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         timestamp: new Date().toISOString()
       });
-      
-      // Reload dashboard data
       await loadDashboardData();
-      
-      // Show success message
       showNotification('Time in recorded successfully!', 'success');
-      
     } catch (error) {
       console.error('Error recording time in:', error);
-      const errorMessage = error.response?.data?.error || error.response?.data?.details || 'Failed to record time in. Please try again.';
+      const errorMessage = error.response?.data?.details || error.response?.data?.error || 'Failed to record time in. Please try again.';
       showNotification(errorMessage, 'error');
     } finally {
       setIsClockingIn(false);
       setGeolocationStatus('idle');
+      isTimeInSubmitting.current = false;
     }
   };
 
   const handleTimeOut = async () => {
+    if (isTimeOutSubmitting.current) return;
+    isTimeOutSubmitting.current = true;
     try {
       setIsClockingOut(true);
-      
-      // Get current location
       let position;
       setGeolocationStatus('requesting');
       try {
         position = await getCurrentPosition();
         setGeolocationStatus('success');
+        setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
       } catch (geoError) {
         console.warn('Geolocation failed, proceeding without coordinates:', geoError);
         setGeolocationStatus('error');
-        // Continue without coordinates (backend will handle this)
         position = { coords: { latitude: null, longitude: null } };
+        setCurrentCoords({ latitude: null, longitude: null });
       }
-      
       await timeAPI.timeOut({
         employee_id: employee.id,
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         timestamp: new Date().toISOString()
       });
-      
-      // Reload dashboard data
       await loadDashboardData();
-      
-      // Show success message
       showNotification('Time out recorded successfully!', 'success');
-      
     } catch (error) {
       console.error('Error recording time out:', error);
-      const errorMessage = error.response?.data?.error || error.response?.data?.details || 'Failed to record time out. Please try again.';
+      const errorMessage = error.response?.data?.details || error.response?.data?.error || 'Failed to record time out. Please try again.';
       showNotification(errorMessage, 'error');
     } finally {
       setIsClockingOut(false);
       setGeolocationStatus('idle');
+      isTimeOutSubmitting.current = false;
     }
   };
 
@@ -215,7 +226,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   const showNotification = (message, type = 'info') => {
     // Enhanced notification system
     const notificationDiv = document.createElement('div');
-    notificationDiv.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${
+    notificationDiv.className = `fixed bottom-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${
       type === 'success' ? 'bg-green-500 text-white' :
       type === 'error' ? 'bg-red-500 text-white' :
       'bg-blue-500 text-white'
@@ -276,6 +287,55 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     return totalHours;
   };
 
+  // Helper function to group time_in and time_out entries into sessions
+  function groupTimeEntriesToSessions(entries) {
+    // Sort entries by timestamp ascending
+    const sorted = [...entries].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const sessions = [];
+    let currentSession = null;
+
+    sorted.forEach(entry => {
+      if (entry.entry_type === 'time_in') {
+        // Start a new session
+        if (currentSession) {
+          // If previous session has no time_out, push as active
+          sessions.push(currentSession);
+        }
+        currentSession = {
+          date: new Date(entry.timestamp).toLocaleDateString(),
+          time_in: entry.formatted_timestamp || new Date(entry.timestamp).toLocaleTimeString(),
+          time_out: null,
+          duration: null,
+          location: entry.location || null,
+          location_name: entry.location?.name || 'No location',
+          status: 'Active',
+          raw_in: entry,
+          raw_out: null
+        };
+      } else if (entry.entry_type === 'time_out' && currentSession) {
+        // Pair with the last time_in
+        currentSession.time_out = entry.formatted_timestamp || new Date(entry.timestamp).toLocaleTimeString();
+        // Calculate duration if possible
+        const inTime = new Date(currentSession.raw_in.timestamp);
+        const outTime = new Date(entry.timestamp);
+        const durationMs = outTime - inTime;
+        if (!isNaN(durationMs) && durationMs > 0) {
+          const hours = Math.floor(durationMs / (1000 * 60 * 60));
+          const minutes = Math.floor((durationMs / (1000 * 60)) % 60);
+          currentSession.duration = `${hours > 0 ? hours + 'h ' : ''}${minutes}m`;
+        }
+        currentSession.status = 'Completed';
+        currentSession.raw_out = entry;
+        sessions.push(currentSession);
+        currentSession = null;
+      }
+    });
+    // If there's an unpaired time_in, add as active
+    if (currentSession) {
+      sessions.push(currentSession);
+    }
+    return sessions;
+  }
 
 
   if (loading) {
@@ -288,6 +348,8 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       </div>
     );
   }
+
+  const sessions = groupTimeEntriesToSessions(todayEntries);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -313,12 +375,45 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 <div className="text-lg font-mono text-gray-900">{currentTime.toLocaleTimeString()}</div>
               </div>
               
-              <button
-                onClick={onLogout}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-              >
-                Logout
-              </button>
+              {/* User Menu Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 focus:outline-none"
+                >
+                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                    {user?.first_name?.charAt(0) || user?.username?.charAt(0) || 'U'}
+                  </div>
+                  <span className="text-sm font-medium">{user?.first_name || user?.username}</span>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
+                    <button
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        // TODO: Navigate to settings when component is created
+                      }}
+                      disabled
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-400 cursor-not-allowed"
+                    >
+                      Settings
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        onLogout();
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -326,6 +421,16 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* GeoMap for geofence visualization */}
+        {employee?.department?.location && (
+          <GeoMap
+            centerLat={employee.department.location.latitude}
+            centerLng={employee.department.location.longitude}
+            radius={employee.department.location.geofence_radius || 100}
+            userLat={currentCoords.latitude}
+            userLng={currentCoords.longitude}
+          />
+        )}
         {/* Current Status Card */}
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
           <div className="text-center">
@@ -334,11 +439,14 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
               {getStatusText(currentStatus)}
             </div>
             
-            {currentStatus === 'clocked_in' && (
-              <div className="text-lg text-gray-600 mb-6">
-                Total hours today: <span className="font-semibold">{formatDuration(totalHoursToday)}</span>
-              </div>
-            )}
+            {/* Current Coordinates Display */}
+            <div className="text-sm text-gray-600 mb-4">
+              {currentCoords.latitude && currentCoords.longitude ? (
+                <>📍 <b>{currentCoords.latitude.toFixed(6)}, {currentCoords.longitude.toFixed(6)}</b></>
+              ) : (
+                <span>📍 Coordinates not available</span>
+              )}
+            </div>
             
             {/* Geolocation Status Indicator */}
             {geolocationStatus === 'requesting' && (
@@ -457,18 +565,27 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                       {new Date(entry.timestamp).toLocaleTimeString()}
                     </div>
                   </div>
-                                        <div className="text-sm text-gray-500">
-                        {entry.location_name ? (
-                          <span title={entry.location_name}>
-                            {entry.location_name.length > 20 
-                              ? entry.location_name.substring(0, 20) + '...' 
-                              : entry.location_name
-                            }
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 italic">No location</span>
+                  <div className="text-sm text-gray-500 min-w-[160px]">
+                    {entry.location ? (
+                      <div>
+                        <div className="font-semibold text-gray-800 truncate" title={entry.location.name}>{entry.location.name}</div>
+                        <div className="text-xs text-gray-500">
+                          {entry.location.city && entry.location.country ? (
+                            <span>{entry.location.city}, {entry.location.country}</span>
+                          ) : entry.location.city ? (
+                            <span>{entry.location.city}</span>
+                          ) : entry.location.country ? (
+                            <span>{entry.location.country}</span>
+                          ) : null}
+                        </div>
+                        {entry.location.coordinates && (
+                          <div className="text-xs text-gray-400">{entry.location.coordinates}</div>
                         )}
                       </div>
+                    ) : (
+                      <span className="text-gray-400 italic">No location</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -507,43 +624,36 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {recentEntries.slice(0, 10).map((entry) => (
-                      <tr key={entry.id} className="hover:bg-gray-50">
+                    {sessions.map((session, idx) => (
+                      <tr key={idx}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <div className="font-medium">{new Date(entry.timestamp).toLocaleDateString()}</div>
-                          <div className="text-xs text-gray-500">
-                            {new Date(entry.timestamp).toLocaleDateString('en-US', { weekday: 'short' })}
-                          </div>
+                          <div className="font-medium">{session.date}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {entry.entry_type === 'time_in' ? (
-                            <span className="text-green-600 font-medium">
-                              {new Date(entry.timestamp).toLocaleTimeString()}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
+                          <span className="text-green-600 font-medium">{session.time_in || '-'}</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {entry.entry_type === 'time_out' ? (
-                            <span className="text-red-600 font-medium">
-                              {new Date(entry.timestamp).toLocaleTimeString()}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
+                          <span className="text-red-600 font-medium">{session.time_out || '-'}</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {entry.duration ? (
-                            <span className="font-medium">{entry.duration}</span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
+                          <span className="font-medium">{session.duration || '-'}</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {entry.location_name ? (
-                            <div className="max-w-xs truncate" title={entry.location_name}>
-                              {entry.location_name}
+                          {session.location ? (
+                            <div>
+                              <div className="font-semibold text-gray-800 truncate" title={session.location.name}>{session.location.name}</div>
+                              <div className="text-xs text-gray-500">
+                                {session.location.city && session.location.country ? (
+                                  <span>{session.location.city}, {session.location.country}</span>
+                                ) : session.location.city ? (
+                                  <span>{session.location.city}</span>
+                                ) : session.location.country ? (
+                                  <span>{session.location.country}</span>
+                                ) : null}
+                              </div>
+                              {session.location.coordinates && (
+                                <div className="text-xs text-gray-400">{session.location.coordinates}</div>
+                              )}
                             </div>
                           ) : (
                             <span className="text-gray-400 italic">No location</span>
@@ -551,11 +661,11 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            entry.entry_type === 'time_out' 
+                            session.status === 'Completed'
                               ? 'bg-green-100 text-green-800' 
                               : 'bg-yellow-100 text-yellow-800'
                           }`}>
-                            {entry.entry_type === 'time_out' ? 'Completed' : 'Active'}
+                            {session.status}
                           </span>
                         </td>
                       </tr>
