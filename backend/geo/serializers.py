@@ -107,30 +107,48 @@ class LocationListSerializer(serializers.ModelSerializer):
 
 class TimeEntrySerializer(serializers.ModelSerializer):
     """Serializer for TimeEntry model"""
-    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
     employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
+    employee_pk = serializers.IntegerField(source='employee.id', read_only=True)
+    user_id = serializers.IntegerField(source='employee.user.id', read_only=True)
+    username = serializers.CharField(source='employee.user.username', read_only=True)
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
     department_name = serializers.CharField(source='employee.department.name', read_only=True)
     location_name = serializers.CharField(source='location.name', read_only=True)
     formatted_timestamp = serializers.CharField(read_only=True)
     
     class Meta:
         model = TimeEntry
-        fields = '__all__'
-        read_only_fields = ['id', 'timestamp', 'ip_address', 'device_info']
+        fields = [
+            'id', 'employee_pk', 'employee_id', 'user_id', 'username',
+            'employee_name', 'department_name', 'location_name',
+            'entry_type', 'timestamp', 'location', 'notes', 'ip_address', 'formatted_timestamp'
+        ]
+        read_only_fields = ['id', 'timestamp', 'ip_address']
+
+
+class TimeEntryLocationSerializer(serializers.ModelSerializer):
+    """Simplified location serializer for time entries"""
+    class Meta:
+        model = Location
+        fields = ['id', 'name', 'city', 'country', 'state', 'coordinates', 'timezone_name']
 
 
 class TimeEntryListSerializer(serializers.ModelSerializer):
     """Simplified serializer for TimeEntry list views"""
-    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
     employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
+    employee_pk = serializers.IntegerField(source='employee.id', read_only=True)
+    user_id = serializers.IntegerField(source='employee.user.id', read_only=True)
+    username = serializers.CharField(source='employee.user.username', read_only=True)
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
     department_name = serializers.CharField(source='employee.department.name', read_only=True)
-    location_name = serializers.CharField(source='location.name', read_only=True)
+    location = TimeEntryLocationSerializer(read_only=True)
     
     class Meta:
         model = TimeEntry
         fields = [
-            'id', 'employee_name', 'employee_id', 'department_name', 'entry_type',
-            'timestamp', 'location_name', 'notes', 'ip_address'
+            'id', 'employee_pk', 'employee_id', 'user_id', 'username',
+            'employee_name', 'department_name',
+            'entry_type', 'timestamp', 'location', 'notes', 'ip_address'
         ]
         read_only_fields = ['id', 'timestamp', 'ip_address']
 

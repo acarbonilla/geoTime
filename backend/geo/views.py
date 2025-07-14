@@ -41,7 +41,7 @@ class RoleBasedPermissionMixin:
             return super().get_queryset().filter(id__in=team_members.values_list('id', flat=True))
         else:
             # Employee can only view their own data
-            return super().get_queryset().filter(id=employee.id)
+            return super().get_queryset().filter(employee=employee)
 
 
 class LoginAPIView(APIView):
@@ -665,16 +665,19 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def today(self, request):
         """Get today's time entries"""
-        # Use timezone-aware date filtering
+        # Use UTC for date filtering to match stored timestamps
         from datetime import datetime
-        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Get current time in UTC
+        utc_now = timezone.now()
+        today_start = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = today_start + timezone.timedelta(days=1)
         
         today_entries = self.get_queryset().filter(
             timestamp__gte=today_start,
             timestamp__lt=today_end
         )
-        serializer = self.get_serializer(today_entries, many=True)
+        serializer = TimeEntryListSerializer(today_entries, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
@@ -713,8 +716,11 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
             return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
         
         employee = user.employee_profile
-        # Use timezone-aware date filtering
-        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Use UTC for date filtering to match stored timestamps
+        
+        # Get current time in UTC
+        utc_now = timezone.now()
+        today_start = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = today_start + timezone.timedelta(days=1)
         
         today_entries = self.get_queryset().filter(
@@ -867,51 +873,21 @@ class TimeInOutAPIView(APIView):
         
         entry_type = 'time_in' if action == 'time-in' else 'time_out'
         
-        # Check for duplicate entries (prevent double time-in or time-out)
-        from datetime import date
-        today = date.today()
-        
+        # Get the last time entry for this employee
+        last_entry = TimeEntry.objects.filter(employee=employee).order_by('-timestamp').first()
+
         if action == 'time-in':
-            # Check if already clocked in today
-            existing_time_in = TimeEntry.objects.filter(
-                employee=employee,
-                entry_type='time_in',
-                timestamp__date=today
-            ).order_by('-timestamp').first()
-            
-            if existing_time_in:
-                # Check if there's no time out after the latest time in
-                latest_time_out = TimeEntry.objects.filter(
-                    employee=employee,
-                    entry_type='time_out',
-                    timestamp__date=today,
-                    timestamp__gt=existing_time_in.timestamp
-                ).order_by('-timestamp').first()
-                
-                if not latest_time_out:
-                    return Response({'error': 'Already clocked in today'}, status=status.HTTP_400_BAD_REQUEST)
-        
+            if last_entry and last_entry.entry_type == 'time_in':
+                return Response({'error': 'Already clocked in. Please clock out first.'}, status=400)
+            # Allow time-in (even if last session was today or yesterday)
+            # ... create new time-in entry ...
+
         elif action == 'time-out':
-            # Check if clocked in today
-            latest_time_in = TimeEntry.objects.filter(
-                employee=employee,
-                entry_type='time_in',
-                timestamp__date=today
-            ).order_by('-timestamp').first()
-            
-            if not latest_time_in:
-                return Response({'error': 'Not clocked in today'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Check if already clocked out after the latest time in
-            latest_time_out = TimeEntry.objects.filter(
-                employee=employee,
-                entry_type='time_out',
-                timestamp__date=today,
-                timestamp__gt=latest_time_in.timestamp
-            ).order_by('-timestamp').first()
-            
-            if latest_time_out:
-                return Response({'error': 'Already clocked out today'}, status=status.HTTP_400_BAD_REQUEST)
+            if not last_entry or last_entry.entry_type != 'time_in':
+                # Block if no open session
+                return Response({'error': 'No open session to clock out from.'}, status=400)
+            # Allow time-out (even if session started yesterday)
+            # ... create new time-out entry ...
         
         # Create time entry
         location = None
