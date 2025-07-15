@@ -1,14 +1,14 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Location, Department, Employee, TimeEntry
+from .models import Location, Department, Employee, TimeEntry, WorkSession
 
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model"""
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'email']
-        read_only_fields = ['id']
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_active', 'date_joined']
+        read_only_fields = ['id', 'date_joined']
 
 
 class LocationSerializer(serializers.ModelSerializer):
@@ -16,93 +16,79 @@ class LocationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Location
         fields = '__all__'
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class LocationListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for Location model in lists"""
+    class Meta:
+        model = Location
+        fields = ['id', 'name', 'city', 'country', 'state', 'display_name', 'geofence_radius']
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
     """Serializer for Department model"""
-    location = LocationSerializer(read_only=True)
-    location_id = serializers.IntegerField(write_only=True)
-    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
-    
-    class Meta:
-        model = Department
-        fields = '__all__'
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-
-class EmployeeSerializer(serializers.ModelSerializer):
-    """Serializer for Employee model"""
-    user = UserSerializer(read_only=True)
-    user_id = serializers.IntegerField(write_only=True)
-    department = DepartmentSerializer(read_only=True)
-    department_id = serializers.IntegerField(write_only=True)
-    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
-    manager_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
-    full_name = serializers.CharField(read_only=True)
-    email = serializers.CharField(read_only=True)
-    role_display = serializers.CharField(read_only=True)
-    can_view_team_data = serializers.BooleanField(read_only=True)
-    can_view_department_data = serializers.BooleanField(read_only=True)
-    can_view_company_data = serializers.BooleanField(read_only=True)
-    can_manage_users = serializers.BooleanField(read_only=True)
-    
-    class Meta:
-        model = Employee
-        fields = '__all__'
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-
-class EmployeeListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for Employee list views"""
-    user = UserSerializer(read_only=True)
-    department_name = serializers.CharField(source='department.name', read_only=True)
-    location_name = serializers.CharField(source='department.location.name', read_only=True)
-    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
-    role_display = serializers.CharField(read_only=True)
-    
-    class Meta:
-        model = Employee
-        fields = [
-            'id', 'employee_id', 'user', 'department_name', 'location_name',
-            'position', 'role', 'role_display', 'employment_status', 'hire_date', 'manager_name',
-            'created_at'
-        ]
-        read_only_fields = ['id', 'created_at']
-
-
-class DepartmentListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for Department list views"""
     location_name = serializers.CharField(source='location.name', read_only=True)
     manager_name = serializers.CharField(source='manager.full_name', read_only=True)
     employee_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Department
-        fields = [
-            'id', 'name', 'code', 'location_name', 'manager_name',
-            'employee_count', 'is_active', 'created_at'
-        ]
-        read_only_fields = ['id', 'created_at']
+        fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
     
     def get_employee_count(self, obj):
-        return obj.employees.count()
+        return obj.employees.filter(employment_status='active').count()
 
 
-class LocationListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for Location list views"""
-    department_count = serializers.SerializerMethodField()
+class DepartmentListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for Department model in lists"""
+    location_name = serializers.CharField(source='location.name', read_only=True)
+    employee_count = serializers.SerializerMethodField()
     
     class Meta:
-        model = Location
-        fields = [
-            'id', 'name', 'city', 'country', 'timezone_name',
-            'coordinates', 'department_count', 'created_at'
-        ]
-        read_only_fields = ['id', 'created_at']
+        model = Department
+        fields = ['id', 'name', 'code', 'location_name', 'employee_count', 'is_active']
     
-    def get_department_count(self, obj):
-        return obj.departments.count()
+    def get_employee_count(self, obj):
+        return obj.employees.filter(employment_status='active').count()
+
+
+class EmployeeSerializer(serializers.ModelSerializer):
+    """Serializer for Employee model"""
+    user = UserSerializer(read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
+    subordinates_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Employee
+        fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def get_subordinates_count(self, obj):
+        return obj.get_subordinates().count()
+
+
+class EmployeeListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for Employee model in lists"""
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    username = serializers.CharField(source='user.username', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', read_only=True)
+    last_name = serializers.CharField(source='user.last_name', read_only=True)
+    email = serializers.CharField(source='user.email', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
+    
+    class Meta:
+        model = Employee
+        fields = [
+            'id', 'user_id', 'username', 'first_name', 'last_name', 'email',
+            'employee_id', 'department_name', 'position', 'role', 'hire_date',
+            'employment_status', 'manager_name', 'phone', 'emergency_contact',
+            'daily_work_hours', 'overtime_threshold_hours', 'total_schedule_hours',
+            'flexible_break_hours', 'lunch_break_minutes', 'break_threshold_minutes'
+        ]
 
 
 class TimeEntrySerializer(serializers.ModelSerializer):
@@ -121,36 +107,26 @@ class TimeEntrySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'employee_pk', 'employee_id', 'user_id', 'username',
             'employee_name', 'department_name', 'location_name',
-            'entry_type', 'timestamp', 'location', 'notes', 'ip_address', 'formatted_timestamp'
+            'entry_type', 'timestamp', 'location', 'latitude', 'longitude', 'accuracy', 'notes', 'ip_address', 'formatted_timestamp'
         ]
         read_only_fields = ['id', 'timestamp', 'ip_address']
 
 
-class TimeEntryLocationSerializer(serializers.ModelSerializer):
-    """Simplified location serializer for time entries"""
-    class Meta:
-        model = Location
-        fields = ['id', 'name', 'city', 'country', 'state', 'coordinates', 'timezone_name']
-
-
 class TimeEntryListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for TimeEntry list views"""
-    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
-    employee_pk = serializers.IntegerField(source='employee.id', read_only=True)
-    user_id = serializers.IntegerField(source='employee.user.id', read_only=True)
-    username = serializers.CharField(source='employee.user.username', read_only=True)
+    """Simplified serializer for TimeEntry model in lists"""
     employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
     department_name = serializers.CharField(source='employee.department.name', read_only=True)
-    location = TimeEntryLocationSerializer(read_only=True)
+    location_name = serializers.CharField(source='location.name', read_only=True)
+    formatted_timestamp = serializers.CharField(read_only=True)
     
     class Meta:
         model = TimeEntry
         fields = [
-            'id', 'employee_pk', 'employee_id', 'user_id', 'username',
-            'employee_name', 'department_name',
-            'entry_type', 'timestamp', 'location', 'notes', 'ip_address'
+            'id', 'employee_name', 'employee_id', 'department_name', 'location_name',
+            'entry_type', 'timestamp', 'latitude', 'longitude', 'accuracy', 'formatted_timestamp', 'notes'
         ]
-        read_only_fields = ['id', 'timestamp', 'ip_address']
+        read_only_fields = ['id', 'timestamp']
 
 
 class TimeInOutSerializer(serializers.ModelSerializer):
@@ -159,18 +135,65 @@ class TimeInOutSerializer(serializers.ModelSerializer):
     location_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     latitude = serializers.FloatField(write_only=True, required=False, allow_null=True)
     longitude = serializers.FloatField(write_only=True, required=False, allow_null=True)
+    accuracy = serializers.FloatField(write_only=True, required=False, allow_null=True)
     
     class Meta:
         model = TimeEntry
-        fields = ['employee_id', 'location_id', 'latitude', 'longitude', 'notes', 'entry_type']
+        fields = ['employee_id', 'location_id', 'latitude', 'longitude', 'accuracy', 'notes', 'entry_type']
         read_only_fields = ['entry_type']
 
 
-class TimeReportSerializer(serializers.Serializer):
-    """Serializer for time reports"""
-    employee_id = serializers.IntegerField()
-    employee_name = serializers.CharField()
-    total_hours = serializers.FloatField()
-    total_days = serializers.IntegerField()
-    average_hours_per_day = serializers.FloatField()
-    time_entries = TimeEntryListSerializer(many=True) 
+class WorkSessionSerializer(serializers.ModelSerializer):
+    """Serializer for WorkSession model"""
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
+    session_type_display = serializers.CharField(source='get_session_type_display', read_only=True)
+    duration_formatted = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = WorkSession
+        fields = [
+            'id', 'employee_name', 'employee_id', 'session_type', 'session_type_display',
+            'start_time', 'end_time', 'duration_hours', 'duration_formatted',
+            'is_overtime', 'is_break', 'notes', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_duration_formatted(self, obj):
+        """Format duration as hours and minutes"""
+        if not obj.duration_hours:
+            return '0h 0m'
+        
+        hours = int(obj.duration_hours)
+        minutes = int((obj.duration_hours - hours) * 60)
+        return f'{hours}h {minutes}m'
+
+
+class OvertimeAnalysisSerializer(serializers.Serializer):
+    """Serializer for overtime analysis results"""
+    date = serializers.DateField()
+    total_hours = serializers.DecimalField(max_digits=6, decimal_places=2)
+    actual_work_hours = serializers.DecimalField(max_digits=6, decimal_places=2)
+    regular_hours = serializers.DecimalField(max_digits=6, decimal_places=2)
+    overtime_hours = serializers.DecimalField(max_digits=6, decimal_places=2)
+    break_hours = serializers.DecimalField(max_digits=6, decimal_places=2)
+    lunch_break_hours = serializers.DecimalField(max_digits=6, decimal_places=2)
+    flexible_break_hours = serializers.DecimalField(max_digits=4, decimal_places=2)
+    flexible_break_used = serializers.DecimalField(max_digits=4, decimal_places=2)
+    is_overtime = serializers.BooleanField()
+    overtime_threshold_reached = serializers.BooleanField()
+    overtime_threshold = serializers.DecimalField(max_digits=4, decimal_places=2)
+    total_schedule_hours = serializers.DecimalField(max_digits=4, decimal_places=2)
+    daily_work_hours = serializers.DecimalField(max_digits=4, decimal_places=2)
+    sessions = serializers.ListField()
+    breaks = serializers.ListField()
+
+
+class CurrentSessionStatusSerializer(serializers.Serializer):
+    """Serializer for current session status with overtime alerts"""
+    today_analysis = OvertimeAnalysisSerializer()
+    active_session = serializers.DictField(allow_null=True)
+    overtime_threshold = serializers.DecimalField(max_digits=4, decimal_places=2)
+    daily_work_hours = serializers.DecimalField(max_digits=4, decimal_places=2)
+    total_schedule_hours = serializers.DecimalField(max_digits=4, decimal_places=2)
+    flexible_break_hours = serializers.DecimalField(max_digits=4, decimal_places=2) 

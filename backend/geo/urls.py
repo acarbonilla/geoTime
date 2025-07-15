@@ -4,7 +4,8 @@ from .views import (
     LocationViewSet, DepartmentViewSet, EmployeeViewSet,
     DashboardAPIView, SearchAPIView, EmployeeHierarchyAPIView,
     TimeEntryViewSet, TimeInOutAPIView, TimeReportAPIView,
-    GeofenceValidationAPIView, LoginAPIView, LogoutAPIView, UserProfileAPIView
+    GeofenceValidationAPIView, LoginAPIView, LogoutAPIView, UserProfileAPIView,
+    WorkSessionViewSet
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -17,6 +18,7 @@ router.register(r'locations', LocationViewSet, basename='location')
 router.register(r'departments', DepartmentViewSet, basename='department')
 router.register(r'employees', EmployeeViewSet, basename='employee')
 router.register(r'time-entries', TimeEntryViewSet, basename='timeentry')
+router.register(r'work-sessions', WorkSessionViewSet, basename='worksession')
 
 # The API URLs are now determined automatically by the router
 urlpatterns = [

@@ -112,6 +112,21 @@ class Employee(models.Model):
     manager = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates')
     phone = models.CharField(max_length=20, blank=True, null=True)
     emergency_contact = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Overtime configuration
+    daily_work_hours = models.DecimalField(max_digits=4, decimal_places=2, default=8.00, 
+                                         help_text='Standard daily work hours before overtime (actual work time)')
+    overtime_threshold_hours = models.DecimalField(max_digits=4, decimal_places=2, default=8.00,
+                                                 help_text='Hours worked before overtime kicks in (actual work time)')
+    total_schedule_hours = models.DecimalField(max_digits=4, decimal_places=2, default=9.00,
+                                             help_text='Total hours from time in to time out (including flexible break time)')
+    flexible_break_hours = models.DecimalField(max_digits=4, decimal_places=2, default=1.00,
+                                             help_text='Flexible break time included in total schedule')
+    lunch_break_minutes = models.IntegerField(default=60, 
+                                            help_text='Standard lunch break duration in minutes')
+    break_threshold_minutes = models.IntegerField(default=30,
+                                                help_text='Minimum break duration to be considered a break')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -179,6 +194,9 @@ class TimeEntry(models.Model):
     entry_type = models.CharField(max_length=10, choices=ENTRY_TYPE_CHOICES)
     timestamp = models.DateTimeField(auto_now_add=True)
     location = models.ForeignKey(Location, on_delete=models.CASCADE, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True, help_text='Latitude at time entry')
+    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True, help_text='Longitude at time entry')
+    accuracy = models.FloatField(null=True, blank=True, help_text='Location accuracy in meters')
     notes = models.TextField(blank=True, null=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     device_info = models.CharField(max_length=255, blank=True, null=True)
@@ -205,3 +223,56 @@ class TimeEntry(models.Model):
     def is_time_out(self):
         """Check if this is a time out entry"""
         return self.entry_type == 'time_out'
+
+
+class WorkSession(models.Model):
+    """Model for tracking work sessions with overtime and break detection"""
+    
+    SESSION_TYPE_CHOICES = [
+        ('regular', 'Regular Work'),
+        ('overtime', 'Overtime'),
+        ('break', 'Break'),
+        ('lunch', 'Lunch Break'),
+    ]
+    
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='work_sessions')
+    session_type = models.CharField(max_length=20, choices=SESSION_TYPE_CHOICES, default='regular')
+    time_in_entry = models.ForeignKey(TimeEntry, on_delete=models.CASCADE, related_name='work_sessions_as_in')
+    time_out_entry = models.ForeignKey(TimeEntry, on_delete=models.CASCADE, related_name='work_sessions_as_out', null=True, blank=True)
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField(null=True, blank=True)
+    duration_hours = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    is_overtime = models.BooleanField(default=False)
+    is_break = models.BooleanField(default=False)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-start_time']
+        verbose_name = 'Work Session'
+        verbose_name_plural = 'Work Sessions'
+    
+    def __str__(self):
+        return f"{self.employee.full_name} - {self.session_type} ({self.start_time.date()})"
+    
+    @property
+    def is_active(self):
+        """Check if this session is currently active (no end time)"""
+        return self.end_time is None
+    
+    @property
+    def duration_minutes(self):
+        """Get duration in minutes"""
+        if self.duration_hours:
+            return int(self.duration_hours * 60)
+        return 0
+    
+    def calculate_duration(self):
+        """Calculate and update duration if session is complete"""
+        if self.end_time and self.start_time:
+            duration = self.end_time - self.start_time
+            self.duration_hours = duration.total_seconds() / 3600
+            self.save(update_fields=['duration_hours'])
+            return self.duration_hours
+        return None
