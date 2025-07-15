@@ -141,20 +141,31 @@ class OvertimeCalculator:
         """
         Get current session status with overtime alerts
         """
-        today = timezone.now().date()
-        # Debug: print all time entries for today
-        today_entries = TimeEntry.objects.filter(employee=self.employee, timestamp__date=today).order_by('timestamp')
-        print(f"[DEBUG] Today's date (backend): {today}")
+        from datetime import datetime, time
+        from django.utils import timezone
+        local_tz = timezone.get_current_timezone()
+        today_local = timezone.localtime(timezone.now(), local_tz).date()
+        start_of_day = datetime.combine(today_local, time.min)
+        end_of_day = datetime.combine(today_local, time.max)
+        start_of_day = timezone.make_aware(start_of_day, local_tz)
+        end_of_day = timezone.make_aware(end_of_day, local_tz)
+
+        today_entries = TimeEntry.objects.filter(
+            employee=self.employee,
+            timestamp__gte=start_of_day,
+            timestamp__lte=end_of_day
+        ).order_by('timestamp')
+        print(f"[DEBUG] Today's date (backend, local): {today_local}")
         print(f"[DEBUG] TimeEntry timestamps for today:")
         for entry in today_entries:
             print(f"  - {entry.entry_type} at {entry.timestamp} (UTC)")
-        today_analysis = self.analyze_daily_sessions(today)
+        today_analysis = self.analyze_daily_sessions(today_local)
         
         # Get current active session
         active_session = None
         last_entry = TimeEntry.objects.filter(
             employee=self.employee,
-            timestamp__date=today
+            timestamp__date=today_local
         ).order_by('-timestamp').first()
         
         if last_entry and last_entry.entry_type == 'time_in':
