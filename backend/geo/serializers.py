@@ -27,7 +27,7 @@ class LocationListSerializer(serializers.ModelSerializer):
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
-    """Serializer for Department model"""
+    location = LocationSerializer(read_only=True)
     location_name = serializers.CharField(source='location.name', read_only=True)
     manager_name = serializers.CharField(source='manager.full_name', read_only=True)
     employee_count = serializers.SerializerMethodField()

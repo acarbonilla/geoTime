@@ -345,6 +345,9 @@ class DashboardAPIView(APIView):
         overtime_calc = OvertimeCalculator(employee)
         current_status = overtime_calc.get_current_session_status()
         
+        # Use DepartmentSerializer to serialize the department (with location)
+        department_data = DepartmentSerializer(employee.department).data
+        
         dashboard_data = {
             'user': {
                 'id': user.id,
@@ -358,7 +361,7 @@ class DashboardAPIView(APIView):
                 'employee_id': employee.employee_id,
                 'full_name': employee.full_name,
                 'role': employee.role,
-                'department': employee.department.name,
+                'department': department_data,
                 'position': employee.position,
                 'daily_work_hours': employee.daily_work_hours,
                 'overtime_threshold_hours': employee.overtime_threshold_hours,
@@ -930,6 +933,9 @@ class TimeInOutAPIView(APIView):
         
         # Log the successful attempt
         print(f"[AUDIT] Time {action} for employee {employee_id} at ({latitude}, {longitude}) accuracy={accuracy}m")
+
+        # Refresh employee instance to ensure latest DB state
+        employee.refresh_from_db()
         
         # Get overtime analysis for response
         overtime_calc = OvertimeCalculator(employee)
