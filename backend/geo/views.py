@@ -16,6 +16,10 @@ from .serializers import (
     TimeInOutSerializer, WorkSessionSerializer, OvertimeAnalysisSerializer, CurrentSessionStatusSerializer
 )
 from .utils import OvertimeCalculator, BreakDetector
+from django.http import HttpResponse
+import csv
+from django.utils import timezone
+from datetime import timedelta
 
 
 class RoleBasedPermissionMixin:
@@ -198,6 +202,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         """Get department statistics"""
         department = self.get_object()
         total_employees = department.employees.filter(employment_status='active').count()
+        
         present_today = 0
         
         for employee in department.employees.filter(employment_status='active'):
@@ -1108,3 +1113,104 @@ class WorkSessionViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
         
         serializer = WorkSessionSerializer(work_sessions, many=True)
         return Response(serializer.data)
+
+
+class ReportDownloadAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        employee = user.employee_profile
+
+        from_date = request.GET.get('from')
+        to_date = request.GET.get('to')
+        range_type = request.GET.get('range', 'week')
+        today = timezone.localtime(timezone.now()).date()
+
+        if from_date and to_date:
+            try:
+                start_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+                end_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+            except ValueError:
+                return HttpResponse('Invalid date format', status=400)
+        else:
+            if range_type == 'week':
+                start_date = today - timedelta(days=today.weekday())
+            elif range_type == 'month':
+                start_date = today.replace(day=1)
+            elif range_type == 'year':
+                start_date = today.replace(month=1, day=1)
+            else:
+                return HttpResponse('Invalid range', status=400)
+            end_date = today
+
+        entries = employee.timeentry_set.filter(
+            timestamp__date__gte=start_date,
+            timestamp__date__lte=end_date
+        ).order_by('timestamp')
+
+        # Create CSV response
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="time_entries_{start_date}_to_{end_date}.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow(['Date/Time', 'Type', 'Location', 'Notes'])
+        for entry in entries:
+            writer.writerow([
+                timezone.localtime(entry.timestamp).strftime('%Y-%m-%d %H:%M:%S'),
+                entry.entry_type,
+                getattr(entry.location, 'name', '') if entry.location else '',
+                entry.notes or ''
+            ])
+
+        return response
+
+
+class ReportPreviewAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        employee = user.employee_profile
+
+        from_date = request.GET.get('from')
+        to_date = request.GET.get('to')
+        range_type = request.GET.get('range', 'week')
+        today = timezone.localtime(timezone.now()).date()
+
+        if from_date and to_date:
+            try:
+                start_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+                end_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({'error': 'Invalid date format'}, status=400)
+        else:
+            if range_type == 'week':
+                start_date = today - timedelta(days=today.weekday())
+            elif range_type == 'month':
+                start_date = today.replace(day=1)
+            elif range_type == 'year':
+                start_date = today.replace(month=1, day=1)
+            else:
+                return Response({'error': 'Invalid range'}, status=400)
+            end_date = today
+
+        entries = employee.timeentry_set.filter(
+            timestamp__date__gte=start_date,
+            timestamp__date__lte=end_date
+        ).order_by('timestamp')
+
+        data = [
+            {
+                'datetime': timezone.localtime(entry.timestamp).strftime('%Y-%m-%d %H:%M:%S'),
+                'type': entry.entry_type,
+                'location': getattr(entry.location, 'name', '') if entry.location else '',
+                'notes': entry.notes or ''
+            }
+            for entry in entries
+        ]
+        response = Response({'entries': data})
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response

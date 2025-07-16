@@ -5,7 +5,9 @@ from .views import (
     DashboardAPIView, SearchAPIView, EmployeeHierarchyAPIView,
     TimeEntryViewSet, TimeInOutAPIView, TimeReportAPIView,
     GeofenceValidationAPIView, LoginAPIView, LogoutAPIView, UserProfileAPIView,
-    WorkSessionViewSet
+    WorkSessionViewSet,
+    ReportDownloadAPIView,
+    ReportPreviewAPIView,  # Add this import
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -40,4 +42,8 @@ urlpatterns = [
     path('api/time-out/', TimeInOutAPIView.as_view(), {'action': 'time-out'}, name='time-out'),
     path('api/time-reports/', TimeReportAPIView.as_view(), name='time-reports'),
     path('api/geofence/validate/', GeofenceValidationAPIView.as_view(), name='geofence-validate'),
+] 
+urlpatterns += [
+    path('api/reports/download/', ReportDownloadAPIView.as_view(), name='report-download'),
+    path('api/reports/preview/', ReportPreviewAPIView.as_view(), name='report-preview'),
 ] 
