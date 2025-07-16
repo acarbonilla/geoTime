@@ -14,11 +14,11 @@ export default function Login({ onLogin }) {
     
     try {
       // Get JWT tokens
-      const tokenResponse = await authAPI.login(username, password);
+      const tokenResponse = await authAPI.login({ username, password });
       
       // Store tokens
-      localStorage.setItem('access_token', tokenResponse.access);
-      localStorage.setItem('refresh_token', tokenResponse.refresh);
+      localStorage.setItem('access_token', tokenResponse.access_token);
+      localStorage.setItem('refresh_token', tokenResponse.refresh_token);
       
       // Get user profile data
       const profileResponse = await authAPI.getProfile();

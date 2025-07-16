@@ -1,118 +1,203 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { timeAPI, authAPI } from '../api';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { timeAPI, workSessionAPI } from '../api';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 import GeoMap from '../GeoMap';
+import { NavLink } from 'react-router-dom';
+
+// Fix for default markers in react-leaflet
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
+  iconUrl: require('leaflet/dist/images/marker-icon.png'),
+  shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
+});
+
+// Add icons (using Heroicons/Feather or SVGs)
+const DashboardIcon = () => (
+  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8v-10h-8v10zm0-18v6h8V3h-8z"/></svg>
+);
+const ReportsIcon = () => (
+  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h3m4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2h3a4 4 0 014 4v2" /></svg>
+);
+const ProfileIcon = () => (
+  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A13.937 13.937 0 0112 15c2.5 0 4.847.655 6.879 1.804M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+);
+
+const roleBadgeStyles = {
+  employee: 'bg-blue-100 text-blue-800',
+  admin: 'bg-green-100 text-green-800',
+  manager: 'bg-purple-100 text-purple-800',
+  default: 'bg-gray-100 text-gray-800',
+};
+
+const roleIcons = {
+  employee: (
+    <svg className="w-5 h-5 mr-2 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A13.937 13.937 0 0112 15c2.5 0 4.847.655 6.879 1.804M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+  ),
+  admin: (
+    <svg className="w-5 h-5 mr-2 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 11c0-1.104.896-2 2-2s2 .896 2 2-.896 2-2 2-2-.896-2-2zm0 0V7m0 4v4m0 0c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2z" /></svg>
+  ),
+  manager: (
+    <svg className="w-5 h-5 mr-2 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 01-8 0m8 0a4 4 0 00-8 0m8 0V5a4 4 0 00-8 0v2m8 0a4 4 0 01-8 0" /></svg>
+  ),
+  default: (
+    <svg className="w-5 h-5 mr-2 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-4m0-4h.01" /></svg>
+  ),
+};
 
 export default function EmployeeDashboard({ user, employee, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [currentStatus, setCurrentStatus] = useState('not_started');
   const [todayEntries, setTodayEntries] = useState([]);
   const [recentEntries, setRecentEntries] = useState([]);
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [totalHoursToday, setTotalHoursToday] = useState(0);
   const [isClockingIn, setIsClockingIn] = useState(false);
   const [isClockingOut, setIsClockingOut] = useState(false);
-  const [geolocationStatus, setGeolocationStatus] = useState('idle'); // 'idle', 'requesting', 'success', 'error'
+  const [geolocationStatus, setGeolocationStatus] = useState('idle');
   const [currentCoords, setCurrentCoords] = useState({ latitude: null, longitude: null });
   const [showUserMenu, setShowUserMenu] = useState(false);
+  
+  // Overtime-related state
+  const [overtimeAnalysis, setOvertimeAnalysis] = useState(null);
+  const [sessionResponse, setSessionResponse] = useState(null);
+  const [overtimeAlerts, setOvertimeAlerts] = useState([]);
+  const [showOvertimeDetails, setShowOvertimeDetails] = useState(false);
+  
   const isTimeInSubmitting = useRef(false);
   const isTimeOutSubmitting = useRef(false);
+  const userMenuRef = useRef(null);
 
-  useEffect(() => {
-    loadDashboardData();
-    getInitialLocation();
-    
-    // Update current time every second
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+  const MINIMUM_LOCATION_ACCURACY_METERS = 100;
 
-    return () => clearInterval(timer);
-  }, []);
-
-  const getInitialLocation = async () => {
+  // Get initial location on component mount
+  const getInitialLocation = useCallback(async () => {
     try {
-      setGeolocationStatus('requesting');
       const position = await getCurrentPosition();
       setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
       setGeolocationStatus('success');
-    } catch (geoError) {
-      console.warn('Initial geolocation failed:', geoError);
+    } catch (error) {
+      console.warn('Initial geolocation failed:', error);
       setGeolocationStatus('error');
-      setCurrentCoords({ latitude: null, longitude: null });
     }
-  };
+  }, []);
 
-  const loadDashboardData = async () => {
+  useEffect(() => {
+    getInitialLocation();
+  }, [getInitialLocation]);
+
+  // Click-away logic for user menu
+  useEffect(() => {
+    if (!showUserMenu) return;
+    function handleClickOutside(event) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setShowUserMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserMenu]);
+
+  const loadDashboardData = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
+      // Get current session status with overtime analysis
+      const sessionResponse = await timeAPI.getCurrentSession();
+      console.log('sessionResponse', sessionResponse); // Debug print
+      setSessionResponse(sessionResponse);
       
-      // Get current session data
-      try {
-        const sessionResponse = await timeAPI.getCurrentSession();
-        console.log('Session response:', sessionResponse);
-        const status = sessionResponse.status || 'not_started';
-        setCurrentStatus(status);
-        setTodayEntries(sessionResponse.today_entries || []);
-        setTotalHoursToday(sessionResponse.total_hours || 0);
-      } catch (sessionError) {
-        console.log('Session error:', sessionError.response?.status, sessionError.message);
-        // If session endpoint returns 404, try to get today's entries directly
-        if (sessionError.response?.status === 404) {
-          setCurrentStatus('not_started');
-          
-          // Try to get today's entries from recent entries
-          try {
-            const entriesResponse = await timeAPI.getTimeEntries({ limit: 20 });
-            console.log('Recent entries response:', entriesResponse);
-            
-            // Filter for today's entries
-            const today = new Date().toDateString();
-            const todayEntries = (entriesResponse.results || entriesResponse || []).filter(entry => {
-              const entryDate = new Date(entry.timestamp).toDateString();
-              return entryDate === today;
-            });
-            
-            console.log('Filtered today entries:', todayEntries);
-            console.log('Sample entry location:', todayEntries[0]?.location_name);
-            setTodayEntries(todayEntries);
-            
-            // Calculate total hours from today's entries
-            let totalHours = 0;
-            if (todayEntries.length > 0) {
-              console.log('Calculating hours from entries:', todayEntries);
-              
-              // Sort entries by timestamp
-              const sortedEntries = todayEntries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-              const timeInEntries = sortedEntries.filter(e => e.entry_type === 'time_in');
-              const timeOutEntries = sortedEntries.filter(e => e.entry_type === 'time_out');
-              
-              console.log('Time in entries:', timeInEntries);
-              console.log('Time out entries:', timeOutEntries);
-              
-              // Calculate actual hours worked
-              for (let i = 0; i < Math.min(timeInEntries.length, timeOutEntries.length); i++) {
-                const timeIn = new Date(timeInEntries[i].timestamp);
-                const timeOut = new Date(timeOutEntries[i].timestamp);
-                const duration = (timeOut - timeIn) / (1000 * 60 * 60); // Convert to hours
-                console.log(`Session ${i + 1}: ${timeIn.toLocaleTimeString()} - ${timeOut.toLocaleTimeString()} = ${duration.toFixed(2)} hours`);
-                totalHours += duration;
-              }
-              
-              console.log('Total hours calculated:', totalHours);
-            
-            // Test the calculation with our test function
-            const testHours = testTotalHoursCalculation(todayEntries);
-            console.log('Test function result:', testHours);
-            }
-            setTotalHoursToday(totalHours);
-          } catch (entriesError) {
-            console.log('Entries error:', entriesError);
-            setTodayEntries([]);
-            setTotalHoursToday(0);
-          }
+      if (sessionResponse.today_analysis) {
+        setOvertimeAnalysis(sessionResponse.today_analysis);
+        
+        // Determine current status based on active session
+        if (sessionResponse.active_session) {
+          setCurrentStatus('clocked_in');
+        } else if (sessionResponse.today_analysis.total_hours > 0) {
+          setCurrentStatus('clocked_out');
         } else {
-          // For other errors, re-throw
-          throw sessionError;
+          setCurrentStatus('not_started');
+        }
+        
+        // Check for overtime alerts
+        const alerts = [];
+        if (sessionResponse.today_analysis.is_overtime) {
+          alerts.push({
+            type: 'overtime',
+            message: `You have worked ${sessionResponse.today_analysis.overtime_hours} hours of overtime today!`,
+            severity: 'warning'
+          });
+        }
+        
+        if (sessionResponse.active_session && sessionResponse.active_session.is_overtime) {
+          alerts.push({
+            type: 'active_overtime',
+            message: 'You are currently in overtime!',
+            severity: 'warning'
+          });
+        }
+        
+        if (sessionResponse.active_session && sessionResponse.active_session.hours_until_overtime < 1) {
+          alerts.push({
+            type: 'approaching_overtime',
+            message: `You are ${(sessionResponse.active_session.hours_until_overtime * 60).toFixed(0)} minutes away from overtime!`,
+            severity: 'info'
+          });
+        }
+        
+        setOvertimeAlerts(alerts);
+        setTotalHoursToday(sessionResponse.today_analysis.total_hours);
+      } else {
+        // Fallback to old method if overtime analysis not available
+        try {
+          const entriesResponse = await timeAPI.getTimeEntries({ limit: 20 });
+          console.log('Recent entries response:', entriesResponse);
+          
+          // Filter for today's entries
+          const today = new Date().toDateString();
+          const todayEntries = (entriesResponse.results || entriesResponse || []).filter(entry => {
+            const entryDate = new Date(entry.timestamp).toDateString();
+            return entryDate === today;
+          });
+          
+          console.log('Filtered today entries:', todayEntries);
+          console.log('Sample entry location:', todayEntries[0]?.location_name);
+          setTodayEntries(todayEntries);
+          
+          // Calculate total hours from today's entries
+          let totalHours = 0;
+          if (todayEntries.length > 0) {
+            console.log('Calculating hours from entries:', todayEntries);
+            
+            // Sort entries by timestamp
+            const sortedEntries = todayEntries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            const timeInEntries = sortedEntries.filter(e => e.entry_type === 'time_in');
+            const timeOutEntries = sortedEntries.filter(e => e.entry_type === 'time_out');
+            
+            console.log('Time in entries:', timeInEntries);
+            console.log('Time out entries:', timeOutEntries);
+            
+            // Calculate actual hours worked
+            for (let i = 0; i < Math.min(timeInEntries.length, timeOutEntries.length); i++) {
+              const timeIn = new Date(timeInEntries[i].timestamp);
+              const timeOut = new Date(timeOutEntries[i].timestamp);
+              const duration = (timeOut - timeIn) / (1000 * 60 * 60); // Convert to hours
+              console.log(`Session ${i + 1}: ${timeIn.toLocaleTimeString()} - ${timeOut.toLocaleTimeString()} = ${duration.toFixed(2)} hours`);
+              totalHours += duration;
+            }
+            
+            console.log('Total hours calculated:', totalHours);
+          
+          // Test the calculation with our test function
+          const testHours = testTotalHoursCalculation(todayEntries);
+          console.log('Test function result:', testHours);
+          }
+          setTotalHoursToday(totalHours);
+        } catch (entriesError) {
+          console.log('Entries error:', entriesError);
+          setTodayEntries([]);
+          setTotalHoursToday(0);
         }
       }
       
@@ -124,6 +209,15 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         setRecentEntries([]);
       }
       
+      // Get work sessions for today
+      try {
+        await workSessionAPI.getTodayWorkSessions();
+        // setWorkSessions(sessionsResponse.results || sessionsResponse || []); // <-- Remove this line
+      } catch (sessionsError) {
+        console.log('Work sessions error:', sessionsError);
+        // setWorkSessions([]); // <-- Remove this line
+      }
+      
     } catch (error) {
       console.error('Error loading dashboard data:', error);
       // Set default values on error
@@ -131,10 +225,17 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       setTodayEntries([]);
       setRecentEntries([]);
       setTotalHoursToday(0);
+      setOvertimeAnalysis(null);
+      setSessionResponse(null);
+      // setWorkSessions([]); // <-- Remove this line
     } finally {
       setLoading(false);
     }
-  };
+  }, [timeAPI, workSessionAPI]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   const handleTimeIn = async () => {
     if (isTimeInSubmitting.current) return;
@@ -147,17 +248,25 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         position = await getCurrentPosition();
         setGeolocationStatus('success');
         setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+        // Frontend accuracy check
+        if (position.coords.accuracy > MINIMUM_LOCATION_ACCURACY_METERS) {
+          showNotification(`Location accuracy is too low (${position.coords.accuracy.toFixed(0)}m). Please move to an open area and try again.`, 'error');
+          setIsClockingIn(false);
+          setGeolocationStatus('idle');
+          isTimeInSubmitting.current = false;
+          return;
+        }
       } catch (geoError) {
         console.warn('Geolocation failed, proceeding without coordinates:', geoError);
         setGeolocationStatus('error');
-        position = { coords: { latitude: null, longitude: null } };
+        position = { coords: { latitude: null, longitude: null, accuracy: null } };
         setCurrentCoords({ latitude: null, longitude: null });
       }
       await timeAPI.timeIn({
         employee_id: employee.id,
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
-        timestamp: new Date().toISOString()
+        accuracy: position.coords.accuracy
       });
       await loadDashboardData();
       showNotification('Time in recorded successfully!', 'success');
@@ -183,17 +292,25 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         position = await getCurrentPosition();
         setGeolocationStatus('success');
         setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+        // Frontend accuracy check
+        if (position.coords.accuracy > MINIMUM_LOCATION_ACCURACY_METERS) {
+          showNotification(`Location accuracy is too low (${position.coords.accuracy.toFixed(0)}m). Please move to an open area and try again.`, 'error');
+          setIsClockingOut(false);
+          setGeolocationStatus('idle');
+          isTimeOutSubmitting.current = false;
+          return;
+        }
       } catch (geoError) {
         console.warn('Geolocation failed, proceeding without coordinates:', geoError);
         setGeolocationStatus('error');
-        position = { coords: { latitude: null, longitude: null } };
+        position = { coords: { latitude: null, longitude: null, accuracy: null } };
         setCurrentCoords({ latitude: null, longitude: null });
       }
       await timeAPI.timeOut({
         employee_id: employee.id,
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
-        timestamp: new Date().toISOString()
+        accuracy: position.coords.accuracy
       });
       await loadDashboardData();
       showNotification('Time out recorded successfully!', 'success');
@@ -229,6 +346,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     notificationDiv.className = `fixed bottom-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${
       type === 'success' ? 'bg-green-500 text-white' :
       type === 'error' ? 'bg-red-500 text-white' :
+      type === 'warning' ? 'bg-yellow-500 text-white' :
       'bg-blue-500 text-white'
     }`;
     notificationDiv.textContent = message;
@@ -337,343 +455,357 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     return sessions;
   }
 
+  // Helper to format date/time in PH timezone
+  const formatPHTime = (dateString) => {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading your dashboard...</p>
+          <p className="mt-4 text-gray-600">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
-  const sessions = groupTimeEntriesToSessions(todayEntries);
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-xl font-semibold text-gray-900">Employee Dashboard</h1>
-                <p className="text-sm text-gray-500">Welcome back, {user?.first_name || user?.username}</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <div className="text-sm text-gray-600">{currentTime.toLocaleDateString()}</div>
-                <div className="text-lg font-mono text-gray-900">{currentTime.toLocaleTimeString()}</div>
-              </div>
-              
-              {/* User Menu Dropdown */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 focus:outline-none"
-                >
-                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                    {user?.first_name?.charAt(0) || user?.username?.charAt(0) || 'U'}
-                  </div>
-                  <span className="text-sm font-medium">{user?.first_name || user?.username}</span>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                
-                {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
-                    <button
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        // TODO: Navigate to settings when component is created
-                      }}
-                      disabled
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-400 cursor-not-allowed"
-                    >
-                      Settings
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        onLogout();
-                      }}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      Logout
-                    </button>
-                  </div>
-                )}
+      {/* Overtime Alerts */}
+      {overtimeAlerts.length > 0 && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+          {overtimeAlerts.map((alert, index) => (
+            <div
+              key={index}
+              className={`mb-2 p-4 rounded-lg border-l-4 ${
+                alert.severity === 'warning' ? 'bg-yellow-50 border-yellow-400 text-yellow-800' :
+                alert.severity === 'error' ? 'bg-red-50 border-red-400 text-red-800' :
+                'bg-blue-50 border-blue-400 text-blue-800'
+              }`}
+            >
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  {alert.severity === 'warning' ? '⚠️' : 'ℹ️'}
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium">{alert.message}</p>
+                </div>
               </div>
             </div>
-          </div>
+          ))}
         </div>
-      </header>
+      )}
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* GeoMap for geofence visualization */}
-        {employee?.department?.location && (
-          <GeoMap
-            centerLat={employee.department.location.latitude}
-            centerLng={employee.department.location.longitude}
-            radius={employee.department.location.geofence_radius || 100}
-            userLat={currentCoords.latitude}
-            userLng={currentCoords.longitude}
-          />
-        )}
-        {/* Current Status Card */}
-        <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Current Status</h2>
-            <div className={`text-3xl font-bold mb-4 ${getStatusColor(currentStatus)}`}>
-              {getStatusText(currentStatus)}
-            </div>
-            
-            {/* Current Coordinates Display */}
-            <div className="text-sm text-gray-600 mb-4">
-              {currentCoords.latitude && currentCoords.longitude ? (
-                <>📍 <b>{currentCoords.latitude.toFixed(6)}, {currentCoords.longitude.toFixed(6)}</b></>
-              ) : (
-                <span>📍 Coordinates not available</span>
-              )}
-            </div>
-            
-            {/* Geolocation Status Indicator */}
-            {geolocationStatus === 'requesting' && (
-              <div className="text-sm text-blue-600 mb-4">
-                <svg className="animate-spin inline w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Getting your location...
-              </div>
-            )}
-            {geolocationStatus === 'error' && (
-              <div className="text-sm text-yellow-600 mb-4">
-                <svg className="inline w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-                Location unavailable - proceeding without geolocation
-              </div>
-            )}
-            
-
-            
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={handleTimeIn}
-                disabled={isClockingIn || currentStatus === 'clocked_in'}
-                className={`px-8 py-3 rounded-lg font-medium transition-colors shadow-sm ${
-                  currentStatus === 'clocked_in' 
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                }`}
-              >
-                {isClockingIn ? (
-                  <div className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Clocking In...
-                  </div>
-                ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Status and Controls */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Current Status Card */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Current Status</h2>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">Status:</span>
+                  <span className={`font-semibold ${getStatusColor(currentStatus)}`}>
+                    {getStatusText(currentStatus)}
+                  </span>
+                </div>
+                
+                {overtimeAnalysis && (
                   <>
-                    <svg className="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Time In
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Total Hours Today:</span>
+                      <span className="font-semibold text-gray-900">
+                        {formatDuration(overtimeAnalysis.total_hours)}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Actual Work Hours:</span>
+                      <span className="font-semibold text-blue-600">
+                        {formatDuration(overtimeAnalysis.actual_work_hours)}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Regular Hours:</span>
+                      <span className="font-semibold text-green-600">
+                        {formatDuration(overtimeAnalysis.regular_hours)}
+                      </span>
+                    </div>
+                    
+                    {overtimeAnalysis.overtime_hours > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Overtime Hours:</span>
+                        <span className="font-semibold text-orange-600">
+                          {formatDuration(overtimeAnalysis.overtime_hours)}
+                        </span>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Flexible Break:</span>
+                      <span className="font-semibold text-purple-600">
+                        {formatDuration(overtimeAnalysis.flexible_break_hours)}
+                      </span>
+                    </div>
                   </>
                 )}
-              </button>
-              
-              <button
-                onClick={handleTimeOut}
-                disabled={isClockingOut || currentStatus === 'clocked_out' || currentStatus === 'not_started'}
-                className={`px-8 py-3 rounded-lg font-medium transition-colors shadow-sm ${
-                  currentStatus === 'clocked_out' || currentStatus === 'not_started'
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-red-600 hover:bg-red-700 text-white'
-                }`}
-              >
-                {isClockingOut ? (
-                  <div className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Clocking Out...
+                
+                {!overtimeAnalysis && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Total Hours Today:</span>
+                    <span className="font-semibold text-gray-900">
+                      {formatDuration(totalHoursToday)}
+                    </span>
                   </div>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    Time Out
-                  </>
                 )}
-              </button>
-            </div>
-          </div>
-        </div>
-
-                {/* Today's Timeline */}
-        <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Today's Timeline</h2>
-            {todayEntries.length > 0 && (
-              <div className="text-sm text-gray-600">
-                Total: <span className="font-medium text-blue-600">{formatDuration(totalHoursToday)}</span>
               </div>
-            )}
-          </div>
-          
-          {/* Debug info */}
-          <div className="text-xs text-gray-500 mb-2">
-            Debug: todayEntries.length = {todayEntries.length}, currentStatus = {currentStatus}, totalHours = {totalHoursToday} ({typeof totalHoursToday})
-          </div>
-          
-          {todayEntries.length === 0 ? (
-            <div className="text-center py-8">
-              <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              <p className="text-gray-500">No time entries for today. Start by recording your time in!</p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {todayEntries.map((entry, index) => (
-                <div key={entry.id} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
-                  <div className={`w-2 h-2 rounded-full ${
-                    entry.entry_type === 'time_in' ? 'bg-green-500' : 'bg-red-500'
-                  }`}></div>
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900">
-                      {entry.entry_type === 'time_in' ? 'Time In' : 'Time Out'}
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      {new Date(entry.timestamp).toLocaleTimeString()}
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-500 min-w-[160px]">
-                    {entry.location ? (
-                      <div>
-                        <div className="font-semibold text-gray-800 truncate" title={entry.location.name}>{entry.location.name}</div>
-                        <div className="text-xs text-gray-500">
-                          {entry.location.city && entry.location.country ? (
-                            <span>{entry.location.city}, {entry.location.country}</span>
-                          ) : entry.location.city ? (
-                            <span>{entry.location.city}</span>
-                          ) : entry.location.country ? (
-                            <span>{entry.location.country}</span>
-                          ) : null}
+
+            {/* Time In/Out Controls */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Time Tracking</h2>
+              <div className="space-y-4">
+                <button
+                  onClick={handleTimeIn}
+                  disabled={isClockingIn || (sessionResponse && sessionResponse.active_session)}
+                  className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors ${
+                    isClockingIn || (sessionResponse && sessionResponse.active_session)
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  {isClockingIn ? 'Clocking In...' : 'Time In'}
+                </button>
+                
+                <button
+                  onClick={handleTimeOut}
+                  disabled={isClockingOut || !(sessionResponse && sessionResponse.active_session)}
+                  className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors ${
+                    isClockingOut || !(sessionResponse && sessionResponse.active_session)
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-red-600 text-white hover:bg-red-700'
+                  }`}
+                >
+                  {isClockingOut ? 'Clocking Out...' : 'Time Out'}
+                </button>
+                
+                {/* Geolocation Status */}
+                <div className="text-sm text-gray-600">
+                  {geolocationStatus === 'requesting' && '📍 Getting location...'}
+                  {geolocationStatus === 'success' && '✅ Location obtained'}
+                  {geolocationStatus === 'error' && '❌ Location unavailable'}
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Right Column - Timeline and History */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Today's Timeline */}
+            <div className="bg-white rounded-lg shadow">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">Today's Timeline</h2>
+              </div>
+              <div className="p-6">
+                {/* Show active session first if exists */}
+                {sessionResponse && sessionResponse.active_session && (
+                  <div className="space-y-4 mb-6">
+                    <div className="flex items-center space-x-4 p-3 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                      <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                      <div className="flex-1">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium text-blue-800">
+                            🟢 Currently Working
+                          </span>
+                          <span className="text-sm text-blue-600">
+                            {formatDuration(sessionResponse.active_session.current_duration)}
+                          </span>
                         </div>
-                        {entry.location.coordinates && (
-                          <div className="text-xs text-gray-400">{entry.location.coordinates}</div>
+                        <div className="text-sm text-blue-600">
+                          Started at {formatPHTime(sessionResponse.active_session.start_time)}
+                        </div>
+                        {sessionResponse.active_session.is_overtime && (
+                          <div className="text-xs text-orange-600 font-medium">
+                            ⚠️ Currently in overtime
+                          </div>
                         )}
                       </div>
-                    ) : (
-                      <span className="text-gray-400 italic">No location</span>
-                    )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Time History */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Time History</h2>
-          
-                      {recentEntries.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No time history found.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Date
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Time In
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Time Out
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Duration
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Location
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {sessions.map((session, idx) => (
-                      <tr key={idx}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <div className="font-medium">{session.date}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <span className="text-green-600 font-medium">{session.time_in || '-'}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <span className="text-red-600 font-medium">{session.time_out || '-'}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <span className="font-medium">{session.duration || '-'}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {session.location ? (
-                            <div>
-                              <div className="font-semibold text-gray-800 truncate" title={session.location.name}>{session.location.name}</div>
-                              <div className="text-xs text-gray-500">
-                                {session.location.city && session.location.country ? (
-                                  <span>{session.location.city}, {session.location.country}</span>
-                                ) : session.location.city ? (
-                                  <span>{session.location.city}</span>
-                                ) : session.location.country ? (
-                                  <span>{session.location.country}</span>
-                                ) : null}
-                              </div>
-                              {session.location.coordinates && (
-                                <div className="text-xs text-gray-400">{session.location.coordinates}</div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400 italic">No location</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            session.status === 'Completed'
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {session.status}
-                          </span>
-                        </td>
-                      </tr>
+                )}
+                
+                {overtimeAnalysis && overtimeAnalysis.sessions && overtimeAnalysis.sessions.length > 0 ? (
+                  <div className="space-y-4">
+                    {overtimeAnalysis.sessions.map((session, index) => (
+                      <div key={index} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
+                        <div className={`w-3 h-3 rounded-full ${
+                          session.is_overtime ? 'bg-orange-500' :
+                          session.is_break ? 'bg-blue-500' :
+                          'bg-green-500'
+                        }`}></div>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium">
+                              {session.session_type === 'lunch' ? '🍽️ Lunch Break' :
+                               session.session_type === 'break' ? '☕ Break' :
+                               session.is_overtime ? '⏰ Overtime Work' : '💼 Regular Work'}
+                            </span>
+                            <span className="text-sm text-gray-600">
+                              {formatDuration(session.duration_hours)}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            {formatPHTime(session.start_time)} - {formatPHTime(session.end_time)}
+                          </div>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                ) : todayEntries.length > 0 ? (
+                  <div className="space-y-4">
+                    {groupTimeEntriesToSessions(todayEntries).map((session, index) => (
+                      <div key={index} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
+                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium">Work Session</span>
+                            <span className="text-sm text-gray-600">{session.duration}</span>
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            {session.time_in} - {session.time_out || 'Active'}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Location: {session.location_name}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-center py-8">No time entries for today</p>
+                )}
+              </div>
+            </div>
+
+            {/* Time History */}
+            {/* (Recent Time Entries section removed) */}
+            {/* Map Section - now expanded and always visible */}
+            {currentCoords.latitude && currentCoords.longitude && employee.department?.location && (
+              <div className="bg-white rounded-lg shadow">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-lg font-semibold text-gray-900">Location Map</h2>
+                </div>
+                <div className="p-6">
+                  <GeoMap
+                    centerLat={employee.department.location.latitude}
+                    centerLng={employee.department.location.longitude}
+                    radius={employee.department.location.geofence_radius}
+                    userLat={currentCoords.latitude}
+                    userLng={currentCoords.longitude}
+                  />
+                </div>
               </div>
             )}
+
+            {/* Overtime Details Section */}
+            {overtimeAnalysis && (
+              <div className="mt-8 bg-white rounded-lg shadow">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-lg font-semibold text-gray-900">Work Schedule Analysis</h2>
+                    <button
+                      onClick={() => setShowOvertimeDetails(!showOvertimeDetails)}
+                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      {showOvertimeDetails ? 'Hide Details' : 'Show Details'}
+                    </button>
+                  </div>
+                </div>
+                {showOvertimeDetails && (
+                  <div className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <div className="text-2xl font-bold text-blue-600">
+                          {formatDuration(overtimeAnalysis.actual_work_hours)}
+                        </div>
+                        <div className="text-sm text-blue-800">Actual Work Hours</div>
+                      </div>
+                      <div className="bg-green-50 p-4 rounded-lg">
+                        <div className="text-2xl font-bold text-green-600">
+                          {formatDuration(overtimeAnalysis.regular_hours)}
+                        </div>
+                        <div className="text-sm text-green-800">Regular Hours</div>
+                      </div>
+                      <div className="bg-orange-50 p-4 rounded-lg">
+                        <div className="text-2xl font-bold text-orange-600">
+                          {formatDuration(overtimeAnalysis.overtime_hours)}
+                        </div>
+                        <div className="text-sm text-orange-800">Overtime Hours</div>
+                      </div>
+                      <div className="bg-purple-50 p-4 rounded-lg">
+                        <div className="text-2xl font-bold text-purple-600">
+                          {formatDuration(overtimeAnalysis.flexible_break_hours)}
+                        </div>
+                        <div className="text-sm text-purple-800">Flexible Break</div>
+                      </div>
+                    </div>
+                    <div className="mt-6">
+                      <h3 className="text-md font-semibold text-gray-900 mb-3">Schedule Configuration</h3>
+                      <div className="bg-gray-100 rounded-lg p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">Total Schedule:</span>
+                              <span className="font-semibold">{employee.total_schedule_hours || 9} hours</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">Daily Work Hours:</span>
+                              <span className="font-semibold">{employee.daily_work_hours || 8} hours</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">Flexible Break:</span>
+                              <span className="font-semibold">{employee.flexible_break_hours || 1} hour</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">Overtime Threshold:</span>
+                              <span className="font-semibold">{employee.overtime_threshold_hours || 8} hours</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">Current Total:</span>
+                              <span className="font-semibold">{formatDuration(overtimeAnalysis.total_hours)}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">Work Time Used:</span>
+                              <span className="font-semibold">{formatDuration(overtimeAnalysis.actual_work_hours)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                      <h4 className="text-sm font-semibold text-blue-900 mb-2">How It Works:</h4>
+                      <ul className="text-sm text-blue-800 space-y-1">
+                        <li>• Total schedule: {employee.total_schedule_hours || 9} hours (recommended time in to time out)</li>
+                        <li>• Actual work time: All time counts toward overtime calculation</li>
+                        <li>• Flexible break: {employee.flexible_break_hours || 1} hour (built into schedule, no logging needed)</li>
+                        <li>• Overtime starts after {employee.overtime_threshold_hours || 8} hours of actual work</li>
+                        <li>• Working beyond 9 hours: All additional time counts as overtime</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>

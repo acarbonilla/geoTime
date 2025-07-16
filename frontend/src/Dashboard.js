@@ -1,82 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { authAPI, employeeAPI, timeAPI } from './api';
+import React from 'react';
+import { authAPI, dashboardAPI } from './api';
 import EmployeeDashboard from './dashboards/EmployeeDashboard';
 
-export default function Dashboard() {
-  const [user, setUser] = useState(null);
-  const [employee, setEmployee] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  const loadDashboardData = async () => {
-    try {
-      setLoading(true);
-      
-      // Get user data from localStorage
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        setUser(JSON.parse(userData));
-      }
-      
-      // Get dashboard data from API
-      const response = await employeeAPI.getDashboard();
-      setEmployee(response.employee);
-      
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-      setError('Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+export default function Dashboard({ onLogout, user, employee }) {
   const handleLogout = async () => {
     try {
       await authAPI.logout();
-      window.location.reload();
     } catch (error) {
       console.error('Logout error:', error);
-      // Force logout by clearing localStorage
-      localStorage.clear();
-      window.location.reload();
+    } finally {
+      // Always call the onLogout callback to clear state
+      if (typeof onLogout === 'function') {
+        onLogout();
+      }
     }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="text-red-600 mb-4">
-            <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // Render role-specific dashboard
   if (employee?.role === 'employee') {
