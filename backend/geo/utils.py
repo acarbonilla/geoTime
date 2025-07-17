@@ -156,30 +156,32 @@ class OvertimeCalculator:
             timestamp__lte=end_of_day
         ).order_by('timestamp')
         today_analysis = self.analyze_daily_sessions(today_local)
-        
-        # Get current active session
-        active_session = None
-        last_entry = TimeEntry.objects.filter(
+
+        # Find any open session (time_in with no time_out after it)
+        last_time_in = TimeEntry.objects.filter(
             employee=self.employee,
-            timestamp__date=today_local
+            entry_type='time_in'
         ).order_by('-timestamp').first()
-        
-        if last_entry and last_entry.entry_type == 'time_in':
-            # Calculate current session duration
-            current_duration = (timezone.now() - last_entry.timestamp).total_seconds() / 3600
-            total_hours_today = today_analysis['total_hours'] + current_duration
-            
-            # Calculate actual work hours including current session
-            # All time counts as work time for overtime calculation
-            actual_work_hours = total_hours_today
-            
-            active_session = {
-                'start_time': last_entry.timestamp,
-                'current_duration': round(current_duration, 2),
-                'is_overtime': actual_work_hours > self.overtime_threshold,
-                'hours_until_overtime': max(0, self.overtime_threshold - today_analysis['actual_work_hours'])
-            }
-        
+        active_session = None
+        if last_time_in:
+            # Is there a time_out after this time_in?
+            has_time_out = TimeEntry.objects.filter(
+                employee=self.employee,
+                entry_type='time_out',
+                timestamp__gt=last_time_in.timestamp
+            ).exists()
+            if not has_time_out:
+                # Calculate current session duration
+                current_duration = (timezone.now() - last_time_in.timestamp).total_seconds() / 3600
+                # Calculate actual work hours including current session
+                actual_work_hours = today_analysis['total_hours'] + current_duration
+                active_session = {
+                    'start_time': last_time_in.timestamp,
+                    'current_duration': round(current_duration, 2),
+                    'is_overtime': actual_work_hours > self.overtime_threshold,
+                    'hours_until_overtime': max(0, self.overtime_threshold - today_analysis['actual_work_hours'])
+                }
+
         return {
             'today_analysis': today_analysis,
             'active_session': active_session,
