@@ -774,8 +774,6 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
 class TimeInOutAPIView(APIView):
     """API View for time in/out operations"""
     
-    MINIMUM_LOCATION_ACCURACY_METERS = 100
-    
     def get_client_ip(self, request):
         """Get client IP address"""
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -790,9 +788,9 @@ class TimeInOutAPIView(APIView):
         user_agent = request.META.get('HTTP_USER_AGENT', '')
         return user_agent[:255]  # Limit to 255 characters
     
-    def validate_geofence(self, employee_id, latitude, longitude, location_id=None):
+    def validate_geofence(self, employee_id, latitude, longitude, accuracy, location_id=None):
         """
-        Validate if employee is within the allowed geofence.
+        Validate if employee is within the allowed geofence and accuracy.
         Returns dict with validation result and details.
         """
         try:
@@ -832,6 +830,13 @@ class TimeInOutAPIView(APIView):
                 'message': 'No location assigned to employee'
             }
         
+        min_accuracy = getattr(target_location, 'min_accuracy_meters', 100)
+        if accuracy is not None and accuracy > min_accuracy:
+            return {
+                'valid': False,
+                'message': f'Location accuracy is too low: {accuracy:.1f}m (min required: {min_accuracy}m)'
+            }
+        
         # Calculate distance
         distance = target_location.calculate_distance_to(latitude, longitude)
         allowed_radius = target_location.geofence_radius
@@ -867,17 +872,8 @@ class TimeInOutAPIView(APIView):
         notes = serializer.validated_data.get('notes', '')
         accuracy = serializer.validated_data.get('accuracy', None)
         
-        # Backend accuracy check
-        if accuracy is not None and accuracy > self.MINIMUM_LOCATION_ACCURACY_METERS:
-            # Log the failed attempt
-            print(f"[SECURITY] Time {action} attempt for employee {employee_id} rejected due to low accuracy: {accuracy}m")
-            return Response({
-                'error': 'Location accuracy is too low',
-                'details': f'Accuracy was {accuracy:.1f} meters. Please move to an open area and try again.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
         # Geofencing validation
-        geofence_result = self.validate_geofence(employee_id, latitude, longitude, location_id)
+        geofence_result = self.validate_geofence(employee_id, latitude, longitude, accuracy, location_id)
         if not geofence_result['valid']:
             return Response({
                 'error': 'Geofence validation failed',
@@ -964,6 +960,7 @@ class GeofenceValidationAPIView(APIView):
         latitude = request.data.get('latitude')
         longitude = request.data.get('longitude')
         location_id = request.data.get('location_id')
+        accuracy = request.data.get('accuracy')
         
         if not all([employee_id, latitude, longitude]):
             return Response({
@@ -972,7 +969,7 @@ class GeofenceValidationAPIView(APIView):
         
         # Use the same validation logic as TimeInOutAPIView
         time_in_out_view = TimeInOutAPIView()
-        validation_result = time_in_out_view.validate_geofence(employee_id, latitude, longitude, location_id)
+        validation_result = time_in_out_view.validate_geofence(employee_id, latitude, longitude, accuracy, location_id)
         
         return Response(validation_result)
 

@@ -31,7 +31,9 @@ INSTALLED_APPS = [
     'rest_framework',
     'django_filters',
     'corsheaders',
-    'geo'
+    'geo',
+    'django_extensions',
+
 ]
 
 MIDDLEWARE = [

@@ -6,7 +6,7 @@ from .models import Location, Department, Employee, TimeEntry, WorkSession
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
-    list_display = ('name', 'city', 'country', 'state', 'geofence_radius', 'timezone_name', 'created_at')
+    list_display = ('name', 'city', 'country', 'state', 'geofence_radius', 'min_accuracy_meters', 'timezone_name', 'created_at')
     list_filter = ('country', 'state', 'timezone_name', 'created_at')
     search_fields = ('name', 'city', 'country', 'state', 'display_name')
     readonly_fields = ('created_at', 'updated_at')
@@ -15,7 +15,7 @@ class LocationAdmin(admin.ModelAdmin):
             'fields': ('name', 'display_name', 'city', 'state', 'country')
         }),
         ('Coordinates', {
-            'fields': ('latitude', 'longitude', 'geofence_radius')
+            'fields': ('latitude', 'longitude', 'geofence_radius', 'min_accuracy_meters')
         }),
         ('Timezone', {
             'fields': ('timezone_name', 'timezone_offset')

@@ -12,6 +12,7 @@ class Location(models.Model):
     timezone_name = models.CharField(max_length=100, default='UTC')
     timezone_offset = models.IntegerField(default=0)
     geofence_radius = models.IntegerField(default=100, help_text='Radius in meters for geofencing')
+    min_accuracy_meters = models.IntegerField(default=100, help_text='Minimum required location accuracy in meters')
     city = models.CharField(max_length=255, blank=True, null=True)
     country = models.CharField(max_length=255, blank=True, null=True)
     state = models.CharField(max_length=255, blank=True, null=True)

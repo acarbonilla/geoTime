@@ -155,10 +155,6 @@ class OvertimeCalculator:
             timestamp__gte=start_of_day,
             timestamp__lte=end_of_day
         ).order_by('timestamp')
-        print(f"[DEBUG] Today's date (backend, local): {today_local}")
-        print(f"[DEBUG] TimeEntry timestamps for today:")
-        for entry in today_entries:
-            print(f"  - {entry.entry_type} at {entry.timestamp} (UTC)")
         today_analysis = self.analyze_daily_sessions(today_local)
         
         # Get current active session
