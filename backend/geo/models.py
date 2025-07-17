@@ -37,6 +37,7 @@ class Location(models.Model):
         Returns distance in meters.
         """
         import math
+        print(f"Geofence center: ({self.latitude}, {self.longitude}), User: ({lat}, {lng}), Radius: {self.geofence_radius}")
         
         # Convert to radians
         lat1, lon1 = math.radians(float(self.latitude)), math.radians(float(self.longitude))
