@@ -68,7 +68,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   const isTimeOutSubmitting = useRef(false);
   const userMenuRef = useRef(null);
 
-  const MINIMUM_LOCATION_ACCURACY_METERS = 100;
+  const MINIMUM_LOCATION_ACCURACY_METERS = 10000;
 
   // Get initial location on component mount
   const getInitialLocation = useCallback(async () => {
@@ -249,13 +249,13 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         setGeolocationStatus('success');
         setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
         // Frontend accuracy check
-        if (position.coords.accuracy > MINIMUM_LOCATION_ACCURACY_METERS) {
-          showNotification(`Location accuracy is too low (${position.coords.accuracy.toFixed(0)}m). Please move to an open area and try again.`, 'error');
-          setIsClockingIn(false);
-          setGeolocationStatus('idle');
-          isTimeInSubmitting.current = false;
-          return;
-        }
+        // if (position.coords.accuracy > MINIMUM_LOCATION_ACCURACY_METERS) {
+        //   showNotification(`Location accuracy is too low (${position.coords.accuracy.toFixed(0)}m). Please move to an open area and try again.`, 'error');
+        //   setIsClockingIn(false);
+        //   setGeolocationStatus('idle');
+        //   isTimeInSubmitting.current = false;
+        //   return;
+        // }
       } catch (geoError) {
         console.warn('Geolocation failed, proceeding without coordinates:', geoError);
         setGeolocationStatus('error');
@@ -293,13 +293,13 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         setGeolocationStatus('success');
         setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
         // Frontend accuracy check
-        if (position.coords.accuracy > MINIMUM_LOCATION_ACCURACY_METERS) {
-          showNotification(`Location accuracy is too low (${position.coords.accuracy.toFixed(0)}m). Please move to an open area and try again.`, 'error');
-          setIsClockingOut(false);
-          setGeolocationStatus('idle');
-          isTimeOutSubmitting.current = false;
-          return;
-        }
+        // if (position.coords.accuracy > MINIMUM_LOCATION_ACCURACY_METERS) {
+        //   showNotification(`Location accuracy is too low (${position.coords.accuracy.toFixed(0)}m). Please move to an open area and try again.`, 'error');
+        //   setIsClockingOut(false);
+        //   setGeolocationStatus('idle');
+        //   isTimeOutSubmitting.current = false;
+        //   return;
+        // }
       } catch (geoError) {
         console.warn('Geolocation failed, proceeding without coordinates:', geoError);
         setGeolocationStatus('error');

@@ -102,7 +102,7 @@ const Navbar = ({ user, employee, onLogout }) => {
           <div className="flex-1 flex justify-center">
             {/* Desktop NavLinks */}
             <nav className="hidden lg:flex items-center gap-6">
-              <NavLink to="/dashboard" className={({ isActive }) =>
+              <NavLink to="/employee-dashboard" className={({ isActive }) =>
                 `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
                   ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
               }>
@@ -119,7 +119,7 @@ const Navbar = ({ user, employee, onLogout }) => {
           {/* Mobile NavLinks */}
           <div className={`absolute top-16 left-0 w-full z-40 lg:hidden transition-all duration-500 ${showMobileMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`} style={{background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 50%, #a78bfa 100%)'}}>
             <nav className="flex flex-col items-center gap-2 py-4">
-              <NavLink to="/dashboard" className={({ isActive }) =>
+              <NavLink to="/employee-dashboard" className={({ isActive }) =>
                 `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
               } onClick={() => setShowMobileMenu(false)}>
                 <DashboardIcon /> Dashboard

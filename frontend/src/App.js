@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './Login';
 import 'leaflet/dist/leaflet.css';
-import Dashboard from './Dashboard';
 import Reports from './Reports';
 import Navbar from './Navbar';
 import { dashboardAPI } from './api';
+import EmployeeDashboard from './dashboards/EmployeeDashboard';
 
 
 function App() {
@@ -72,27 +72,27 @@ function App() {
             path="/" 
             element={
               isAuthenticated ? (
-                <Navigate to="/dashboard" replace />
+                <Navigate to="/employee-dashboard" replace />
               ) : (
                 <Login onLogin={handleLogin} />
               )
             } 
           />
           <Route 
-            path="/dashboard" 
+            path="/reports"
             element={
               isAuthenticated ? (
-                <Dashboard onLogout={handleLogout} user={user} employee={employee} />
+                <Reports user={user} onLogout={handleLogout} />
               ) : (
                 <Navigate to="/" replace />
               )
             } 
           />
           <Route 
-            path="/reports" 
+            path="/employee-dashboard"
             element={
               isAuthenticated ? (
-                <Reports user={user} onLogout={handleLogout} />
+                <EmployeeDashboard onLogout={handleLogout} user={user} employee={employee} />
               ) : (
                 <Navigate to="/" replace />
               )

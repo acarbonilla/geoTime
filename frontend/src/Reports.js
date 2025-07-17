@@ -46,40 +46,70 @@ const Reports = () => {
   });
   const [loading, setLoading] = useState(false);
   const [showTable, setShowTable] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
   useEffect(() => {
     setLoading(true);
-    axiosInstance.get('/time-entries/?page_size=1000')
-      .then(res => setEntries(res.data.results || res.data))
-      .catch(() => setEntries([]))
+    // Build query params for API
+    const params = { page_size: pageSize, page: currentPage, ordering: '-timestamp' };
+    if (filterForm.startDate) params.start_date = filterForm.startDate;
+    if (filterForm.endDate) params.end_date = filterForm.endDate;
+    axiosInstance.get('/time-entries/', { params })
+      .then(res => {
+        const results = res.data.results || res.data;
+        setEntries(results);
+        setTotalPages(Math.ceil((res.data.count || results.length) / pageSize));
+      })
+      .catch(() => {
+        setEntries([]);
+        setTotalPages(1);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [filterForm.startDate, filterForm.endDate, currentPage, pageSize]);
 
   useEffect(() => {
     let data = [...entries];
     const getDateString = (entry) => {
       const ts = entry.formatted_timestamp || entry.timestamp;
       if (!ts) return '';
-      if (ts.includes('T')) {
-        return ts.split('T')[0];
+      // Convert to local date string in PH timezone
+      const dt = new Date(ts);
+      // Use 'en-PH' and 'Asia/Manila' for PH time, fallback to local if not supported
+      if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+        return dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }); // 'YYYY-MM-DD' format
       } else {
-        return ts.split(' ')[0];
+        // Fallback: use local date string in 'YYYY-MM-DD' format
+        return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
       }
     };
+    // Helper to convert a YYYY-MM-DD string to a Date object in Asia/Manila timezone
+    const parsePHDate = (dateStr) => {
+      // dateStr is in 'YYYY-MM-DD' format
+      // Create a Date object at midnight in Asia/Manila
+      // This works because toLocaleDateString with timeZone will match this logic
+      return new Date(dateStr + 'T00:00:00+08:00');
+    };
+    
     if (!filters.startDate && !filters.endDate && (filters.entryType === 'all' || !filters.entryType)) {
       setFilteredEntries(entries);
       return;
     }
     if (filters.startDate) {
       data = data.filter(e => {
-        const entryDate = getDateString(e);
-        return entryDate && entryDate >= filters.startDate;
+        const entryDate = getDateString(e); // 'YYYY-MM-DD' in Asia/Manila
+        // Compare as strings, but ensure both are PH dates
+        const filterStart = parsePHDate(filters.startDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+        return entryDate && entryDate >= filterStart;
       });
     }
     if (filters.endDate) {
       data = data.filter(e => {
         const entryDate = getDateString(e);
-        return entryDate && entryDate <= filters.endDate;
+        const filterEnd = parsePHDate(filters.endDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+        return entryDate && entryDate <= filterEnd;
       });
     }
     if (filters.entryType !== 'all') {
@@ -94,37 +124,67 @@ const Reports = () => {
   const handleApplyFilters = () => {
     setFilters({ ...filterForm });
     setShowTable(true);
+    // The useEffect above will refetch entries when startDate or endDate changes
+  };
+
+  // Helper to format date and time like the table
+  const formatExportDateTime = (ts) => {
+    if (!ts) return { date: '', time: '' };
+    let tsISO = ts.replace(/\.(\d+)([\+\-]\d{2}:\d{2})$/, '$2');
+    const dt = new Date(tsISO);
+    if (!isNaN(dt)) {
+      return {
+        date: dt.toLocaleDateString('en-CA'),
+        time: dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+      };
+    } else {
+      // fallback: split manually
+      let date = '', time = '';
+      if (ts.includes('T')) {
+        [date, time] = ts.split('T');
+        time = time ? time.split('.')[0] : '';
+      }
+      return { date, time };
+    }
   };
 
   // Export functions
   const exportCSV = () => {
-    const header = ['Employee', 'Department', 'Entry Type', 'Time', 'Location', 'Overtime', 'Notes', 'Coordinates'];
-    const rows = filteredEntries.map(e => [
-      e.employee_name,
-      e.department_name,
-      e.entry_type,
-      e.formatted_timestamp || e.timestamp,
-      e.location_name,
-      e.overtime || '',
-      e.notes || '',
-      e.latitude && e.longitude ? `${e.latitude}, ${e.longitude}` : '',
-    ]);
+    const header = ['Employee', 'Department', 'Entry Type', 'Date', 'Time', 'Location', 'Overtime', 'Notes', 'Coordinates'];
+    const rows = filteredEntries.map(e => {
+      const { date, time } = formatExportDateTime(e.timestamp);
+      return [
+        e.employee_name,
+        e.department_name,
+        e.entry_type,
+        date,
+        time,
+        e.location_name,
+        e.overtime || '',
+        e.notes || '',
+        e.latitude && e.longitude ? `${e.latitude}, ${e.longitude}` : '',
+      ];
+    });
     const csvContent = [header, ...rows].map(r => r.map(x => '"' + (x || '') + '"').join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     saveAs(blob, 'employee_time_entries.csv');
   };
 
   const exportExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(filteredEntries.map(e => ({
-      Employee: e.employee_name,
-      Department: e.department_name,
-      'Entry Type': e.entry_type,
-      Time: e.formatted_timestamp || e.timestamp,
-      Location: e.location_name,
-      Overtime: e.overtime || '',
-      Notes: e.notes || '',
-      Coordinates: e.latitude && e.longitude ? `${e.latitude}, ${e.longitude}` : '',
-    })));
+    const ws = XLSX.utils.json_to_sheet(filteredEntries.map(e => {
+      const { date, time } = formatExportDateTime(e.timestamp);
+      return {
+        Employee: e.employee_name,
+        Department: e.department_name,
+        'Entry Type': e.entry_type,
+        Date: date,
+        Time: time,
+        Location: e.location_name,
+        Overtime: e.overtime || '',
+        Notes: e.notes || '',
+        Coordinates: e.latitude && e.longitude ? `${e.latitude}, ${e.longitude}` : '',
+      };
+    }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Time Entries');
     XLSX.writeFile(wb, 'employee_time_entries.xlsx');
@@ -136,22 +196,76 @@ const Reports = () => {
     autoTable(doc, {
       startY: 22,
       head: [[
-        'Employee', 'Department', 'Entry Type', 'Time', 'Location', 'Overtime', 'Notes', 'Coordinates'
+        'Employee', 'Department', 'Entry Type', 'Date', 'Time', 'Location', 'Overtime', 'Notes', 'Coordinates'
       ]],
-      body: filteredEntries.map(e => [
-        e.employee_name,
-        e.department_name,
-        e.entry_type,
-        e.formatted_timestamp || e.timestamp,
-        e.location_name,
-        e.overtime || '',
-        e.notes || '',
-        e.latitude && e.longitude ? `${e.latitude}, ${e.longitude}` : '',
-      ]),
+      body: filteredEntries.map(e => {
+        const { date, time } = formatExportDateTime(e.timestamp);
+        return [
+          e.employee_name,
+          e.department_name,
+          e.entry_type,
+          date,
+          time,
+          e.location_name,
+          e.overtime || '',
+          e.notes || '',
+          e.latitude && e.longitude ? `${e.latitude}, ${e.longitude}` : '',
+        ];
+      }),
       styles: { fontSize: 8 },
     });
     doc.save('employee_time_entries.pdf');
   };
+
+  // Pagination controls
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+    const pages = [];
+    for (let i = 1; i <= totalPages; i++) {
+      pages.push(
+        <button
+          key={i}
+          onClick={() => setCurrentPage(i)}
+          className={`px-3 py-1 rounded mx-1 ${currentPage === i ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-blue-100'}`}
+          disabled={currentPage === i}
+        >
+          {i}
+        </button>
+      );
+    }
+    return (
+      <div className="flex justify-center items-center mt-4">
+        <button
+          onClick={() => setCurrentPage(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="px-3 py-1 rounded mx-1 bg-gray-200 text-gray-700 hover:bg-blue-100 disabled:opacity-50"
+        >Prev</button>
+        {pages}
+        <button
+          onClick={() => setCurrentPage(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 rounded mx-1 bg-gray-200 text-gray-700 hover:bg-blue-100 disabled:opacity-50"
+        >Next</button>
+      </div>
+    );
+  };
+
+  // Page size selector
+  const renderPageSizeSelector = () => (
+    <div className="flex items-center gap-2 mb-2">
+      <label htmlFor="pageSize" className="text-sm text-gray-700">Rows per page:</label>
+      <select
+        id="pageSize"
+        value={pageSize}
+        onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+        className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition"
+      >
+        {PAGE_SIZE_OPTIONS.map(size => (
+          <option key={size} value={size}>{size}</option>
+        ))}
+      </select>
+    </div>
+  );
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto bg-gradient-to-br from-blue-50 to-white min-h-screen">
@@ -220,6 +334,7 @@ const Reports = () => {
           <EmptyState />
         ) : (
           <div className="overflow-x-auto">
+            {renderPageSizeSelector()}
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="bg-gradient-to-r from-blue-50 to-blue-100 text-blue-900">
@@ -235,23 +350,23 @@ const Reports = () => {
               </thead>
               <tbody>
                 {filteredEntries.map((e, idx) => {
-                  const ts = e.formatted_timestamp || e.timestamp || '';
-                  let date = '', time = '';
-                  if (ts.includes(' ')) {
-                    [date, time] = ts.split(' ');
-                  } else if (ts.includes('T')) {
-                    [date, time] = ts.split('T');
-                    time = time ? time.slice(0, 8) : '';
-                  }
-                  // Format time to 12-hour with AM/PM
-                  let formattedTime = '';
-                  if (date && time) {
-                    const cleanTime = time.split('.')[0];
-                    const dt = new Date(`${date}T${cleanTime}`);
+                  const ts = e.timestamp || '';
+                  let date = '', time = '', formattedTime = '';
+                  if (ts) {
+                    // Remove microseconds for browser compatibility
+                    let tsISO = ts.replace(/\.(\d+)([\+\-]\d{2}:\d{2})$/, '$2');
+                    const dt = new Date(tsISO);
                     if (!isNaN(dt)) {
+                      date = dt.toLocaleDateString('en-CA'); // YYYY-MM-DD
                       formattedTime = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
                     } else {
-                      formattedTime = cleanTime;
+                      // fallback: split manually
+                      if (ts.includes('T')) {
+                        [date, time] = ts.split('T');
+                        formattedTime = time ? time.split('.')[0] : '';
+                      } else {
+                        formattedTime = ts;
+                      }
                     }
                   }
                   return (
@@ -269,6 +384,7 @@ const Reports = () => {
                 })}
               </tbody>
             </table>
+            {renderPagination()}
           </div>
         )}
       </div>
