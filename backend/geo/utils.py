@@ -31,6 +31,7 @@ class OvertimeCalculator:
             return {
                 'date': date,
                 'total_hours': 0,
+                'actual_work_hours': 0,  # Fix for KeyError
                 'regular_hours': 0,
                 'overtime_hours': 0,
                 'break_hours': 0,

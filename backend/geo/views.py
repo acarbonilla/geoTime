@@ -24,21 +24,21 @@ from datetime import timedelta
 
 class RoleBasedPermissionMixin:
     """Mixin for role-based permissions"""
-    
     def get_queryset(self):
         user = self.request.user
         if not hasattr(user, 'employee_profile'):
             return self.model.objects.none()
-        
         employee = user.employee_profile
-        
         if employee.can_view_company_data():
             return super().get_queryset()
         elif employee.can_view_department_data():
             return super().get_queryset().filter(department=employee.department)
         elif employee.can_view_team_data():
             team_members = employee.get_team_members()
-            return super().get_queryset().filter(id__in=team_members.values_list('id', flat=True))
+            # Include self in the queryset
+            return super().get_queryset().filter(
+                Q(id__in=team_members.values_list('id', flat=True)) | Q(id=employee.id)
+            )
         else:
             return super().get_queryset().filter(employee=employee)
 
@@ -658,18 +658,11 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def today(self, request):
-        """Get today's time entries"""
-        # Use UTC for date filtering to match stored timestamps
-        from datetime import datetime
-        
-        # Get current time in UTC
-        utc_now = timezone.now()
-        today_start = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = today_start + timezone.timedelta(days=1)
-        
+        """Get today's time entries (local time zone)"""
+        from django.utils import timezone
+        today_local = timezone.localdate()
         today_entries = self.get_queryset().filter(
-            timestamp__gte=today_start,
-            timestamp__lt=today_end
+            timestamp__date=today_local
         )
         serializer = TimeEntryListSerializer(today_entries, many=True)
         return Response(serializer.data)
