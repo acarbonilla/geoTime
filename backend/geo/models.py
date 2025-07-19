@@ -278,3 +278,27 @@ class WorkSession(models.Model):
             self.save(update_fields=['duration_hours'])
             return self.duration_hours
         return None
+
+
+class TimeCorrectionRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('denied', 'Denied'),
+    ]
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='correction_requests')
+    date = models.DateField()
+    requested_time_in = models.TimeField(null=True, blank=True)
+    requested_time_out = models.TimeField(null=True, blank=True)
+    reason = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_correction_requests')
+    response_message = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-submitted_at']
+
+    def __str__(self):
+        return f"{self.employee.full_name} ({self.date}) - {self.status}"

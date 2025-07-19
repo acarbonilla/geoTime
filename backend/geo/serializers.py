@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Location, Department, Employee, TimeEntry, WorkSession
+from .models import Location, Department, Employee, TimeEntry, WorkSession, TimeCorrectionRequest
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -43,12 +43,13 @@ class DepartmentSerializer(serializers.ModelSerializer):
 
 class DepartmentListSerializer(serializers.ModelSerializer):
     """Simplified serializer for Department model in lists"""
+    location = LocationListSerializer(read_only=True)
     location_name = serializers.CharField(source='location.name', read_only=True)
     employee_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Department
-        fields = ['id', 'name', 'code', 'location_name', 'employee_count', 'is_active']
+        fields = ['id', 'name', 'code', 'location', 'location_name', 'employee_count', 'is_active']
     
     def get_employee_count(self, obj):
         return obj.employees.filter(employment_status='active').count()
@@ -77,14 +78,15 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source='user.first_name', read_only=True)
     last_name = serializers.CharField(source='user.last_name', read_only=True)
     email = serializers.CharField(source='user.email', read_only=True)
-    department_name = serializers.CharField(source='department.name', read_only=True)
+    full_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    department = DepartmentListSerializer(read_only=True)
     manager_name = serializers.CharField(source='manager.full_name', read_only=True)
     
     class Meta:
         model = Employee
         fields = [
-            'id', 'user_id', 'username', 'first_name', 'last_name', 'email',
-            'employee_id', 'department_name', 'position', 'role', 'hire_date',
+            'id', 'user_id', 'username', 'first_name', 'last_name', 'email', 'full_name',
+            'employee_id', 'department', 'position', 'role', 'hire_date',
             'employment_status', 'manager_name', 'phone', 'emergency_contact',
             'daily_work_hours', 'overtime_threshold_hours', 'total_schedule_hours',
             'flexible_break_hours', 'lunch_break_minutes', 'break_threshold_minutes'
@@ -197,3 +199,16 @@ class CurrentSessionStatusSerializer(serializers.Serializer):
     daily_work_hours = serializers.DecimalField(max_digits=4, decimal_places=2)
     total_schedule_hours = serializers.DecimalField(max_digits=4, decimal_places=2)
     flexible_break_hours = serializers.DecimalField(max_digits=4, decimal_places=2) 
+
+
+class TimeCorrectionRequestSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    reviewed_by_name = serializers.CharField(source='reviewed_by.full_name', read_only=True)
+
+    class Meta:
+        model = TimeCorrectionRequest
+        fields = [
+            'id', 'employee', 'employee_name', 'date', 'requested_time_in', 'requested_time_out',
+            'reason', 'status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'reviewed_by_name', 'response_message'
+        ]
+        read_only_fields = ['id', 'submitted_at', 'reviewed_at', 'reviewed_by', 'employee_name', 'reviewed_by_name'] 

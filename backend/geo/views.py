@@ -9,11 +9,12 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from .models import Location, Department, Employee, TimeEntry, WorkSession
+from .models import Location, Department, Employee, TimeEntry, WorkSession, TimeCorrectionRequest
 from .serializers import (
     LocationSerializer, LocationListSerializer, DepartmentSerializer, DepartmentListSerializer,
     EmployeeSerializer, EmployeeListSerializer, TimeEntrySerializer, TimeEntryListSerializer,
-    TimeInOutSerializer, WorkSessionSerializer, OvertimeAnalysisSerializer, CurrentSessionStatusSerializer
+    TimeInOutSerializer, WorkSessionSerializer, OvertimeAnalysisSerializer, CurrentSessionStatusSerializer,
+    TimeCorrectionRequestSerializer
 )
 from .utils import OvertimeCalculator, BreakDetector
 from django.http import HttpResponse
@@ -651,6 +652,23 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
     ordering_fields = ['timestamp', 'employee__user__first_name']
     ordering = ['-timestamp']
 
+    def get_queryset(self):
+        user = self.request.user
+        if not hasattr(user, 'employee_profile'):
+            return TimeEntry.objects.none()
+        employee = user.employee_profile
+        if employee.can_view_company_data():
+            return TimeEntry.objects.all()
+        elif employee.can_view_department_data():
+            return TimeEntry.objects.filter(employee__department=employee.department)
+        elif employee.can_view_team_data():
+            team_members = employee.get_team_members()
+            return TimeEntry.objects.filter(
+                Q(employee__in=team_members) | Q(employee=employee)
+            )
+        else:
+            return TimeEntry.objects.filter(employee=employee)
+
     def get_serializer_class(self):
         if self.action == 'list':
             return TimeEntryListSerializer
@@ -1204,3 +1222,21 @@ class ReportPreviewAPIView(APIView):
         response['Pragma'] = 'no-cache'
         response['Expires'] = '0'
         return response
+
+
+class TimeCorrectionRequestViewSet(viewsets.ModelViewSet):
+    queryset = TimeCorrectionRequest.objects.all()
+    serializer_class = TimeCorrectionRequestSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not hasattr(user, 'employee_profile'):
+            return TimeCorrectionRequest.objects.none()
+        employee = user.employee_profile
+        # Team leaders see requests from their team
+        if employee.can_view_team_data():
+            team_members = employee.get_team_members()
+            return TimeCorrectionRequest.objects.filter(employee__in=team_members)
+        # Employees see their own requests
+        return TimeCorrectionRequest.objects.filter(employee=employee)
