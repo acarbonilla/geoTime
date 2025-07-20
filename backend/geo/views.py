@@ -41,7 +41,8 @@ class RoleBasedPermissionMixin:
                 Q(id__in=team_members.values_list('id', flat=True)) | Q(id=employee.id)
             )
         else:
-            return super().get_queryset().filter(employee=employee)
+            # For regular employees, only show their own record
+            return super().get_queryset().filter(id=employee.id)
 
 
 class LoginAPIView(APIView):
