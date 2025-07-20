@@ -171,16 +171,33 @@ class Employee(models.Model):
     def get_subordinates(self):
         """Get all subordinates for this employee"""
         if self.role in ['team_leader', 'supervisor', 'management']:
-            return Employee.objects.filter(manager=self)
+            # Get direct reports
+            direct_reports = Employee.objects.filter(manager=self, employment_status='active')
+            
+            # If team leader, also get all employees in their department
+            if self.role == 'team_leader' and hasattr(self, 'department'):
+                department_members = Employee.objects.filter(
+                    department=self.department,
+                    employment_status='active'
+                ).exclude(id=self.id)  # Exclude self
+                return (direct_reports | department_members).distinct()
+            return direct_reports
         return Employee.objects.none()
     
     def get_team_members(self):
         """Get all team members (including subordinates)"""
         if self.role in ['team_leader', 'supervisor', 'management']:
-            return Employee.objects.filter(
-                models.Q(manager=self) | 
-                models.Q(department=self.department, role='employee')
-            ).distinct()
+            # Get direct reports first
+            direct_reports = Employee.objects.filter(manager=self, employment_status='active')
+            
+            # If team leader, also get all employees in their department
+            if self.role == 'team_leader':
+                department_members = Employee.objects.filter(
+                    department=self.department,
+                    employment_status='active'
+                ).exclude(id=self.id)  # Exclude self
+                return (direct_reports | department_members).distinct()
+            return direct_reports
         return Employee.objects.none()
 
 

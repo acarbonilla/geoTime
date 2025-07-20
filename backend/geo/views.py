@@ -489,16 +489,29 @@ class DashboardAPIView(APIView):
     
     def _get_team_attendance(self, team_members):
         """Get team attendance summary"""
-        attendance = {'present': 0, 'absent': 0, 'late': 0}
+        attendance = {'present': 0, 'absent': 0, 'total': 0}
+        print(f"Calculating attendance for {team_members.count()} team members")
+        
         for member in team_members:
+            # Only count active employees
+            if member.employment_status != 'active':
+                print(f"Skipping inactive employee: {member.user.get_full_name() or member.user.username}")
+                continue
+                
             today_entries = TimeEntry.objects.filter(
                 employee=member,
                 timestamp__date=timezone.now().date()
             )
+            
             if today_entries.exists():
                 attendance['present'] += 1
+                print(f"Present: {member.user.get_full_name() or member.user.username} - {today_entries.count()} entries")
             else:
                 attendance['absent'] += 1
+                print(f"Absent: {member.user.get_full_name() or member.user.username}")
+                
+        attendance['total'] = attendance['present'] + attendance['absent']
+        print(f"Final attendance: {attendance}")
         return attendance
     
     def _get_department_attendance(self, department):
@@ -1240,3 +1253,41 @@ class TimeCorrectionRequestViewSet(viewsets.ModelViewSet):
             return TimeCorrectionRequest.objects.filter(employee__in=team_members)
         # Employees see their own requests
         return TimeCorrectionRequest.objects.filter(employee=employee)
+        
+    def create(self, request, *args, **kwargs):
+        print("Received time correction request data:", request.data)
+        try:
+            # Ensure the employee is set to the current user's employee profile
+            if not hasattr(request.user, 'employee_profile'):
+                return Response(
+                    {'detail': 'User has no associated employee profile'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            # Create a mutable copy of the request data
+            data = request.data.copy()
+            
+            # Set the employee to the current user's employee profile
+            data['employee'] = request.user.employee_profile.id
+            
+            # Validate the data
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            
+            # Save the time correction request
+            self.perform_create(serializer)
+            
+            # Return success response
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+            
+        except Exception as e:
+            print(f"Error creating time correction request: {str(e)}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
