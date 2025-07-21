@@ -29,7 +29,6 @@ urlpatterns = [
     # Authentication endpoints
     path('api/login/', LoginAPIView.as_view(), name='login'),
     path('api/logout/', LogoutAPIView.as_view(), name='logout'),
-    path('api/profile/', UserProfileAPIView.as_view(), name='profile'),
     
     # JWT endpoints
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
