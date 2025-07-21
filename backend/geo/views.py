@@ -688,6 +688,21 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
             return TimeEntryListSerializer
         return TimeEntrySerializer
 
+    def list(self, request, *args, **kwargs):
+        date_str = request.query_params.get('date')
+        queryset = self.get_queryset()
+        if date_str:
+            try:
+                from datetime import datetime
+                date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                queryset = queryset.filter(timestamp__date=date)
+            except ValueError:
+                return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({'entries': serializer.data})
+        # Default DRF behavior if no date param
+        return super().list(request, *args, **kwargs)
+
     @action(detail=False, methods=['get'])
     def today(self, request):
         """Get today's time entries (local time zone)"""
@@ -1242,6 +1257,7 @@ class TimeCorrectionRequestViewSet(viewsets.ModelViewSet):
     queryset = TimeCorrectionRequest.objects.all()
     serializer_class = TimeCorrectionRequestSerializer
     permission_classes = [IsAuthenticated]
+    filterset_fields = ['status']
 
     def get_queryset(self):
         user = self.request.user
