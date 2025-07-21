@@ -336,6 +336,19 @@ class EmployeeViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
             'absent_today': total_employees - present_today
         })
 
+    @action(detail=False, methods=['get'])
+    def absent_today(self, request):
+        """Get employees (team, department, or self) who are absent today (no time entry for today)"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        queryset = self.get_queryset().filter(employment_status='active')
+        absent_employees = []
+        for employee in queryset:
+            if not TimeEntry.objects.filter(employee=employee, timestamp__date=today).exists():
+                absent_employees.append(employee)
+        serializer = EmployeeListSerializer(absent_employees, many=True)
+        return Response(serializer.data)
+
 
 class DashboardAPIView(APIView):
     """API View for dashboard data based on user role"""
