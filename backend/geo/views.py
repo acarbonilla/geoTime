@@ -81,7 +81,7 @@ class LoginAPIView(APIView):
                 'employee_id': user.employee_profile.employee_id,
                 'full_name': user.employee_profile.full_name,
                 'role': user.employee_profile.role,
-                'department': user.employee_profile.department.name,
+                'department': DepartmentSerializer(user.employee_profile.department).data,
                 'position': user.employee_profile.position,
             }
         })

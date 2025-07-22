@@ -58,6 +58,7 @@ class DepartmentListSerializer(serializers.ModelSerializer):
 class EmployeeSerializer(serializers.ModelSerializer):
     """Serializer for Employee model"""
     user = UserSerializer(read_only=True)
+    department = DepartmentSerializer(read_only=True)
     department_name = serializers.CharField(source='department.name', read_only=True)
     manager_name = serializers.CharField(source='manager.full_name', read_only=True)
     subordinates_count = serializers.SerializerMethodField()
