@@ -506,26 +506,54 @@ class DashboardAPIView(APIView):
         attendance = {'present': 0, 'absent': 0, 'total': 0}
         print(f"Calculating attendance for {team_members.count()} team members")
         
+        from datetime import timedelta
+        today = timezone.now().date()
+        yesterday = today - timedelta(days=1)
         for member in team_members:
-            # Only count active employees
             if member.employment_status != 'active':
-                print(f"Skipping inactive employee: {member.user.get_full_name() or member.user.username}")
                 continue
-                
+            # Get all time entries for yesterday and today
+            yest_entries = TimeEntry.objects.filter(
+                employee=member,
+                timestamp__date=yesterday
+            ).order_by('timestamp')
             today_entries = TimeEntry.objects.filter(
                 employee=member,
-                timestamp__date=timezone.now().date()
-            )
-            
+                timestamp__date=today
+            ).order_by('timestamp')
+            # Check for open session from yesterday
+            overnight_active = False
+            overnight_present = False
+            if yest_entries.exists():
+                last_yest_in = yest_entries.filter(entry_type='time_in').last()
+                last_yest_out = yest_entries.filter(entry_type='time_out').last()
+                # If last time_in yesterday has no time_out after it (either yesterday or today), it's an open session
+                if last_yest_in and (not last_yest_out or last_yest_out.timestamp < last_yest_in.timestamp):
+                    # Is there a time_out today after last_yest_in?
+                    today_out = today_entries.filter(entry_type='time_out', timestamp__gt=last_yest_in.timestamp).first()
+                    if today_out:
+                        overnight_present = True  # Ended today, so present for today
+                    else:
+                        overnight_active = True  # Still active (no time_out yet)
+            # Check for session started and ended today
             if today_entries.exists():
+                last_today_in = today_entries.filter(entry_type='time_in').last()
+                last_today_out = today_entries.filter(entry_type='time_out').last()
+                if last_today_in and (not last_today_out or last_today_out.timestamp < last_today_in.timestamp):
+                    # Currently active session started today
+                    attendance['present'] += 1
+                    continue
+                elif last_today_in and last_today_out and last_today_out.timestamp > last_today_in.timestamp:
+                    # Session started and ended today
+                    attendance['present'] += 1
+                    continue
+            if overnight_active:
                 attendance['present'] += 1
-                print(f"Present: {member.user.get_full_name() or member.user.username} - {today_entries.count()} entries")
+            elif overnight_present:
+                attendance['present'] += 1
             else:
                 attendance['absent'] += 1
-                print(f"Absent: {member.user.get_full_name() or member.user.username}")
-                
         attendance['total'] = attendance['present'] + attendance['absent']
-        print(f"Final attendance: {attendance}")
         return attendance
     
     def _get_department_attendance(self, department):
@@ -726,6 +754,42 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
         )
         serializer = TimeEntryListSerializer(today_entries, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def team_today(self, request):
+        """
+        Get today's time entries for all team members (for team leaders and above), grouped by employee.
+        """
+        from django.utils import timezone
+        user = request.user
+        if not hasattr(user, 'employee_profile'):
+            return Response({'error': 'Employee profile not found'}, status=404)
+        employee = user.employee_profile
+
+        if not employee.can_view_team_data():
+            return Response({'error': 'Permission denied'}, status=403)
+
+        today = timezone.now().date()
+        team_members = employee.get_team_members()
+        result = []
+        for member in team_members:
+            member_entries = TimeEntry.objects.filter(
+                employee=member,
+                timestamp__date=today
+            ).order_by('timestamp')
+            result.append({
+                'employee': {
+                    'id': member.id,
+                    'name': member.full_name,
+                    'employee_id': member.employee_id,
+                    'department': member.department.name if member.department else '',
+                    'role': member.role,
+                    'username': member.user.username,
+                },
+                'entries': TimeEntryListSerializer(member_entries, many=True).data
+            })
+      
+        return Response(result)
 
     @action(detail=False, methods=['get'])
     def by_employee(self, request):
