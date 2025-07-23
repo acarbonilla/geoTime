@@ -9,6 +9,9 @@ from .views import (
     ReportDownloadAPIView,
     ReportPreviewAPIView,  # Add this import
     TimeCorrectionRequestViewSet,
+    OvertimeRequestViewSet,  # <-- Add this import
+    LeaveRequestViewSet,  # <-- Add this import
+    ChangeScheduleRequestViewSet,  # <-- Add this import
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -23,6 +26,9 @@ router.register(r'employees', EmployeeViewSet, basename='employee')
 router.register(r'time-entries', TimeEntryViewSet, basename='timeentry')
 router.register(r'work-sessions', WorkSessionViewSet, basename='worksession')
 router.register(r'time-correction-requests', TimeCorrectionRequestViewSet, basename='timecorrectionrequest')
+router.register(r'overtime-requests', OvertimeRequestViewSet, basename='overtimerequest')
+router.register(r'leave-requests', LeaveRequestViewSet, basename='leaverequest')
+router.register(r'change-schedule-requests', ChangeScheduleRequestViewSet, basename='changeschedulerequest')
 
 # The API URLs are now determined automatically by the router
 urlpatterns = [

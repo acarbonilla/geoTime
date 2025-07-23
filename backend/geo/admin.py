@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.db.models import Count
-from .models import Location, Department, Employee, TimeEntry, WorkSession
+from .models import Location, Department, Employee, TimeEntry, WorkSession, OvertimeRequest
 
 
 @admin.register(Location)
@@ -147,3 +147,28 @@ class WorkSessionAdmin(admin.ModelAdmin):
             return f'{hours}h {minutes}m'
         return 'N/A'
     duration_formatted.short_description = 'Duration'
+
+
+@admin.register(OvertimeRequest)
+class OvertimeRequestAdmin(admin.ModelAdmin):
+    list_display = ('employee_name', 'date', 'start_time', 'end_time', 'status', 'approver_name', 'created_at')
+    list_filter = ('status', 'date', 'approver')
+    search_fields = ('employee__user__first_name', 'employee__user__last_name', 'employee__employee_id', 'reason')
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        ('Overtime Details', {
+            'fields': ('employee', 'date', 'start_time', 'end_time', 'reason', 'status', 'approver', 'comments')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def employee_name(self, obj):
+        return obj.employee.full_name
+    employee_name.short_description = 'Employee'
+
+    def approver_name(self, obj):
+        return obj.approver.get_full_name() if obj.approver else ''
+    approver_name.short_description = 'Approver'

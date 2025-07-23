@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Location, Department, Employee, TimeEntry, WorkSession, TimeCorrectionRequest
+from .models import Location, Department, Employee, TimeEntry, WorkSession, TimeCorrectionRequest, OvertimeRequest, LeaveRequest, ChangeScheduleRequest
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -213,3 +213,48 @@ class TimeCorrectionRequestSerializer(serializers.ModelSerializer):
             'reason', 'status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'reviewed_by_name', 'response_message'
         ]
         read_only_fields = ['id', 'submitted_at', 'reviewed_at', 'reviewed_by', 'employee_name', 'reviewed_by_name'] 
+
+
+class OvertimeRequestSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    approver_name = serializers.CharField(source='approver.get_full_name', read_only=True)
+
+    class Meta:
+        model = OvertimeRequest
+        fields = [
+            'id', 'employee', 'employee_name', 'date', 'start_time', 'end_time',
+            'ticket',
+            'reason', 'status', 'approver', 'approver_name', 'comments', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'employee_name', 'approver_name'] 
+
+
+class LeaveRequestSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    approver_name = serializers.CharField(source='approver.get_full_name', read_only=True)
+    leave_type_display = serializers.CharField(source='get_leave_type_display', read_only=True)
+    duration_days = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = LeaveRequest
+        fields = [
+            'id', 'employee', 'employee_name', 'leave_type', 'leave_type_display',
+            'start_date', 'end_date', 'duration_days', 'reason', 'status',
+            'approver', 'approver_name', 'comments', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'employee_name', 'approver_name', 'leave_type_display', 'duration_days'] 
+
+
+class ChangeScheduleRequestSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    approver_name = serializers.CharField(source='approver.get_full_name', read_only=True)
+
+    class Meta:
+        model = ChangeScheduleRequest
+        fields = [
+            'id', 'employee', 'employee_name',
+            'original_date', 'original_start_time', 'original_end_time',
+            'requested_date', 'requested_start_time', 'requested_end_time',
+            'reason', 'status', 'approver', 'approver_name', 'comments', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'employee_name', 'approver_name'] 

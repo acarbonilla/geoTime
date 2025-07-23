@@ -319,3 +319,95 @@ class TimeCorrectionRequest(models.Model):
 
     def __str__(self):
         return f"{self.employee.full_name} ({self.date}) - {self.status}"
+
+
+class OvertimeRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='overtime_requests')
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    ticket = models.CharField(max_length=255, blank=True, null=True)
+    reason = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_overtime_requests')
+    comments = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.employee.full_name} ({self.date}) - {self.status}"
+
+
+class LeaveRequest(models.Model):
+    LEAVE_TYPE_CHOICES = [
+        ('vacation', 'Vacation Leave'),
+        ('sick', 'Sick Leave'),
+        ('personal', 'Personal Leave'),
+        ('maternity', 'Maternity Leave'),
+        ('paternity', 'Paternity Leave'),
+        ('bereavement', 'Bereavement Leave'),
+        ('other', 'Other'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_requests')
+    leave_type = models.CharField(max_length=20, choices=LEAVE_TYPE_CHOICES)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_leave_requests')
+    comments = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.employee.full_name} - {self.get_leave_type_display()} ({self.start_date} to {self.end_date}) - {self.status}"
+    
+    @property
+    def duration_days(self):
+        """Calculate the number of days for this leave request"""
+        return (self.end_date - self.start_date).days + 1
+
+
+class ChangeScheduleRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='change_schedule_requests')
+    original_date = models.DateField()
+    original_start_time = models.TimeField()
+    original_end_time = models.TimeField()
+    requested_date = models.DateField()
+    requested_start_time = models.TimeField()
+    requested_end_time = models.TimeField()
+    reason = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_change_schedule_requests')
+    comments = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.employee.full_name} - {self.original_date} to {self.requested_date} ({self.status})"

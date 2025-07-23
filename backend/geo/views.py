@@ -9,12 +9,12 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from .models import Location, Department, Employee, TimeEntry, WorkSession, TimeCorrectionRequest
+from .models import Location, Department, Employee, TimeEntry, WorkSession, TimeCorrectionRequest, OvertimeRequest, LeaveRequest, ChangeScheduleRequest
 from .serializers import (
     LocationSerializer, LocationListSerializer, DepartmentSerializer, DepartmentListSerializer,
     EmployeeSerializer, EmployeeListSerializer, TimeEntrySerializer, TimeEntryListSerializer,
     TimeInOutSerializer, WorkSessionSerializer, OvertimeAnalysisSerializer, CurrentSessionStatusSerializer,
-    TimeCorrectionRequestSerializer
+    TimeCorrectionRequestSerializer, OvertimeRequestSerializer, LeaveRequestSerializer, ChangeScheduleRequestSerializer
 )
 from .utils import OvertimeCalculator, BreakDetector
 from django.http import HttpResponse
@@ -1385,3 +1385,260 @@ class TimeCorrectionRequestViewSet(viewsets.ModelViewSet):
                 {'detail': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+class OvertimeRequestViewSet(viewsets.ModelViewSet):
+    queryset = OvertimeRequest.objects.all()
+    serializer_class = OvertimeRequestSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['status']
+
+    def get_queryset(self):
+        user = self.request.user
+        if not hasattr(user, 'employee_profile'):
+            return OvertimeRequest.objects.none()
+        employee = user.employee_profile
+        # Team leaders/managers see requests from their team
+        if employee.can_view_team_data():
+            team_members = employee.get_team_members()
+            return OvertimeRequest.objects.filter(employee__in=team_members)
+        # Employees see their own requests
+        return OvertimeRequest.objects.filter(employee=employee)
+
+    def create(self, request, *args, **kwargs):
+        if not hasattr(request.user, 'employee_profile'):
+            return Response({'detail': 'User has no associated employee profile'}, status=status.HTTP_400_BAD_REQUEST)
+        data = request.data.copy()
+        data['employee'] = request.user.employee_profile.id
+
+        # Set approver to Team Leader (department.manager.user) if available
+        employee = request.user.employee_profile
+        approver = None
+        if employee.department and employee.department.manager:
+            approver = employee.department.manager.user
+        if approver:
+            data['approver'] = approver.id
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'pending':
+            return Response({'detail': 'Only pending requests can be updated.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'pending':
+            return Response({'detail': 'Only pending requests can be updated.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'pending':
+            return Response({'detail': 'Only pending requests can be deleted.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def approve(self, request, pk=None):
+        """Approve an overtime request (team leader/manager only)"""
+        overtime_request = self.get_object()
+        user = request.user
+        if not hasattr(user, 'employee_profile') or not user.employee_profile.can_view_team_data():
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        if overtime_request.status != 'pending':
+            return Response({'detail': 'Only pending requests can be approved.'}, status=status.HTTP_400_BAD_REQUEST)
+        overtime_request.status = 'approved'
+        overtime_request.approver = user
+        overtime_request.comments = request.data.get('comments', '')
+        overtime_request.save()
+        return Response(self.get_serializer(overtime_request).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def reject(self, request, pk=None):
+        """Reject an overtime request (team leader/manager only)"""
+        overtime_request = self.get_object()
+        user = request.user
+        if not hasattr(user, 'employee_profile') or not user.employee_profile.can_view_team_data():
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        if overtime_request.status != 'pending':
+            return Response({'detail': 'Only pending requests can be rejected.'}, status=status.HTTP_400_BAD_REQUEST)
+        overtime_request.status = 'rejected'
+        overtime_request.approver = user
+        overtime_request.comments = request.data.get('comments', '')
+        overtime_request.save()
+        return Response(self.get_serializer(overtime_request).data)
+
+
+class LeaveRequestViewSet(viewsets.ModelViewSet):
+    queryset = LeaveRequest.objects.all()
+    serializer_class = LeaveRequestSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['status', 'leave_type']
+
+    def get_queryset(self):
+        user = self.request.user
+        if not hasattr(user, 'employee_profile'):
+            return LeaveRequest.objects.none()
+        employee = user.employee_profile
+        # Team leaders/managers see requests from their team
+        if employee.can_view_team_data():
+            team_members = employee.get_team_members()
+            return LeaveRequest.objects.filter(employee__in=team_members)
+        # Employees see their own requests
+        return LeaveRequest.objects.filter(employee=employee)
+
+    def create(self, request, *args, **kwargs):
+        if not hasattr(request.user, 'employee_profile'):
+            return Response({'detail': 'User has no associated employee profile'}, status=status.HTTP_400_BAD_REQUEST)
+        data = request.data.copy()
+        data['employee'] = request.user.employee_profile.id
+
+        # Set approver to Team Leader (department.manager.user) if available
+        employee = request.user.employee_profile
+        approver = None
+        if employee.department and employee.department.manager:
+            approver = employee.department.manager.user
+        if approver:
+            data['approver'] = approver.id
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'pending':
+            return Response({'detail': 'Only pending requests can be updated.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'pending':
+            return Response({'detail': 'Only pending requests can be updated.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'pending':
+            return Response({'detail': 'Only pending requests can be deleted.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def approve(self, request, pk=None):
+        leave_request = self.get_object()
+        user = request.user
+        if not hasattr(user, 'employee_profile') or not user.employee_profile.can_view_team_data():
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        if leave_request.status != 'pending':
+            return Response({'detail': 'Only pending requests can be approved.'}, status=status.HTTP_400_BAD_REQUEST)
+        leave_request.status = 'approved'
+        leave_request.approver = user
+        leave_request.comments = request.data.get('comments', '')
+        leave_request.save()
+        return Response(self.get_serializer(leave_request).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def reject(self, request, pk=None):
+        leave_request = self.get_object()
+        user = request.user
+        if not hasattr(user, 'employee_profile') or not user.employee_profile.can_view_team_data():
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        if leave_request.status != 'pending':
+            return Response({'detail': 'Only pending requests can be rejected.'}, status=status.HTTP_400_BAD_REQUEST)
+        leave_request.status = 'rejected'
+        leave_request.approver = user
+        leave_request.comments = request.data.get('comments', '')
+        leave_request.save()
+        return Response(self.get_serializer(leave_request).data)
+
+
+class ChangeScheduleRequestViewSet(viewsets.ModelViewSet):
+    queryset = ChangeScheduleRequest.objects.all()
+    serializer_class = ChangeScheduleRequestSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['status']
+
+    def get_queryset(self):
+        user = self.request.user
+        if not hasattr(user, 'employee_profile'):
+            return ChangeScheduleRequest.objects.none()
+        employee = user.employee_profile
+        # Team leaders/managers see requests from their team
+        if employee.can_view_team_data():
+            team_members = employee.get_team_members()
+            return ChangeScheduleRequest.objects.filter(employee__in=team_members)
+        # Employees see their own requests
+        return ChangeScheduleRequest.objects.filter(employee=employee)
+
+    def create(self, request, *args, **kwargs):
+        if not hasattr(request.user, 'employee_profile'):
+            return Response({'detail': 'User has no associated employee profile'}, status=status.HTTP_400_BAD_REQUEST)
+        data = request.data.copy()
+        data['employee'] = request.user.employee_profile.id
+
+        # Set approver to Team Leader (department.manager.user) if available
+        employee = request.user.employee_profile
+        approver = None
+        if employee.department and employee.department.manager:
+            approver = employee.department.manager.user
+        if approver:
+            data['approver'] = approver.id
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'pending':
+            return Response({'detail': 'Only pending requests can be updated.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'pending':
+            return Response({'detail': 'Only pending requests can be updated.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'pending':
+            return Response({'detail': 'Only pending requests can be deleted.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def approve(self, request, pk=None):
+        change_request = self.get_object()
+        user = request.user
+        if not hasattr(user, 'employee_profile') or not user.employee_profile.can_view_team_data():
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        if change_request.status != 'pending':
+            return Response({'detail': 'Only pending requests can be approved.'}, status=status.HTTP_400_BAD_REQUEST)
+        change_request.status = 'approved'
+        change_request.approver = user
+        change_request.comments = request.data.get('comments', '')
+        change_request.save()
+        return Response(self.get_serializer(change_request).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def reject(self, request, pk=None):
+        change_request = self.get_object()
+        user = request.user
+        if not hasattr(user, 'employee_profile') or not user.employee_profile.can_view_team_data():
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        if change_request.status != 'pending':
+            return Response({'detail': 'Only pending requests can be rejected.'}, status=status.HTTP_400_BAD_REQUEST)
+        change_request.status = 'rejected'
+        change_request.approver = user
+        change_request.comments = request.data.get('comments', '')
+        change_request.save()
+        return Response(self.get_serializer(change_request).data)
