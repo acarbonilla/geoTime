@@ -165,3 +165,6 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     'cache-control',
     'pragma',
 ]
+
+import os
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
