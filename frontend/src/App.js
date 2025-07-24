@@ -2,10 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './Login';
 import 'leaflet/dist/leaflet.css';
-import Reports from './Reports';
+import Reports from './Employee_Report/Reports';
 import Navbar from './Navbar';
 import { dashboardAPI } from './api';
-import EmployeeDashboard from './dashboards/EmployeeDashboard';
+import EmployeeDashboard from './dashboards/EmployeeDashboard/EmployeeDashboard';
+import TeamLeaderDashboard from './dashboards/TeamLeaderDashboard/TeamLeaderDashboard';
+import TeamLeaderReports from './TeamLeader_Report/TeamLeaderReports';
+import EmployeeRequestPage from './EmployeeRequest/EmployeeRequestPage';
+import ApprovalPage from './TeamLeaderApproval/ApprovalPage';
 
 
 function App() {
@@ -18,28 +22,31 @@ function App() {
     // Check if user is already logged in
     const token = localStorage.getItem('access_token');
     const userData = localStorage.getItem('user');
+    const employeeData = localStorage.getItem('employee');
+    
     if (token && userData) {
       setIsAuthenticated(true);
       setUser(JSON.parse(userData));
+      if (employeeData) {
+        setEmployee(JSON.parse(employeeData));
+      }
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !employee) {
+      // Only fetch dashboard data if we don't have employee data from login
       dashboardAPI.getDashboard().then(response => {
         setEmployee(response.employee);
       }).catch(() => setEmployee(null));
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, employee]);
 
   const handleLogin = (response) => {
     setIsAuthenticated(true);
-    // Save user info if available
-    if (response && response.user) {
-      setUser(response.user);
-      localStorage.setItem('user', JSON.stringify(response.user));
-    }
+    setUser(response.user);
+    setEmployee(response.employee);
   };
 
   const handleLogout = () => {
@@ -47,8 +54,10 @@ function App() {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
+    localStorage.removeItem('employee');
     setIsAuthenticated(false);
     setUser(null);
+    setEmployee(null);
   };
 
   if (loading) {
@@ -72,7 +81,13 @@ function App() {
             path="/" 
             element={
               isAuthenticated ? (
-                <Navigate to="/employee-dashboard" replace />
+                (() => {
+                  if (employee?.role === 'team_leader') {
+                    return <Navigate to="/team-leader-dashboard" replace />;
+                  } else {
+                    return <Navigate to="/employee-dashboard" replace />;
+                  }
+                })()
               ) : (
                 <Login onLogin={handleLogin} />
               )
@@ -97,6 +112,46 @@ function App() {
                 <Navigate to="/" replace />
               )
             } 
+          />
+          <Route 
+            path="/team-leader-dashboard"
+            element={
+              isAuthenticated ? (
+                <TeamLeaderDashboard onLogout={handleLogout} user={user} employee={employee} />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            } 
+          />
+          <Route
+            path="/team-leader-reports"
+            element={
+              isAuthenticated && employee?.role === 'team_leader' ? (
+                <TeamLeaderReports user={user} employee={employee} onLogout={handleLogout} />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route 
+            path="/employee/request"
+            element={
+              isAuthenticated && employee?.role === 'employee' ? (
+                <EmployeeRequestPage user={user} employee={employee} />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route
+            path="/approval"
+            element={
+              isAuthenticated && employee?.role === 'team_leader' ? (
+                <ApprovalPage user={user} employee={employee} />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

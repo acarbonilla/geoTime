@@ -67,6 +67,12 @@ const Navbar = ({ user, employee, onLogout }) => {
     };
   }, [showUserMenu]);
 
+  const getDashboardPath = () => {
+    if (employee?.role === 'team_leader') return '/team-leader-dashboard';
+    // Add more roles as needed
+    return '/employee-dashboard';
+  };
+
   return (
     <nav className="bg-gradient-to-r from-blue-900 via-blue-800 to-purple-900 shadow-2xl border-b sticky top-0 z-50 transition-all duration-500">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -102,33 +108,84 @@ const Navbar = ({ user, employee, onLogout }) => {
           <div className="flex-1 flex justify-center">
             {/* Desktop NavLinks */}
             <nav className="hidden lg:flex items-center gap-6">
-              <NavLink to="/employee-dashboard" className={({ isActive }) =>
+              <NavLink to={getDashboardPath()} className={({ isActive }) =>
                 `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
                   ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
               }>
                 <DashboardIcon /> Dashboard
               </NavLink>
-              <NavLink to="/reports" className={({ isActive }) =>
-                `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
-                  ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-              }>
-                <ReportsIcon /> Reports
-              </NavLink>
+              {employee?.role === 'employee' && (
+                <NavLink to="/employee/request" className={({ isActive }) =>
+                  `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
+                    ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
+                }>
+                  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h3m4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2h3a4 4 0 014 4v2" /></svg>
+                  Request
+                </NavLink>
+              )}
+              {employee?.role === 'team_leader' ? (
+                <NavLink to="/team-leader-reports" className={({ isActive }) =>
+                  `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
+                    ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
+                }>
+                  <ReportsIcon /> Team Reports
+                </NavLink>
+              ) : (
+                <NavLink to="/reports" className={({ isActive }) =>
+                  `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
+                    ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
+                }>
+                  <ReportsIcon /> Reports
+                </NavLink>
+              )}
+              {employee?.role === 'team_leader' && (
+                <NavLink to="/approval" className={({ isActive }) =>
+                  `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
+                    ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
+                }>
+                  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  For Approval
+                </NavLink>
+              )}
             </nav>
           </div>
           {/* Mobile NavLinks */}
           <div className={`absolute top-16 left-0 w-full z-40 lg:hidden transition-all duration-500 ${showMobileMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`} style={{background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 50%, #a78bfa 100%)'}}>
             <nav className="flex flex-col items-center gap-2 py-4">
-              <NavLink to="/employee-dashboard" className={({ isActive }) =>
+              <NavLink to={getDashboardPath()} className={({ isActive }) =>
                 `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
               } onClick={() => setShowMobileMenu(false)}>
                 <DashboardIcon /> Dashboard
               </NavLink>
-              <NavLink to="/reports" className={({ isActive }) =>
-                `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
-              } onClick={() => setShowMobileMenu(false)}>
-                <ReportsIcon /> Reports
-              </NavLink>
+              {employee?.role === 'employee' && (
+                <NavLink to="/employee/request" className={({ isActive }) =>
+                  `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+                } onClick={() => setShowMobileMenu(false)}>
+                  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h3m4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2h3a4 4 0 014 4v2" /></svg>
+                  Request
+                </NavLink>
+              )}
+              {employee?.role === 'team_leader' ? (
+                <NavLink to="/team-leader-reports" className={({ isActive }) =>
+                  `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+                } onClick={() => setShowMobileMenu(false)}>
+                  <ReportsIcon /> Team Reports
+                </NavLink>
+              ) : (
+                <NavLink to="/reports" className={({ isActive }) =>
+                  `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+                } onClick={() => setShowMobileMenu(false)}>
+                  <ReportsIcon /> Reports
+                </NavLink>
+              )}
+              {employee?.role === 'team_leader' && (
+                <NavLink to="/approval" className={({ isActive }) =>
+                  `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+                } onClick={() => setShowMobileMenu(false)}>
+                  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  For Approval
+                </NavLink>
+              )}
             </nav>
           </div>
           {/* Right: Coordinates and User Info */}

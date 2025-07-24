@@ -13,22 +13,21 @@ export default function Login({ onLogin }) {
     setError('');
     
     try {
-      // Get JWT tokens
-      const tokenResponse = await authAPI.login({ username, password });
+      // Get JWT tokens and user/employee data
+      const loginResponse = await authAPI.login({ username, password });
       
       // Store tokens
-      localStorage.setItem('access_token', tokenResponse.access_token);
-      localStorage.setItem('refresh_token', tokenResponse.refresh_token);
+      localStorage.setItem('access_token', loginResponse.access_token);
+      localStorage.setItem('refresh_token', loginResponse.refresh_token);
       
-      // Get user profile data
-      const profileResponse = await authAPI.getProfile();
-      localStorage.setItem('user', JSON.stringify(profileResponse.user));
+      // Store user and employee data
+      localStorage.setItem('user', JSON.stringify(loginResponse.user));
+      localStorage.setItem('employee', JSON.stringify(loginResponse.employee));
       
-      // Call the onLogin callback with combined data
+      // Call the onLogin callback with all data
       onLogin({
-        access: tokenResponse.access,
-        refresh: tokenResponse.refresh,
-        user: profileResponse.user
+        user: loginResponse.user,
+        employee: loginResponse.employee
       });
     } catch (err) {
       console.error('Login error:', err);

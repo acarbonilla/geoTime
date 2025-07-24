@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { timeAPI, workSessionAPI } from '../api';
+import { timeAPI, workSessionAPI } from '../../api';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import GeoMap from '../GeoMap';
-import { NavLink } from 'react-router-dom';
+import GeoMap from './GeoMap';
 
 // Fix for default markers in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -13,44 +12,10 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
-// Add icons (using Heroicons/Feather or SVGs)
-const DashboardIcon = () => (
-  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8v-10h-8v10zm0-18v6h8V3h-8z"/></svg>
-);
-const ReportsIcon = () => (
-  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h3m4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2h3a4 4 0 014 4v2" /></svg>
-);
-const ProfileIcon = () => (
-  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A13.937 13.937 0 0112 15c2.5 0 4.847.655 6.879 1.804M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-);
-
-const roleBadgeStyles = {
-  employee: 'bg-blue-100 text-blue-800',
-  admin: 'bg-green-100 text-green-800',
-  manager: 'bg-purple-100 text-purple-800',
-  default: 'bg-gray-100 text-gray-800',
-};
-
-const roleIcons = {
-  employee: (
-    <svg className="w-5 h-5 mr-2 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A13.937 13.937 0 0112 15c2.5 0 4.847.655 6.879 1.804M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-  ),
-  admin: (
-    <svg className="w-5 h-5 mr-2 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 11c0-1.104.896-2 2-2s2 .896 2 2-.896 2-2 2-2-.896-2-2zm0 0V7m0 4v4m0 0c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2z" /></svg>
-  ),
-  manager: (
-    <svg className="w-5 h-5 mr-2 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 01-8 0m8 0a4 4 0 00-8 0m8 0V5a4 4 0 00-8 0v2m8 0a4 4 0 01-8 0" /></svg>
-  ),
-  default: (
-    <svg className="w-5 h-5 mr-2 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-4m0-4h.01" /></svg>
-  ),
-};
-
 export default function EmployeeDashboard({ user, employee, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [currentStatus, setCurrentStatus] = useState('not_started');
   const [todayEntries, setTodayEntries] = useState([]);
-  const [recentEntries, setRecentEntries] = useState([]);
   const [totalHoursToday, setTotalHoursToday] = useState(0);
   const [isClockingIn, setIsClockingIn] = useState(false);
   const [isClockingOut, setIsClockingOut] = useState(false);
@@ -67,8 +32,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   const isTimeInSubmitting = useRef(false);
   const isTimeOutSubmitting = useRef(false);
   const userMenuRef = useRef(null);
-
-  const MINIMUM_LOCATION_ACCURACY_METERS = 10000;
 
   // Get initial location on component mount
   const getInitialLocation = useCallback(async () => {
@@ -201,13 +164,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         }
       }
       
-      // Get recent entries
-      try {
-        const entriesResponse = await timeAPI.getTimeEntries({ limit: 10 });
-        setRecentEntries(entriesResponse.results || entriesResponse || []);
-      } catch (entriesError) {
-        setRecentEntries([]);
-      }
+     
       
       // Get work sessions for today
       try {
@@ -223,7 +180,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       // Set default values on error
       setCurrentStatus('not_started');
       setTodayEntries([]);
-      setRecentEntries([]);
+      // setRecentEntries([]); // <-- Remove this line
       setTotalHoursToday(0);
       setOvertimeAnalysis(null);
       setSessionResponse(null);
@@ -231,7 +188,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     } finally {
       setLoading(false);
     }
-  }, [timeAPI, workSessionAPI]);
+  }, []);
 
   useEffect(() => {
     loadDashboardData();
@@ -472,6 +429,10 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     );
   }
 
+  console.log('Employee prop:', employee);
+  console.log('Department:', employee?.department);
+  console.log('Department location:', employee?.department?.location);
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Overtime Alerts */}
@@ -502,7 +463,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Status and Controls */}
+          {/* Left Column - Sidebar with Tabs (remove tab bar and related logic) */}
           <div className="lg:col-span-1 space-y-6">
             {/* Current Status Card */}
             <div className="bg-white rounded-lg shadow p-6">
@@ -514,7 +475,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                     {getStatusText(currentStatus)}
                   </span>
                 </div>
-                
                 {overtimeAnalysis && (
                   <>
                     <div className="flex items-center justify-between">
@@ -523,21 +483,18 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                         {formatDuration(overtimeAnalysis.total_hours)}
                       </span>
                     </div>
-                    
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Actual Work Hours:</span>
                       <span className="font-semibold text-blue-600">
                         {formatDuration(overtimeAnalysis.actual_work_hours)}
                       </span>
                     </div>
-                    
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Regular Hours:</span>
                       <span className="font-semibold text-green-600">
                         {formatDuration(overtimeAnalysis.regular_hours)}
                       </span>
                     </div>
-                    
                     {overtimeAnalysis.overtime_hours > 0 && (
                       <div className="flex items-center justify-between">
                         <span className="text-gray-600">Overtime Hours:</span>
@@ -546,7 +503,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                         </span>
                       </div>
                     )}
-                    
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Flexible Break:</span>
                       <span className="font-semibold text-purple-600">
@@ -555,7 +511,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                     </div>
                   </>
                 )}
-                
                 {!overtimeAnalysis && (
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">Total Hours Today:</span>
@@ -566,7 +521,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 )}
               </div>
             </div>
-
             {/* Time In/Out Controls */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Time Tracking</h2>
@@ -582,7 +536,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 >
                   {isClockingIn ? 'Clocking In...' : 'Time In'}
                 </button>
-                
                 <button
                   onClick={handleTimeOut}
                   disabled={isClockingOut || !(sessionResponse && sessionResponse.active_session)}
@@ -594,7 +547,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 >
                   {isClockingOut ? 'Clocking Out...' : 'Time Out'}
                 </button>
-                
                 {/* Geolocation Status */}
                 <div className="text-sm text-gray-600">
                   {geolocationStatus === 'requesting' && '📍 Getting location...'}
@@ -603,11 +555,13 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 </div>
               </div>
             </div>
-
           </div>
-
-          {/* Right Column - Timeline and History */}
+          {/* Right Column - Main Content */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Dashboard main content as before */}
+            {/* Today's Timeline, Map, Overtime Details, etc. */}
+            {/* ...existing dashboard content... */}
+            {/* (Copy all content except the overtime requests section) */}
             {/* Today's Timeline */}
             <div className="bg-white rounded-lg shadow">
               <div className="px-6 py-4 border-b border-gray-200">
@@ -640,7 +594,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                     </div>
                   </div>
                 )}
-                
                 {overtimeAnalysis && overtimeAnalysis.sessions && overtimeAnalysis.sessions.length > 0 ? (
                   <div className="space-y-4">
                     {overtimeAnalysis.sessions.map((session, index) => (
@@ -693,10 +646,27 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 )}
               </div>
             </div>
-
-            {/* Time History */}
-            {/* (Recent Time Entries section removed) */}
-            {/* Map Section - now expanded and always visible */}
+            {/* Map Section */}
+            {!currentCoords.latitude && (
+              <div className="bg-white rounded-lg shadow p-6 text-red-500 mb-4">
+                Geolocation latitude not available. Please allow location access in your browser.
+              </div>
+            )}
+            {!currentCoords.longitude && (
+              <div className="bg-white rounded-lg shadow p-6 text-red-500 mb-4">
+                Geolocation longitude not available. Please allow location access in your browser.
+              </div>
+            )}
+            {!employee.department && (
+              <div className="bg-white rounded-lg shadow p-6 text-red-500 mb-4">
+                No department set for this employee. Please contact your administrator.
+              </div>
+            )}
+            {employee.department && !employee.department.location && (
+              <div className="bg-white rounded-lg shadow p-6 text-red-500 mb-4">
+                No department location set for this employee. Please contact your administrator.
+              </div>
+            )}
             {currentCoords.latitude && currentCoords.longitude && employee.department?.location && (
               <div className="bg-white rounded-lg shadow">
                 <div className="px-6 py-4 border-b border-gray-200">
@@ -713,7 +683,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 </div>
               </div>
             )}
-
             {/* Overtime Details Section */}
             {overtimeAnalysis && (
               <div className="mt-8 bg-white rounded-lg shadow">
@@ -810,4 +779,4 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       </main>
     </div>
   );
-} 
+}
