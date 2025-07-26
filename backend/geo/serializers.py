@@ -29,7 +29,7 @@ class LocationListSerializer(serializers.ModelSerializer):
 class DepartmentSerializer(serializers.ModelSerializer):
     location = LocationSerializer(read_only=True)
     location_name = serializers.CharField(source='location.name', read_only=True)
-    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
+    team_leader_names = serializers.SerializerMethodField()
     employee_count = serializers.SerializerMethodField()
     
     class Meta:
@@ -39,28 +39,32 @@ class DepartmentSerializer(serializers.ModelSerializer):
     
     def get_employee_count(self, obj):
         return obj.employees.filter(employment_status='active').count()
+    
+    def get_team_leader_names(self, obj):
+        return [tl.full_name for tl in obj.team_leaders.all()]
 
 
 class DepartmentListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for Department model in lists"""
     location = LocationListSerializer(read_only=True)
     location_name = serializers.CharField(source='location.name', read_only=True)
     employee_count = serializers.SerializerMethodField()
+    team_leader_names = serializers.SerializerMethodField()
     
     class Meta:
         model = Department
-        fields = ['id', 'name', 'code', 'location', 'location_name', 'employee_count', 'is_active']
+        fields = ['id', 'name', 'code', 'location', 'location_name', 'employee_count', 'is_active', 'team_leader_names']
     
     def get_employee_count(self, obj):
         return obj.employees.filter(employment_status='active').count()
+    def get_team_leader_names(self, obj):
+        return [tl.full_name for tl in obj.team_leaders.all()]
 
 
 class EmployeeSerializer(serializers.ModelSerializer):
-    """Serializer for Employee model"""
     user = UserSerializer(read_only=True)
     department = DepartmentSerializer(read_only=True)
     department_name = serializers.CharField(source='department.name', read_only=True)
-    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
+    team_leader_names = serializers.SerializerMethodField()
     subordinates_count = serializers.SerializerMethodField()
     
     class Meta:
@@ -70,10 +74,13 @@ class EmployeeSerializer(serializers.ModelSerializer):
     
     def get_subordinates_count(self, obj):
         return obj.get_subordinates().count()
+    def get_team_leader_names(self, obj):
+        if obj.department:
+            return [tl.full_name for tl in obj.department.team_leaders.all()]
+        return []
 
 
 class EmployeeListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for Employee model in lists"""
     user_id = serializers.IntegerField(source='user.id', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
     first_name = serializers.CharField(source='user.first_name', read_only=True)
@@ -81,17 +88,22 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     email = serializers.CharField(source='user.email', read_only=True)
     full_name = serializers.CharField(source='user.get_full_name', read_only=True)
     department = DepartmentListSerializer(read_only=True)
-    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
+    team_leader_names = serializers.SerializerMethodField()
     
     class Meta:
         model = Employee
         fields = [
             'id', 'user_id', 'username', 'first_name', 'last_name', 'email', 'full_name',
             'employee_id', 'department', 'position', 'role', 'hire_date',
-            'employment_status', 'manager_name', 'phone', 'emergency_contact',
+            'employment_status', 'phone', 'emergency_contact',
             'daily_work_hours', 'overtime_threshold_hours', 'total_schedule_hours',
-            'flexible_break_hours', 'lunch_break_minutes', 'break_threshold_minutes'
+            'flexible_break_hours', 'lunch_break_minutes', 'break_threshold_minutes',
+            'team_leader_names'
         ]
+    def get_team_leader_names(self, obj):
+        if obj.department:
+            return [tl.full_name for tl in obj.department.team_leaders.all()]
+        return []
 
 
 class TimeEntrySerializer(serializers.ModelSerializer):
@@ -104,19 +116,33 @@ class TimeEntrySerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='employee.department.name', read_only=True)
     location_name = serializers.CharField(source='location.name', read_only=True)
     formatted_timestamp = serializers.CharField(read_only=True)
-    
+    updated_by = serializers.SerializerMethodField()
+    event_time = serializers.DateTimeField(allow_null=True, required=False)
+    updated_on = serializers.DateTimeField(read_only=True)
+
     class Meta:
         model = TimeEntry
         fields = [
             'id', 'employee_pk', 'employee_id', 'user_id', 'username',
             'employee_name', 'department_name', 'location_name',
-            'entry_type', 'timestamp', 'location', 'latitude', 'longitude', 'accuracy', 'notes', 'ip_address', 'formatted_timestamp'
+            'entry_type', 'timestamp', 'event_time', 'updated_on', 'location', 'latitude', 'longitude', 'accuracy', 'notes', 'ip_address', 'formatted_timestamp', 'updated_by'
         ]
         read_only_fields = ['id', 'timestamp', 'ip_address']
+
+    def get_updated_by(self, obj):
+        if obj.updated_by:
+            return {
+                'id': obj.updated_by.id,
+                'username': obj.updated_by.username,
+            }
+        return None
 
 
 class TimeEntryListSerializer(serializers.ModelSerializer):
     """Simplified serializer for TimeEntry model in lists"""
+    updated_by = serializers.SerializerMethodField()
+    event_time = serializers.DateTimeField(allow_null=True, required=False)
+    updated_on = serializers.DateTimeField(read_only=True)
     employee_name = serializers.CharField(source='employee.full_name', read_only=True)
     employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
     department_name = serializers.CharField(source='employee.department.name', read_only=True)
@@ -127,9 +153,17 @@ class TimeEntryListSerializer(serializers.ModelSerializer):
         model = TimeEntry
         fields = [
             'id', 'employee_name', 'employee_id', 'department_name', 'location_name',
-            'entry_type', 'timestamp', 'latitude', 'longitude', 'accuracy', 'formatted_timestamp', 'notes'
+            'entry_type', 'timestamp', 'event_time', 'updated_on', 'latitude', 'longitude', 'accuracy', 'formatted_timestamp', 'notes', 'updated_by'
         ]
         read_only_fields = ['id', 'timestamp']
+
+    def get_updated_by(self, obj):
+        if obj.updated_by:
+            return {
+                'id': obj.updated_by.id,
+                'username': obj.updated_by.username,
+            }
+        return None
 
 
 class TimeInOutSerializer(serializers.ModelSerializer):

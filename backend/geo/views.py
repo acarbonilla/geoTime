@@ -21,6 +21,11 @@ from django.http import HttpResponse
 import csv
 from django.utils import timezone
 from datetime import timedelta
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from .models import Department, Employee, Location
+from .serializers import DepartmentSerializer, LocationSerializer
 
 
 class RoleBasedPermissionMixin:
@@ -174,7 +179,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     Provides filtering by location, status, and search functionality.
     """
     queryset = Department.objects.all()
-    filterset_fields = ['location', 'is_active', 'manager']
+    filterset_fields = ['location', 'is_active', 'team_leaders']
     search_fields = ['name', 'code', 'description']
     ordering_fields = ['name', 'code', 'created_at']
     ordering = ['name']
@@ -230,7 +235,7 @@ class EmployeeViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
     """
     model = Employee
     queryset = Employee.objects.all()
-    filterset_fields = ['department', 'employment_status', 'manager', 'hire_date', 'role']
+    filterset_fields = ['department', 'employment_status', 'hire_date', 'role']
     search_fields = ['user__first_name', 'user__last_name', 'user__email', 'employee_id', 'position']
     ordering_fields = ['user__first_name', 'user__last_name', 'employee_id', 'hire_date', 'created_at']
     ordering = ['user__first_name', 'user__last_name']
@@ -304,8 +309,9 @@ class EmployeeViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def subordinates(self, request, pk=None):
-        """Get subordinates for a specific employee"""
+        """Get subordinates for a specific employee (team leader logic: all employees in departments this TL leads)"""
         employee = self.get_object()
+        # get_subordinates already uses the new department.team_leaders logic
         subordinates = employee.get_subordinates()
         serializer = EmployeeListSerializer(subordinates, many=True)
         return Response(serializer.data)
@@ -759,8 +765,11 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
     def team_today(self, request):
         """
         Get today's time entries for all team members (for team leaders and above), grouped by employee.
+        Also include the current user (team leader) in the result.
+        If ?active_only=true, only include currently clocked-in employees.
         """
         from django.utils import timezone
+        from datetime import timedelta
         user = request.user
         if not hasattr(user, 'employee_profile'):
             return Response({'error': 'Employee profile not found'}, status=404)
@@ -770,13 +779,35 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
             return Response({'error': 'Permission denied'}, status=403)
 
         today = timezone.now().date()
-        team_members = employee.get_team_members()
+        team_members = list(employee.get_team_members())
+        team_members.append(employee)
+
+        active_only = request.query_params.get('active_only', 'false').lower() == 'true'
         result = []
         for member in team_members:
-            member_entries = TimeEntry.objects.filter(
-                employee=member,
-                timestamp__date=today
-            ).order_by('timestamp')
+            yesterday = today - timedelta(days=1)
+            today_entries = TimeEntry.objects.filter(employee=member, timestamp__date=today).order_by('timestamp')
+            yest_entries = TimeEntry.objects.filter(employee=member, timestamp__date=yesterday).order_by('timestamp')
+
+            is_active = False
+            # Check for open session from yesterday
+            if yest_entries.exists():
+                last_yest_in = yest_entries.filter(entry_type='time_in').last()
+                last_yest_out = yest_entries.filter(entry_type='time_out').last()
+                if last_yest_in and (not last_yest_out or last_yest_out.timestamp < last_yest_in.timestamp):
+                    today_out = today_entries.filter(entry_type='time_out', timestamp__gt=last_yest_in.timestamp).first()
+                    if not today_out:
+                        is_active = True
+            # Check for open session today
+            if today_entries.exists():
+                last_today_in = today_entries.filter(entry_type='time_in').last()
+                last_today_out = today_entries.filter(entry_type='time_out').last()
+                if last_today_in and (not last_today_out or last_today_out.timestamp < last_today_in.timestamp):
+                    is_active = True
+
+            if active_only and not is_active:
+                continue
+
             result.append({
                 'employee': {
                     'id': member.id,
@@ -786,9 +817,9 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
                     'role': member.role,
                     'username': member.user.username,
                 },
-                'entries': TimeEntryListSerializer(member_entries, many=True).data
+                'entries': TimeEntryListSerializer(today_entries, many=True).data
             })
-      
+
         return Response(result)
 
     @action(detail=False, methods=['get'])
@@ -988,16 +1019,31 @@ class TimeInOutAPIView(APIView):
         longitude = serializer.validated_data.get('longitude')
         notes = serializer.validated_data.get('notes', '')
         accuracy = serializer.validated_data.get('accuracy', None)
-        
-        # Geofencing validation
-        geofence_result = self.validate_geofence(employee_id, latitude, longitude, accuracy, location_id)
-        if not geofence_result['valid']:
-            return Response({
-                'error': 'Geofence validation failed',
-                'details': geofence_result['message'],
-                'distance': geofence_result.get('distance'),
-                'allowed_radius': geofence_result.get('allowed_radius')
-            }, status=status.HTTP_403_FORBIDDEN)
+        override_geofence = request.data.get('override_geofence', False)
+        # Ensure boolean (handle string values from frontend)
+        if isinstance(override_geofence, str):
+            override_geofence = override_geofence.lower() == 'true'
+        print("override_geofence:", override_geofence)
+        user = request.user
+        is_tl = False
+        if location_id and hasattr(user, 'employee_profile'):
+            tl_employee = user.employee_profile
+            is_tl = Department.objects.filter(team_leaders=tl_employee, location_id=location_id).exists()
+            managed_location_ids = set(
+                Department.objects.filter(team_leaders=tl_employee).values_list('location_id', flat=True)
+            )
+            if int(location_id) not in managed_location_ids:
+                return Response({'error': 'You do not have permission to use this location.'}, status=403)
+        # Geofencing validation (skip if override_geofence is true and user is TL for this location)
+        if not (override_geofence and is_tl):
+            geofence_result = self.validate_geofence(employee_id, latitude, longitude, accuracy, location_id)
+            if not geofence_result['valid']:
+                return Response({
+                    'error': 'Geofence validation failed',
+                    'details': geofence_result['message'],
+                    'distance': geofence_result.get('distance'),
+                    'allowed_radius': geofence_result.get('allowed_radius')
+                }, status=status.HTTP_403_FORBIDDEN)
         
         try:
             employee = Employee.objects.get(id=employee_id)
@@ -1015,14 +1061,19 @@ class TimeInOutAPIView(APIView):
 
         if action == 'time-in':
             if last_entry and last_entry.entry_type == 'time_in':
-                return Response({'error': 'Already clocked in. Please clock out first.'}, status=400)
+                # Allow override for team leaders with custom timestamp
+                custom_timestamp = request.data.get('timestamp')
+                if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
+                    return Response({'error': 'Already clocked in. Please clock out first.'}, status=400)
             # Allow time-in (even if last session was today or yesterday)
             # ... create new time-in entry ...
 
         elif action == 'time-out':
             if not last_entry or last_entry.entry_type != 'time_in':
-                # Block if no open session
-                return Response({'error': 'No open session to clock out from.'}, status=400)
+                # Allow override for team leaders with custom timestamp
+                custom_timestamp = request.data.get('timestamp')
+                if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
+                    return Response({'error': 'No open session to clock out from.'}, status=400)
             # Allow time-out (even if session started yesterday)
             # ... create new time-out entry ...
         
@@ -1036,7 +1087,39 @@ class TimeInOutAPIView(APIView):
         else:
             # Automatically use employee's department location
             location = employee.department.location
-        
+
+        # --- NEW: Handle custom timestamp for team leaders ---
+        from django.utils import timezone
+        import pytz
+        entry_timestamp = None
+        custom_timestamp = request.data.get('timestamp')
+        if custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader':
+            try:
+                from dateutil.parser import parse as parse_date
+                entry_timestamp = parse_date(custom_timestamp)
+                # If the parsed datetime is naive, assume UTC
+                if entry_timestamp.tzinfo is None:
+                    entry_timestamp = pytz.UTC.localize(entry_timestamp)
+            except Exception as e:
+                print(f"Failed to parse timestamp: {custom_timestamp} ({e})")
+                return Response({'error': 'Invalid timestamp format.', 'details': str(e), 'raw': custom_timestamp}, status=400)
+        else:
+            entry_timestamp = timezone.now()
+        # --- END NEW ---
+
+        event_time = None
+        custom_event_time = request.data.get('event_time')
+        if custom_event_time and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader':
+            try:
+                from dateutil.parser import parse as parse_date
+                event_time = parse_date(custom_event_time)
+                if event_time.tzinfo is None:
+                    import pytz
+                    event_time = pytz.UTC.localize(event_time)
+            except Exception as e:
+                print(f"Failed to parse event_time: {custom_event_time} ({e})")
+                return Response({'error': 'Invalid event_time format.', 'details': str(e), 'raw': custom_event_time}, status=400)
+
         time_entry = TimeEntry.objects.create(
             employee=employee,
             entry_type=entry_type,
@@ -1046,11 +1129,14 @@ class TimeInOutAPIView(APIView):
             device_info=self.get_device_info(request),
             latitude=latitude,
             longitude=longitude,
-            accuracy=accuracy
+            accuracy=accuracy,
+            timestamp=entry_timestamp,
+            updated_by=user,
+            event_time=event_time
         )
         
         # Log the successful attempt
-        print(f"[AUDIT] Time {action} for employee {employee_id} at ({latitude}, {longitude}) accuracy={accuracy}m")
+        print(f"[AUDIT] Time {action} for employee {employee_id} at ({latitude}, {longitude}) accuracy={accuracy}m by user {user.username} at {entry_timestamp}")
 
         # Refresh employee instance to ensure latest DB state
         employee.refresh_from_db()
@@ -1414,8 +1500,8 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         # Set approver to Team Leader (department.manager.user) if available
         employee = request.user.employee_profile
         approver = None
-        if employee.department and employee.department.manager:
-            approver = employee.department.manager.user
+        if employee.department and employee.department.team_leaders.exists():
+            approver = employee.department.team_leaders.first().user
         if approver:
             data['approver'] = approver.id
 
@@ -1501,8 +1587,8 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         # Set approver to Team Leader (department.manager.user) if available
         employee = request.user.employee_profile
         approver = None
-        if employee.department and employee.department.manager:
-            approver = employee.department.manager.user
+        if employee.department and employee.department.team_leaders.exists():
+            approver = employee.department.team_leaders.first().user
         if approver:
             data['approver'] = approver.id
 
@@ -1586,8 +1672,8 @@ class ChangeScheduleRequestViewSet(viewsets.ModelViewSet):
         # Set approver to Team Leader (department.manager.user) if available
         employee = request.user.employee_profile
         approver = None
-        if employee.department and employee.department.manager:
-            approver = employee.department.manager.user
+        if employee.department and employee.department.team_leaders.exists():
+            approver = employee.department.team_leaders.first().user
         if approver:
             data['approver'] = approver.id
 
@@ -1642,3 +1728,27 @@ class ChangeScheduleRequestViewSet(viewsets.ModelViewSet):
         change_request.comments = request.data.get('comments', '')
         change_request.save()
         return Response(self.get_serializer(change_request).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def tl_departments_and_locations(request):
+    # Get the Employee object for the logged-in user
+    try:
+        employee = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        return Response({'detail': 'Employee profile not found.'}, status=404)
+
+    # Get all departments where this employee is a team leader (TL)
+    departments = Department.objects.filter(team_leaders=employee)
+    department_serializer = DepartmentSerializer(departments, many=True)
+
+    # Get all unique locations for these departments
+    locations = Location.objects.filter(departments__team_leaders=employee).distinct()
+    location_serializer = LocationSerializer(locations, many=True)
+
+    return Response({
+        'departments': department_serializer.data,
+        'locations': location_serializer.data,
+    })
+

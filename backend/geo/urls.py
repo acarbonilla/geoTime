@@ -12,6 +12,7 @@ from .views import (
     OvertimeRequestViewSet,  # <-- Add this import
     LeaveRequestViewSet,  # <-- Add this import
     ChangeScheduleRequestViewSet,  # <-- Add this import
+    tl_departments_and_locations,
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -49,6 +50,7 @@ urlpatterns = [
     path('api/time-out/', TimeInOutAPIView.as_view(), {'action': 'time-out'}, name='time-out'),
     path('api/time-reports/', TimeReportAPIView.as_view(), name='time-reports'),
     path('api/geofence/validate/', GeofenceValidationAPIView.as_view(), name='geofence-validate'),
+    path('api/tl-departments-locations/', tl_departments_and_locations, name='tl_departments_and_locations'),
 ] 
 urlpatterns += [
     path('api/reports/download/', ReportDownloadAPIView.as_view(), name='report-download'),

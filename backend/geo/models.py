@@ -72,7 +72,7 @@ class Department(models.Model):
     code = models.CharField(max_length=10, unique=True, blank=True, null=True)  # e.g., "IT", "HR"
     description = models.TextField(blank=True, null=True)
     location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name='departments')
-    manager = models.ForeignKey('Employee', on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_departments')
+    team_leaders = models.ManyToManyField('Employee', blank=True, related_name='led_departments')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -111,7 +111,6 @@ class Employee(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='employee')
     hire_date = models.DateField()
     employment_status = models.CharField(max_length=20, choices=EMPLOYMENT_STATUS_CHOICES, default='active')
-    manager = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates')
     phone = models.CharField(max_length=20, blank=True, null=True)
     emergency_contact = models.CharField(max_length=255, blank=True, null=True)
     
@@ -171,33 +170,17 @@ class Employee(models.Model):
     def get_subordinates(self):
         """Get all subordinates for this employee"""
         if self.role in ['team_leader', 'supervisor', 'management']:
-            # Get direct reports
-            direct_reports = Employee.objects.filter(manager=self, employment_status='active')
-            
-            # If team leader, also get all employees in their department
-            if self.role == 'team_leader' and hasattr(self, 'department'):
-                department_members = Employee.objects.filter(
-                    department=self.department,
-                    employment_status='active'
-                ).exclude(id=self.id)  # Exclude self
-                return (direct_reports | department_members).distinct()
+            # Get direct reports: all employees in departments this TL leads
+            direct_reports = Employee.objects.filter(department__team_leaders=self, employment_status='active').exclude(id=self.id)
             return direct_reports
         return Employee.objects.none()
-    
+
     def get_team_members(self):
         """Get all team members (including subordinates)"""
         if self.role in ['team_leader', 'supervisor', 'management']:
-            # Get direct reports first
-            direct_reports = Employee.objects.filter(manager=self, employment_status='active')
-            
-            # If team leader, also get all employees in their department
-            if self.role == 'team_leader':
-                department_members = Employee.objects.filter(
-                    department=self.department,
-                    employment_status='active'
-                ).exclude(id=self.id)  # Exclude self
-                return (direct_reports | department_members).distinct()
-            return direct_reports
+            # All employees in all departments this TL leads
+            team_members = Employee.objects.filter(department__in=self.led_departments.all(), employment_status='active').exclude(id=self.id)
+            return team_members
         return Employee.objects.none()
 
 
@@ -212,6 +195,8 @@ class TimeEntry(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='time_entries')
     entry_type = models.CharField(max_length=10, choices=ENTRY_TYPE_CHOICES)
     timestamp = models.DateTimeField(auto_now_add=True)
+    updated_on = models.DateTimeField()
+    event_time = models.DateTimeField(null=True, blank=True, help_text='The actual/corrected time of the event (if different from timestamp)')
     location = models.ForeignKey(Location, on_delete=models.CASCADE, null=True, blank=True)
     latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True, help_text='Latitude at time entry')
     longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True, help_text='Longitude at time entry')
@@ -219,6 +204,10 @@ class TimeEntry(models.Model):
     notes = models.TextField(blank=True, null=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     device_info = models.CharField(max_length=255, blank=True, null=True)
+    updated_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_time_entries',
+        help_text='User who last updated or corrected this entry'
+    )
     
     class Meta:
         ordering = ['-timestamp']

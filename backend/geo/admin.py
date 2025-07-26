@@ -27,9 +27,10 @@ class LocationAdmin(admin.ModelAdmin):
     )
 
 
+
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ('name', 'code', 'location', 'manager', 'employee_count', 'is_active', 'created_at')
+    list_display = ('name', 'code', 'location', 'team_leaders_display', 'is_active', 'created_at')
     list_filter = ('is_active', 'location', 'created_at')
     search_fields = ('name', 'code', 'description')
     readonly_fields = ('created_at', 'updated_at')
@@ -38,13 +39,17 @@ class DepartmentAdmin(admin.ModelAdmin):
             'fields': ('name', 'code', 'description', 'is_active')
         }),
         ('Organization', {
-            'fields': ('location', 'manager')
+            'fields': ('location', 'team_leaders')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
+
+    def team_leaders_display(self, obj):
+        return ", ".join([str(tl) for tl in obj.team_leaders.all()])
+    team_leaders_display.short_description = 'Team Leaders'
 
     def employee_count(self, obj):
         return obj.employees.filter(employment_status='active').count()
@@ -62,7 +67,7 @@ class EmployeeAdmin(admin.ModelAdmin):
             'fields': ('user', 'employee_id', 'position')
         }),
         ('Organization', {
-            'fields': ('department', 'role', 'manager')
+            'fields': ('department', 'role')
         }),
         ('Employment Details', {
             'fields': ('hire_date', 'employment_status', 'phone', 'emergency_contact')
@@ -84,10 +89,10 @@ class EmployeeAdmin(admin.ModelAdmin):
 
 @admin.register(TimeEntry)
 class TimeEntryAdmin(admin.ModelAdmin):
-    list_display = ('employee_name', 'entry_type', 'timestamp', 'location', 'ip_address')
-    list_filter = ('entry_type', 'timestamp', 'location', 'employee__department', 'employee__role')
-    search_fields = ('employee__user__first_name', 'employee__user__last_name', 'employee__employee_id', 'notes')
-    readonly_fields = ('timestamp', 'ip_address', 'device_info')
+    list_display = ('id', 'employee', 'entry_type', 'timestamp', 'location', 'updated_by')
+    list_filter = ('entry_type', 'employee', 'location', 'updated_by')
+    search_fields = ('employee__user__username', 'employee__employee_id', 'notes', 'updated_by__username')
+    readonly_fields = ('timestamp',)
     date_hierarchy = 'timestamp'
     
     fieldsets = (
