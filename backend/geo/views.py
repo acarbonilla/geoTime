@@ -3,13 +3,20 @@ from django.contrib.auth.models import User
 from django.db.models import Q, Count, Avg
 from django.utils import timezone
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from .models import Location, Department, Employee, TimeEntry, WorkSession, TimeCorrectionRequest, OvertimeRequest, LeaveRequest, ChangeScheduleRequest
+from django.http import HttpResponse
+from datetime import timedelta
+import csv
+
+from .models import (
+    Location, Department, Employee, TimeEntry, WorkSession, 
+    TimeCorrectionRequest, OvertimeRequest, LeaveRequest, ChangeScheduleRequest
+)
 from .serializers import (
     LocationSerializer, LocationListSerializer, DepartmentSerializer, DepartmentListSerializer,
     EmployeeSerializer, EmployeeListSerializer, TimeEntrySerializer, TimeEntryListSerializer,
@@ -17,15 +24,6 @@ from .serializers import (
     TimeCorrectionRequestSerializer, OvertimeRequestSerializer, LeaveRequestSerializer, ChangeScheduleRequestSerializer
 )
 from .utils import OvertimeCalculator, BreakDetector
-from django.http import HttpResponse
-import csv
-from django.utils import timezone
-from datetime import timedelta
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from .models import Department, Employee, Location
-from .serializers import DepartmentSerializer, LocationSerializer
 
 
 class RoleBasedPermissionMixin:
@@ -918,6 +916,155 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
             'work_sessions': WorkSessionSerializer(work_sessions, many=True).data
         })
 
+    @action(detail=False, methods=['get'])
+    def attendance_analytics(self, request):
+        """Get comprehensive attendance analytics for team leaders"""
+        user = request.user
+        if not hasattr(user, 'employee_profile'):
+            return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        employee = user.employee_profile
+        
+        if not employee.can_view_team_data():
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get date range from query params
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+        
+        from datetime import datetime, timedelta
+        if start_date_str and end_date_str:
+            try:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # Default to last 7 days
+            end_date = timezone.now().date()
+            start_date = end_date - timedelta(days=6)
+        
+        # Get team members
+        team_members = list(employee.get_team_members())
+        team_members.append(employee)
+        
+        analytics = {
+            'date_range': {
+                'start_date': start_date,
+                'end_date': end_date,
+                'days': (end_date - start_date).days + 1
+            },
+            'team_summary': {
+                'total_members': len(team_members),
+                'active_members': 0,
+                'inactive_members': 0
+            },
+            'daily_stats': [],
+            'member_stats': [],
+            'attendance_trends': {
+                'present_rate': 0,
+                'late_rate': 0,
+                'absent_rate': 0,
+                'early_departure_rate': 0
+            }
+        }
+        
+        total_present_days = 0
+        total_late_days = 0
+        total_absent_days = 0
+        total_early_departure_days = 0
+        total_possible_days = 0
+        
+        # Process each team member
+        for member in team_members:
+            if member.employment_status != 'active':
+                analytics['team_summary']['inactive_members'] += 1
+                continue
+            
+            analytics['team_summary']['active_members'] += 1
+            
+            member_stats = {
+                'employee_id': member.id,
+                'employee_name': member.full_name,
+                'employee_code': member.employee_id,
+                'department': member.department.name if member.department else 'No Department',
+                'total_days_worked': 0,
+                'total_hours_worked': 0,
+                'total_overtime_hours': 0,
+                'late_arrivals': 0,
+                'early_departures': 0,
+                'absent_days': 0,
+                'attendance_rate': 0,
+                'average_work_hours': 0
+            }
+            
+            # Process each day in the date range
+            current_date = start_date
+            while current_date <= end_date:
+                total_possible_days += 1
+                
+                # Get entries for this day
+                day_entries = TimeEntry.objects.filter(
+                    employee=member,
+                    timestamp__date=current_date
+                ).order_by('timestamp')
+                
+                if day_entries.exists():
+                    total_present_days += 1
+                    member_stats['total_days_worked'] += 1
+                    
+                    # Check for late arrival (after 9:00 AM)
+                    first_entry = day_entries.first()
+                    if first_entry and first_entry.entry_type == 'time_in':
+                        entry_time = first_entry.event_time or first_entry.timestamp
+                        if entry_time.hour >= 9:
+                            total_late_days += 1
+                            member_stats['late_arrivals'] += 1
+                    
+                    # Check for early departure (before 5:00 PM)
+                    last_entry = day_entries.last()
+                    if last_entry and last_entry.entry_type == 'time_out':
+                        entry_time = last_entry.event_time or last_entry.timestamp
+                        if entry_time.hour < 17:
+                            total_early_departure_days += 1
+                            member_stats['early_departures'] += 1
+                    
+                    # Calculate work hours for this day
+                    day_hours = 0
+                    for i in range(0, len(day_entries) - 1, 2):
+                        if (day_entries[i].entry_type == 'time_in' and 
+                            day_entries[i + 1].entry_type == 'time_out'):
+                            time_in = day_entries[i].event_time or day_entries[i].timestamp
+                            time_out = day_entries[i + 1].event_time or day_entries[i + 1].timestamp
+                            hours = (time_out - time_in).total_seconds() / 3600
+                            day_hours += hours
+                    
+                    member_stats['total_hours_worked'] += day_hours
+                    overtime = max(0, day_hours - 8)  # Assuming 8-hour workday
+                    member_stats['total_overtime_hours'] += overtime
+                else:
+                    total_absent_days += 1
+                    member_stats['absent_days'] += 1
+                
+                current_date += timedelta(days=1)
+            
+            # Calculate member averages
+            if member_stats['total_days_worked'] > 0:
+                member_stats['average_work_hours'] = member_stats['total_hours_worked'] / member_stats['total_days_worked']
+                member_stats['attendance_rate'] = (member_stats['total_days_worked'] / analytics['date_range']['days']) * 100
+            
+            analytics['member_stats'].append(member_stats)
+        
+        # Calculate overall trends
+        if total_possible_days > 0:
+            analytics['attendance_trends']['present_rate'] = (total_present_days / total_possible_days) * 100
+            analytics['attendance_trends']['late_rate'] = (total_late_days / total_possible_days) * 100
+            analytics['attendance_trends']['absent_rate'] = (total_absent_days / total_possible_days) * 100
+            analytics['attendance_trends']['early_departure_rate'] = (total_early_departure_days / total_possible_days) * 100
+        
+        return Response(analytics)
+
 
 class TimeInOutAPIView(APIView):
     """API View for time in/out operations"""
@@ -1026,6 +1173,13 @@ class TimeInOutAPIView(APIView):
         print("override_geofence:", override_geofence)
         user = request.user
         is_tl = False
+        is_team_leader_user = False
+        
+        # Check if the current user is a team leader
+        if hasattr(user, 'employee_profile'):
+            is_team_leader_user = user.employee_profile.role == 'team_leader'
+        
+        # Check if user is TL for the specific location
         if location_id and hasattr(user, 'employee_profile'):
             tl_employee = user.employee_profile
             is_tl = Department.objects.filter(team_leaders=tl_employee, location_id=location_id).exists()
@@ -1034,8 +1188,9 @@ class TimeInOutAPIView(APIView):
             )
             if int(location_id) not in managed_location_ids:
                 return Response({'error': 'You do not have permission to use this location.'}, status=403)
-        # Geofencing validation (skip if override_geofence is true and user is TL for this location)
-        if not (override_geofence and is_tl):
+        
+        # Geofencing validation - Skip for Team Leaders (they can clock in/out from anywhere)
+        if not is_team_leader_user:
             geofence_result = self.validate_geofence(employee_id, latitude, longitude, accuracy, location_id)
             if not geofence_result['valid']:
                 return Response({
@@ -1131,6 +1286,7 @@ class TimeInOutAPIView(APIView):
             longitude=longitude,
             accuracy=accuracy,
             timestamp=entry_timestamp,
+            updated_on=entry_timestamp,  # Set updated_on to the same as timestamp
             updated_by=user,
             event_time=event_time
         )
@@ -1740,15 +1896,27 @@ def tl_departments_and_locations(request):
         return Response({'detail': 'Employee profile not found.'}, status=404)
 
     # Get all departments where this employee is a team leader (TL)
-    departments = Department.objects.filter(team_leaders=employee)
-    department_serializer = DepartmentSerializer(departments, many=True)
+    departments = Department.objects.filter(team_leaders=employee).prefetch_related('employees', 'location')
+    
+    # Prepare department data with employees
+    department_data = []
+    for dept in departments:
+        dept_serializer = DepartmentSerializer(dept)
+        dept_data = dept_serializer.data
+        
+        # Add employees to department data
+        employees = dept.employees.filter(employment_status='active')
+        employee_serializer = EmployeeListSerializer(employees, many=True)
+        dept_data['employees'] = employee_serializer.data
+        
+        department_data.append(dept_data)
 
     # Get all unique locations for these departments
     locations = Location.objects.filter(departments__team_leaders=employee).distinct()
     location_serializer = LocationSerializer(locations, many=True)
 
     return Response({
-        'departments': department_serializer.data,
+        'departments': department_data,
         'locations': location_serializer.data,
     })
 

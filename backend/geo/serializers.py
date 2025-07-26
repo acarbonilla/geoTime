@@ -17,6 +17,23 @@ class LocationSerializer(serializers.ModelSerializer):
         model = Location
         fields = '__all__'
         read_only_fields = ['created_at', 'updated_at']
+    
+    def to_representation(self, instance):
+        """Custom representation to include formatted address"""
+        data = super().to_representation(instance)
+        # Create a formatted address from available fields
+        address_parts = []
+        if instance.address:
+            address_parts.append(instance.address)
+        if instance.city:
+            address_parts.append(instance.city)
+        if instance.state:
+            address_parts.append(instance.state)
+        if instance.country:
+            address_parts.append(instance.country)
+        
+        data['formatted_address'] = ', '.join(address_parts) if address_parts else 'No address available'
+        return data
 
 
 class LocationListSerializer(serializers.ModelSerializer):
