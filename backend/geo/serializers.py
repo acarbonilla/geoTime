@@ -37,10 +37,9 @@ class LocationSerializer(serializers.ModelSerializer):
 
 
 class LocationListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for Location model in lists"""
     class Meta:
         model = Location
-        fields = ['id', 'name', 'city', 'country', 'state', 'display_name', 'geofence_radius']
+        fields = ['id', 'name', 'city', 'country', 'state', 'display_name', 'geofence_radius', 'latitude', 'longitude']
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
