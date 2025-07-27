@@ -4,7 +4,6 @@ import TeamOverview from './TeamOverview';
 import TeamMemberDrawer from './TeamMemberDrawer';
 import TeamTimeEntriesDrawer from './TeamTimeEntriesDrawer';
 import TimeCorrectionApprovalsModal from './TimeCorrectionApprovalsModal';
-import TeamReports from './TeamReports';
 import TimeInOutManager from './TimeInOutManager';
 import TeamMap from './TeamMap';
 import AbsentTodayDrawer from './AbsentTodayDrawer';
@@ -26,6 +25,7 @@ const TeamLeaderDashboard = ({ employee }) => {
   const [locationError, setLocationError] = useState('');
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
   const [absentTodayDrawerOpen, setAbsentTodayDrawerOpen] = useState(false);
+  const [mapRefreshTrigger, setMapRefreshTrigger] = useState(0);
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
@@ -334,32 +334,29 @@ const TeamLeaderDashboard = ({ employee }) => {
       <AbsentTodayDrawer open={absentTodayDrawerOpen} onClose={() => setAbsentTodayDrawerOpen(false)} />
       
       {/* Time In/Out Manager and Team Map */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 relative z-0">
-        <TimeInOutManager 
-          teamMembers={teamMembers}
-          onTimeEntryCreated={(data) => {
-            // Refresh dashboard data when a time entry is created
-            window.location.reload();
-          }}
-        />
-        <TeamMap 
-          teamLeaderLocation={teamLeaderLocation}
-        />
-        {/* Debug info */}
-        <div className="text-xs text-gray-500 mt-2">
-          Debug: {teamMembers.length} team members, 
-          Team leader location: {teamLeaderLocation ? 'Yes' : 'No'}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8 relative z-0">
+        <div className="lg:col-span-1">
+          <TimeInOutManager 
+            teamMembers={teamMembers}
+            onTimeEntryCreated={(data) => {
+              // Refresh dashboard data when a time entry is created
+              fetchDashboardData();
+              // Trigger map refresh with a small delay to ensure backend processing
+              setTimeout(() => {
+                setMapRefreshTrigger(prev => prev + 1);
+              }, 1000);
+            }}
+          />
         </div>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <TeamReports
-            teamMembersCount={dashboard.team_members_count}
-            teamAttendance={dashboard.team_attendance}
+        <div className="lg:col-span-2">
+          <TeamMap 
+            teamLeaderLocation={teamLeaderLocation}
+            teamMembers={teamMembers}
+            refreshTrigger={mapRefreshTrigger}
           />
         </div>
       </div>
+      
     </div>
   );
 };

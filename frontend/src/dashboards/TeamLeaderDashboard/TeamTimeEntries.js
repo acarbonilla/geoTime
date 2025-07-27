@@ -1,32 +1,43 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { format, parseISO, isToday, differenceInMinutes } from 'date-fns';
+import { format, parseISO, differenceInMinutes } from 'date-fns';
 // Heroicons v2 imports
 import { 
-  ClockIcon, 
   UserCircleIcon, 
   CheckCircleIcon, 
   XCircleIcon, 
   MagnifyingGlassIcon as SearchIcon,
   ArrowPathIcon as RefreshIcon,
-  FunnelIcon as FilterIcon,
-  BarsArrowUpIcon as SortAscendingIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  XMarkIcon
+  XMarkIcon,
+  PencilIcon,
+  CheckIcon,
+  XIcon
 } from '@heroicons/react/24/outline';
 import axiosInstance from '../../utils/axiosInstance';
 
+// Tooltip component
+const Tooltip = ({ children, text }) => (
+  <div className="relative group">
+    {children}
+    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50">
+      {text}
+      <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+    </div>
+  </div>
+);
+
 // Status badge component
 const StatusBadge = ({ status }) => (
-  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${
     status === 'in' 
-      ? 'bg-green-100 text-green-800' 
-      : 'bg-gray-100 text-gray-800'
+      ? 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 border border-green-200' 
+      : 'bg-gradient-to-r from-gray-100 to-slate-100 text-gray-700 border border-gray-200'
   }`}>
     {status === 'in' ? (
-      <CheckCircleIcon className="-ml-0.5 mr-1.5 h-3 w-3 text-green-500" />
+      <CheckCircleIcon className="-ml-0.5 mr-1.5 h-3.5 w-3.5 text-green-600" />
     ) : (
-      <XCircleIcon className="-ml-0.5 mr-1.5 h-3 w-3 text-gray-500" />
+      <XCircleIcon className="-ml-0.5 mr-1.5 h-3.5 w-3.5 text-gray-500" />
     )}
     {status === 'in' ? 'Clocked In' : 'Clocked Out'}
   </span>
@@ -34,28 +45,33 @@ const StatusBadge = ({ status }) => (
 
 // Loading spinner component
 const LoadingSpinner = () => (
-  <div className="flex justify-center items-center p-8">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+  <div className="flex flex-col justify-center items-center p-12">
+    <div className="relative">
+      <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200"></div>
+      <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent absolute top-0 left-0"></div>
+    </div>
+    <p className="mt-4 text-gray-600 font-medium">Loading team time entries...</p>
   </div>
 );
 
 // Error message component
 const ErrorMessage = ({ message, onRetry }) => (
-  <div className="bg-red-50 border-l-4 border-red-500 p-4">
+  <div className="bg-gradient-to-r from-red-50 to-pink-50 border-l-4 border-red-500 p-6 rounded-r-lg shadow-sm">
     <div className="flex">
       <div className="flex-shrink-0">
-        <XCircleIcon className="h-5 w-5 text-red-500" />
+        <XCircleIcon className="h-6 w-6 text-red-500" />
       </div>
-      <div className="ml-3">
-        <p className="text-sm text-red-700">{message}</p>
+      <div className="ml-4">
+        <h3 className="text-sm font-semibold text-red-800">Error Loading Data</h3>
+        <p className="text-sm text-red-700 mt-1">{message}</p>
         {onRetry && (
-          <div className="mt-2">
+          <div className="mt-3">
             <button
               type="button"
               onClick={onRetry}
-              className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 shadow-sm"
             >
-              <RefreshIcon className="-ml-1 mr-1 h-3 w-3" />
+              <RefreshIcon className="-ml-1 mr-2 h-4 w-4" />
               Retry
             </button>
           </div>
@@ -65,49 +81,159 @@ const ErrorMessage = ({ message, onRetry }) => (
   </div>
 );
 
-// Helper function to group time entries by employee and session
-function processTimeEntries(entries) {
-  // First, group by employee
-  const employees = {};
-  
-  entries.forEach(entry => {
-    if (!employees[entry.employee_id]) {
-      employees[entry.employee_id] = {
-        id: entry.employee_id,
-        name: entry.employee_name,
-        employee_id: entry.employee_employee_id,
-        entries: [],
-        lastEntry: null,
-        status: 'out',
-        lastTimeIn: null,
-        lastTimeOut: null
-      };
-    }
-    
-    // Add the entry to the employee's entries
-    employees[entry.employee_id].entries.push(entry);
-    
-    // Update the last entry
-    if (!employees[entry.employee_id].lastEntry || 
-        new Date(entry.timestamp) > new Date(employees[entry.employee_id].lastEntry.timestamp)) {
-      employees[entry.employee_id].lastEntry = entry;
-      
-      // Update status based on last entry type
-      if (entry.entry_type === 'time_in') {
-        employees[entry.employee_id].status = 'in';
-        employees[entry.employee_id].lastTimeIn = entry.timestamp;
-      } else if (entry.entry_type === 'time_out') {
-        employees[entry.employee_id].status = 'out';
-        employees[entry.employee_id].lastTimeOut = entry.timestamp;
-      }
-    }
+// Edit Modal Component
+const EditTimeEntryModal = ({ isOpen, onClose, entry, onSave }) => {
+  const [formData, setFormData] = useState({
+    timestamp: '',
+    notes: '',
+    overtime: ''
   });
-  
-  // Convert to array and sort by name
-  return Object.values(employees).sort((a, b) => 
-    a.name.localeCompare(b.name)
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (entry) {
+      const timestamp = entry.timestamp ? new Date(entry.timestamp).toISOString().slice(0, 16) : '';
+      setFormData({
+        timestamp,
+        notes: entry.notes || '',
+        overtime: entry.overtime || ''
+      });
+    }
+  }, [entry]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await axiosInstance.patch(`/time-entries/${entry.id}/`, {
+        timestamp: formData.timestamp,
+        notes: formData.notes,
+        overtime: formData.overtime
+      });
+
+      onSave(response.data);
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update time entry');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-60 overflow-hidden">
+      <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm" onClick={onClose}></div>
+      
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-4 rounded-t-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white bg-opacity-20">
+                  <PencilIcon className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Edit Time Entry</h3>
+                  <p className="text-blue-100 text-sm">{entry?.employee_name}</p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="rounded-lg p-1 text-white hover:bg-white hover:bg-opacity-20 transition-all duration-200"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-red-700 text-sm">{error}</p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Date & Time
+              </label>
+              <input
+                type="datetime-local"
+                value={formData.timestamp}
+                onChange={(e) => setFormData({ ...formData, timestamp: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Notes
+              </label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 resize-none"
+                placeholder="Add notes about this time entry..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Overtime Hours
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={formData.overtime}
+                onChange={(e) => setFormData({ ...formData, overtime: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                placeholder="0.0"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-all duration-200 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              >
+                {loading ? (
+                  <>
+                    <RefreshIcon className="h-4 w-4 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckIcon className="h-4 w-4" />
+                    <span>Save Changes</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   );
-}
+};
 
 const TeamTimeEntries = ({ isOpen, onClose }) => {
   const [entries, setEntries] = useState([]);
@@ -126,44 +252,15 @@ const TeamTimeEntries = ({ isOpen, onClose }) => {
   
   // State for expanded rows
   const [expandedRows, setExpandedRows] = useState({});
-  
-  // State for refresh control
   const [lastRefreshed, setLastRefreshed] = useState(null);
+  const [editModal, setEditModal] = useState({
+    isOpen: false,
+    entry: null
+  });
+  const [pendingCorrections, setPendingCorrections] = useState([]);
   
   // State for toggle between Active Only and All Today
   const [toggleActiveOnly, setToggleActiveOnly] = useState(false);
-
-  // Calculate total hours worked for an employee
-  const calculateTotalHours = useCallback((entries) => {
-    if (!entries || entries.length < 2) return '0.00';
-    
-    let totalMinutes = 0;
-    let timeIn = null;
-    
-    // Sort entries by timestamp
-    const sortedEntries = [...entries].sort((a, b) => 
-      new Date(a.timestamp) - new Date(b.timestamp)
-    );
-    
-    // Calculate total time worked by pairing time-in with time-out
-    for (const entry of sortedEntries) {
-      if (entry.entry_type === 'time_in') {
-        timeIn = new Date(entry.timestamp);
-      } else if (entry.entry_type === 'time_out' && timeIn) {
-        const timeOut = new Date(entry.timestamp);
-        totalMinutes += differenceInMinutes(timeOut, timeIn);
-        timeIn = null; // Reset timeIn after calculating a session
-      }
-    }
-    
-    // If last entry is time_in (still clocked in), count until now
-    if (timeIn) {
-      totalMinutes += differenceInMinutes(new Date(), timeIn);
-    }
-    
-    // Convert minutes to hours with 2 decimal places
-    return (totalMinutes / 60).toFixed(2);
-  }, []);
 
   // Fetch team time entries
   const fetchTeamTimeEntries = useCallback(async () => {
@@ -220,24 +317,17 @@ const TeamTimeEntries = ({ isOpen, onClose }) => {
       }
       
       // Get today's time entries for all team members
-      const today = new Date();
-      const todayFormatted = today.toISOString().split('T')[0];
       
       // Get time entries for all team members
       // const timeEntriesUrl = `time-entries/?date=${todayFormatted}`;
       const timeEntriesUrl = `time-entries/team_today/`;
       
       let entriesRes;
-      let timeEntriesArray = [];
       try {
         entriesRes = await axiosInstance.get(timeEntriesUrl);
 
         // Support both new ({ entries: [...] }) and old (array) backend responses
-        if (Array.isArray(entriesRes.data)) {
-          timeEntriesArray = entriesRes.data;
-        } else if (entriesRes.data && Array.isArray(entriesRes.data.entries)) {
-          timeEntriesArray = entriesRes.data.entries;
-        } else {
+        if (!Array.isArray(entriesRes.data) && (!entriesRes.data || !Array.isArray(entriesRes.data.entries))) {
           const errorMsg = `Invalid time entries data received: ${JSON.stringify(entriesRes.data)}`;
           console.error(errorMsg);
           throw new Error('Invalid time entries data received');
@@ -317,26 +407,67 @@ const TeamTimeEntries = ({ isOpen, onClose }) => {
     }
   }, [isOpen]); // Add isOpen as a dependency
 
-  // Initial data fetch
+  // Fetch time entries on component mount
   useEffect(() => {
     if (isOpen) {
-      fetchTeamTimeEntries().catch(err => {
-        console.error('Error in fetchTeamTimeEntries:', err);
-      });
-    } else {
-      // console.log('Component is closed, not fetching data'); // Removed console.log
+      fetchTeamTimeEntries();
+      fetchPendingCorrections();
     }
-  }, [isOpen, fetchTeamTimeEntries]);
-
-  useEffect(() => {
-    if (entries.length > 0) {
-      console.log('TeamTimeEntries debug:', entries);
-    }
-  }, [entries]);
+  }, [isOpen]);
 
   // Handle refresh
   const handleRefresh = () => {
+    setLoading(true);
     fetchTeamTimeEntries();
+  };
+
+  const handleEditEntry = (entry) => {
+    setEditModal({
+      isOpen: true,
+      entry: entry
+    });
+  };
+
+  const handleSaveEdit = (updatedEntry) => {
+    // Update the entry in the local state
+    setEntries(prevEntries => 
+      prevEntries.map(entry => 
+        entry.id === updatedEntry.id ? updatedEntry : entry
+      )
+    );
+    
+    // Close the modal
+    setEditModal({
+      isOpen: false,
+      entry: null
+    });
+    
+    // Show success message or refresh data
+    handleRefresh();
+  };
+
+  const handleCloseEditModal = () => {
+    setEditModal({
+      isOpen: false,
+      entry: null
+    });
+  };
+
+  // Fetch pending time correction requests
+  const fetchPendingCorrections = async () => {
+    try {
+      const response = await axiosInstance.get('/time-corrections/?status=approved');
+      setPendingCorrections(response.data.results || response.data || []);
+    } catch (error) {
+      console.error('Error fetching pending corrections:', error);
+    }
+  };
+
+  // Check if an entry has a pending approved correction
+  const hasApprovedCorrection = (entryId) => {
+    return pendingCorrections.some(correction => 
+      correction.time_entry === entryId && correction.status === 'approved'
+    );
   };
 
   // Handle sort
@@ -435,437 +566,239 @@ const TeamTimeEntries = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity" aria-hidden="true">
-          <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+    <div className="fixed inset-0 z-50 overflow-hidden">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+      
+      {/* Drawer */}
+      <div className="absolute inset-y-0 right-0 flex max-w-full">
+        <div className="relative w-screen max-w-4xl">
+          <div className="flex h-full flex-col bg-white shadow-2xl">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-4 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white bg-opacity-20">
+                    <UserCircleIcon className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">Team Time Entries</h2>
+                    <p className="text-blue-100 text-sm">Today's attendance and time tracking</p>
         </div>
-
-        <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">
-          &#8203;
+                  {pendingCorrections.length > 0 && (
+                    <div className="flex items-center space-x-2">
+                      <Tooltip text="Time correction requests that have been approved and are ready to be applied">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200 cursor-help">
+                          <CheckIcon className="h-3 w-3 mr-1" />
+                          {pendingCorrections.length} Approved Correction{pendingCorrections.length !== 1 ? 's' : ''}
         </span>
-
-        <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full sm:p-6">
-          <div className="sm:flex sm:items-start">
-            <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
-              <div className="flex justify-between items-center mb-4 pr-4">
-                <h3 className="text-lg leading-6 font-medium text-gray-900">
-                  Team Time Entries
-                </h3>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={handleRefresh}
-                    className="p-2 text-gray-500 hover:text-gray-700 focus:outline-none"
-                    title="Refresh"
-                  >
-                    <RefreshIcon className="h-5 w-5" />
-                  </button>
-                  {onClose && (
-                    <button
-                      onClick={onClose}
-                      className="p-2 text-gray-500 hover:text-red-600 focus:outline-none"
-                      aria-label="Close"
-                    >
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
+                      </Tooltip>
+                    </div>
                   )}
                 </div>
+                <button
+                  onClick={onClose}
+                  className="rounded-lg p-2 text-white hover:bg-white hover:bg-opacity-20 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
               </div>
 
-              {/* Toggle for Active Only / All Today */}
-              <div className="mb-4 flex items-center space-x-4">
-                <label className="flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={toggleActiveOnly}
-                    onChange={e => setToggleActiveOnly(e.target.checked)}
-                    className="form-checkbox h-5 w-5 text-green-600"
-                  />
-                  <span className="ml-2 text-sm text-gray-700 font-medium">Active Only</span>
-                </label>
-                <span className="text-xs text-gray-400">Show only currently active employees</span>
-              </div>
-
-              {/* Filters and Search */}
-              <div className="flex flex-col sm:flex-row justify-between mb-4 space-y-2 sm:space-y-0 sm:space-x-4">
-                <div className="relative rounded-md shadow-sm">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <SearchIcon className="h-5 w-5 text-gray-400" />
-                  </div>
+            {/* Controls Bar */}
+            <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+                <div className="flex items-center space-x-4">
+                  {/* Search */}
+                  <div className="relative flex-1 max-w-sm">
+                    <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <input
                     type="text"
-                    className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md p-2 border"
-                    placeholder="Search employees..."
+                      placeholder="Search team members..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                   />
                 </div>
                 
-                <div className="flex space-x-2">
-                  <div className="relative">
+                  {/* Status Filter */}
                     <select
-                      className="block appearance-none w-full bg-white border border-gray-300 text-gray-700 py-2 px-4 pr-8 rounded leading-tight focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white shadow-sm"
                     >
-                      <option value="all">All Status</option>
+                    <option value="">All Status</option>
                       <option value="in">Clocked In</option>
                       <option value="out">Clocked Out</option>
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                      <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                      </svg>
                     </div>
-                  </div>
+                
+                <div className="flex items-center space-x-3">
+                  {/* Toggle Active Only */}
+                  <button
+                    onClick={() => setToggleActiveOnly(!toggleActiveOnly)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm ${
+                      toggleActiveOnly
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md hover:shadow-lg'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                    }`}
+                  >
+                    {toggleActiveOnly ? 'Show All' : 'Active Only'}
+                  </button>
+                  
+                  {/* Refresh Button */}
+                  <button
+                    onClick={handleRefresh}
+                    disabled={loading}
+                    className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  >
+                    <RefreshIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
                 </div>
               </div>
 
-              {/* Last updated */}
-              {lastRefreshed && (
-                <p className="text-xs text-gray-500 mb-4">
-                  Last updated: {format(new Date(lastRefreshed), 'MMM d, yyyy h:mm a')}
-                </p>
-              )}
-
-              {/* Error message */}
-              {error && !loading && (
-                <ErrorMessage 
-                  message={error} 
-                  onRetry={fetchTeamTimeEntries} 
-                />
-              )}
-
-              {/* Loading state */}
-              {loading ? (
-                <LoadingSpinner />
-              ) : (
-                <div className="overflow-hidden border border-gray-200 rounded-lg">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th 
-                          scope="col" 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                          onClick={() => requestSort('name')}
-                        >
-                          <div className="flex items-center">
-                            Employee
-                            {sortConfig.key === 'name' && (
-                              <span className="ml-1">
-                                {sortConfig.direction === 'asc' ? '↑' : '↓'}
-                              </span>
-                            )}
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="p-6">
+                {loading && <LoadingSpinner />}
+                {error && <ErrorMessage message={error} onRetry={handleRefresh} />}
+                {!loading && !error && entries.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                    <UserCircleIcon className="h-16 w-16 text-gray-300 mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Team Members Found</h3>
+                    <p className="text-gray-500 text-center">There are no team members to display at this time.</p>
+                  </div>
+                )}
+                {!loading && !error && entries.length > 0 && (
+                  <div className="space-y-4">
+                    {filteredAndSortedEntries.map((member) => (
+                      <div
+                        key={member.id}
+                        className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden"
+                      >
+                        {/* Member Header */}
+                        <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold">
+                                {member.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <h3 className="text-lg font-semibold text-gray-900">{member.name}</h3>
+                                <p className="text-sm text-gray-600">{member.department}</p>
+                              </div>
                           </div>
-                        </th>
-                        <th 
-                          scope="col" 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          ID
-                        </th>
-                        <th 
-                          scope="col" 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          Department
-                        </th>
-                        <th 
-                          scope="col" 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                          onClick={() => requestSort('status')}
-                        >
-                          <div className="flex items-center cursor-pointer">
-                            Status
-                            {sortConfig.key === 'status' && (
-                              <span className="ml-1">
-                                {sortConfig.direction === 'asc' ? '↑' : '↓'}
-                              </span>
-                            )}
+                            <div className="flex items-center space-x-3">
+                              <StatusBadge status={member.status} />
+                              <button
+                                onClick={() => toggleRow(member.id)}
+                                className="p-2 text-gray-400 hover:text-gray-600 transition-colors duration-200"
+                              >
+                                {expandedRows[member.id] ? (
+                                  <ChevronUpIcon className="h-5 w-5" />
+                                ) : (
+                                  <ChevronDownIcon className="h-5 w-5" />
+                                )}
+                              </button>
+                            </div>
                           </div>
-                        </th>
-                        <th 
-                          scope="col" 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          Time Today
-                        </th>
-                        <th 
-                          scope="col" 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          Last Activity
-                        </th>
-                        <th scope="col" className="relative px-6 py-3">
-                          <span className="sr-only">Actions</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {paginatedEntries.length === 0 ? (
-                        <tr>
-                          <td colSpan="7" className="px-6 py-4 text-center text-sm text-gray-500">
-                            {search || statusFilter !== 'all' 
-                              ? 'No matching team members found' 
-                              : 'No team members found. Total entries: ' + entries.length + ', Filtered: ' + filteredAndSortedEntries.length}
-                          </td>
-                        </tr>
-                      ) : (
-                        paginatedEntries.map((member) => (
-                          <React.Fragment key={member.id}>
-                            <tr 
-                              className={`hover:bg-gray-50 cursor-pointer ${expandedRows[member.id] ? 'bg-gray-50' : ''}`}
-                              onClick={() => toggleRow(member.id)}
-                            >
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center">
-                                  <div className="flex-shrink-0 h-10 w-10">
-                                    <UserCircleIcon className="h-10 w-10 text-gray-400" />
+                        </div>
+
+                        {/* Member Details */}
+                        <div className="px-6 py-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-gray-500">Employee ID:</span>
+                              <span className="font-medium text-gray-900">{member.employee_id}</span>
                                   </div>
-                                  <div className="ml-4">
-                                    <div className="text-sm font-medium text-gray-900">
-                                      {member.name}
+                            <div className="flex items-center space-x-2">
+                              <span className="text-gray-500">Last Activity:</span>
+                              <span className="font-medium text-gray-900">{member.lastActivity}</span>
                                     </div>
-                                    <div className="text-sm text-gray-500">
-                                      {member.role}
+                            <div className="flex items-center space-x-2">
+                              <span className="text-gray-500">Total Hours:</span>
+                              <span className="font-medium text-gray-900">{member.totalHours}</span>
                                     </div>
                                   </div>
                                 </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {member.employee_id}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {member.department}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <StatusBadge status={member.status} />
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {member.totalHours} hrs
-                              </td>
-                              <td className="px-6 py-4">
-                                {member.lastEntry ? (
-                                  <div className="space-y-2">
-                                    {/* Status and last activity */}
-                                    <div className="flex items-center">
-                                      <span className={`inline-block w-2 h-2 rounded-full mr-2 ${
-                                        member.status === 'in' ? 'bg-green-500' : 'bg-gray-400'
-                                      }`}></span>
-                                      <span className="font-medium">
-                                        {member.status === 'in' ? 'Clocked In' : 'Clocked Out'}
-                                      </span>
-                                      <span className="ml-2 text-xs text-gray-500">
-                                        {format(new Date(member.lastEntry.timestamp), 'MMM d, h:mm a')}
-                                      </span>
-                                    </div>
-                                    
-                                    {/* Time entries list */}
-                                    <div className="ml-4 space-y-1">
-                                      {member.entries && member.entries.length > 0 ? (
-                                        member.entries.map((entry, idx) => (
-                                          <div key={idx} className="flex items-center text-sm">
-                                            <span className={`inline-block w-2 h-2 rounded-full mr-2 ${
-                                              entry.entry_type === 'time_in' ? 'bg-green-500' : 'bg-purple-500'
-                                            }`}></span>
-                                            <span className="font-medium">
-                                              {entry.entry_type === 'time_in' ? 'In' : 'Out'}:
-                                            </span>
-                                            <span className="ml-1 text-gray-700">
-                                              {format(new Date(entry.timestamp), 'h:mm a')}
-                                            </span>
-                                            <span className="ml-2 text-xs text-gray-500">
-                                              {format(new Date(entry.timestamp), 'MMM d')}
-                                            </span>
-                                          </div>
-                                        ))
-                                      ) : (
-                                        <div className="text-xs text-gray-400">No time entries found</div>
-                                      )}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="text-gray-400 text-sm">No activity recorded</div>
-                                )}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleRow(member.id);
-                                  }}
-                                  className="text-blue-600 hover:text-blue-900"
-                                >
-                                  {expandedRows[member.id] ? (
-                                    <ChevronUpIcon className="h-5 w-5" />
-                                  ) : (
-                                    <ChevronDownIcon className="h-5 w-5" />
-                                  )}
-                                </button>
-                              </td>
-                            </tr>
-                            
-                            {/* Expanded row with time entries */}
-                            {expandedRows[member.id] && (
-                              <tr className="bg-gray-50">
-                                <td colSpan="7" className="px-6 py-4">
-                                  <div className="pl-14">
-                                    <h4 className="text-sm font-medium text-gray-900 mb-2">
-                                      Time Entries ({member.entryCount})
-                                    </h4>
-                                    {member.entries.length > 0 ? (
-                                      <div className="overflow-hidden border border-gray-200 rounded-md">
-                                        <table className="min-w-full divide-y divide-gray-200">
-                                          <thead className="bg-gray-50">
-                                            <tr>
-                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Time
-                                              </th>
-                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Type
-                                              </th>
-                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Location
-                                              </th>
-                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Notes
-                                              </th>
-                                            </tr>
-                                          </thead>
-                                          <tbody className="bg-white divide-y divide-gray-200">
-                                            {member.entries.map((entry, index) => (
-                                              <tr key={index}>
-                                                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                                                  {format(new Date(entry.timestamp), 'MMM d, yyyy h:mm a')}
-                                                </td>
-                                                <td className="px-4 py-2 whitespace-nowrap">
-                                                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                                    entry.entry_type === 'time_in' 
-                                                      ? 'bg-green-100 text-green-800' 
-                                                      : 'bg-purple-100 text-purple-800'
-                                                  }`}>
-                                                    {entry.entry_type === 'time_in' ? 'Time In' : 'Time Out'}
-                                                  </span>
-                                                </td>
-                                                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                                                  {entry.location?.name || 'N/A'}
-                                                </td>
-                                                <td className="px-4 py-2 text-sm text-gray-500">
-                                                  {entry.notes || '-'}
-                                                </td>
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    ) : (
-                                      <p className="text-sm text-gray-500">No time entries found for today</p>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
 
-                  {/* Pagination */}
-                  {totalPages > 1 && (
-                    <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
-                      <div className="flex-1 flex justify-between sm:hidden">
-                        <button
-                          onClick={() => setPage(p => Math.max(1, p - 1))}
-                          disabled={page === 1}
-                          className={`relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md ${
-                            page === 1 ? 'bg-gray-100 text-gray-400' : 'text-gray-700 bg-white hover:bg-gray-50'
-                          }`}
-                        >
-                          Previous
-                        </button>
-                        <button
-                          onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                          disabled={page === totalPages}
-                          className={`ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md ${
-                            page === totalPages ? 'bg-gray-100 text-gray-400' : 'text-gray-700 bg-white hover:bg-gray-50'
-                          }`}
-                        >
-                          Next
-                        </button>
+                        {/* Expanded Entries */}
+                        {expandedRows[member.id] && member.entries && member.entries.length > 0 && (
+                          <div className="border-t border-gray-200 bg-gray-50">
+                            <div className="px-6 py-4">
+                              <h4 className="text-sm font-semibold text-gray-700 mb-3">Time Entries</h4>
+                                  <div className="space-y-2">
+                                {member.entries.map((entry, index) => (
+                                  <div
+                                    key={entry.id || index}
+                                    className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200"
+                                  >
+                                    <div className="flex items-center space-x-3">
+                                      <div className={`w-3 h-3 rounded-full ${
+                                        entry.entry_type === 'time_in' ? 'bg-green-500' : 'bg-red-500'
+                                      }`}></div>
+                                      <span className="text-sm font-medium text-gray-900">
+                                        {entry.entry_type === 'time_in' ? 'Time In' : 'Time Out'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center space-x-3">
+                                      <span className="text-sm text-gray-600">
+                                        {format(parseISO(entry.timestamp), 'MMM dd, yyyy h:mm a')}
+                                            </span>
+                                      {hasApprovedCorrection(entry.id) && (
+                                        <Tooltip text="This entry has an approved correction.">
+                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                            <CheckIcon className="h-3 w-3 mr-1" />
+                                            Approved Correction
+                                            </span>
+                                        </Tooltip>
+                                      )}
+                                      <button
+                                        onClick={() => handleEditEntry(entry)}
+                                        className="p-1 text-gray-400 hover:text-blue-600 transition-colors duration-200"
+                                        title="Edit time entry"
+                                      >
+                                        <PencilIcon className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                                      </div>
+                                  </div>
+                        )}
                       </div>
-                      <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-sm text-gray-700">
-                            Showing <span className="font-medium">{(page - 1) * pageSize + 1}</span> to{' '}
-                            <span className="font-medium">
-                              {Math.min(page * pageSize, filteredAndSortedEntries.length)}
-                            </span>{' '}
-                            of <span className="font-medium">{filteredAndSortedEntries.length}</span> results
-                          </p>
+                    ))}
                         </div>
-                        <div>
-                          <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                            <button
-                              onClick={() => setPage(p => Math.max(1, p - 1))}
-                              disabled={page === 1}
-                              className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${
-                                page === 1 ? 'text-gray-300' : 'text-gray-500 hover:bg-gray-50'
-                              }`}
-                            >
-                              <span className="sr-only">Previous</span>
-                              <ChevronUpIcon className="h-5 w-5" aria-hidden="true" />
-                            </button>
-                            
-                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                              // Show pages around current page
-                              let pageNum;
-                              if (totalPages <= 5) {
-                                pageNum = i + 1;
-                              } else if (page <= 3) {
-                                pageNum = i + 1;
-                              } else if (page >= totalPages - 2) {
-                                pageNum = totalPages - 4 + i;
-                              } else {
-                                pageNum = page - 2 + i;
-                              }
-                              
-                              return (
-                                <button
-                                  key={pageNum}
-                                  onClick={() => setPage(pageNum)}
-                                  className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                                    page === pageNum
-                                      ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                                      : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-                                  }`}
-                                >
-                                  {pageNum}
-                                </button>
-                              );
-                            })}
-                            
-                            <button
-                              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                              disabled={page === totalPages}
-                              className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${
-                                page === totalPages ? 'text-gray-300' : 'text-gray-500 hover:bg-gray-50'
-                              }`}
-                            >
-                              <span className="sr-only">Next</span>
-                              <ChevronDownIcon className="h-5 w-5" aria-hidden="true" />
-                            </button>
-                          </nav>
+                )}
                         </div>
                       </div>
-                    </div>
+
+            {/* Footer */}
+            <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
+              <div className="flex items-center justify-between text-sm text-gray-600">
+                <div>
+                  {lastRefreshed && (
+                    <span>Last updated: {lastRefreshed.toLocaleTimeString()}</span>
                   )}
                 </div>
-              )}
+                <div className="flex items-center space-x-2">
+                  <span>Total members: {entries.length}</span>
+                  <span>•</span>
+                  <span>Active: {entries.filter(e => e.status === 'in').length}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
+      <EditTimeEntryModal
+        isOpen={editModal.isOpen}
+        onClose={handleCloseEditModal}
+        entry={editModal.entry}
+        onSave={handleSaveEdit}
+      />
     </div>
   );
 };

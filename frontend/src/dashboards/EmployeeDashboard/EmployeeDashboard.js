@@ -205,30 +205,51 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         position = await getCurrentPosition();
         setGeolocationStatus('success');
         setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-        // Frontend accuracy check
-        // if (position.coords.accuracy > MINIMUM_LOCATION_ACCURACY_METERS) {
-        //   showNotification(`Location accuracy is too low (${position.coords.accuracy.toFixed(0)}m). Please move to an open area and try again.`, 'error');
-        //   setIsClockingIn(false);
-        //   setGeolocationStatus('idle');
-        //   isTimeInSubmitting.current = false;
-        //   return;
-        // }
+        
+        // Debug geofencing validation
+        console.log('Time In - Location Data:', {
+          employee_id: employee.id,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          department_location: employee.department?.location,
+          geofence_radius: employee.department?.location?.geofence_radius
+        });
+        
+        // Test geofence validation before time in
+        try {
+          const geofenceValidation = await timeAPI.validateGeofence({
+            employee_id: employee.id,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy
+          });
+          console.log('Geofence Validation Result:', geofenceValidation);
+        } catch (geofenceError) {
+          console.error('Geofence validation error:', geofenceError);
+        }
+        
       } catch (geoError) {
         console.warn('Geolocation failed, proceeding without coordinates:', geoError);
         setGeolocationStatus('error');
         position = { coords: { latitude: null, longitude: null, accuracy: null } };
         setCurrentCoords({ latitude: null, longitude: null });
       }
-      await timeAPI.timeIn({
+      
+      const timeInData = {
         employee_id: employee.id,
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         accuracy: position.coords.accuracy
-      });
+      };
+      
+      console.log('Sending time in request:', timeInData);
+      await timeAPI.timeIn(timeInData);
       await loadDashboardData();
       showNotification('Time in recorded successfully!', 'success');
     } catch (error) {
       console.error('Error recording time in:', error);
+      console.error('Error response:', error.response?.data);
       const errorMessage = error.response?.data?.details || error.response?.data?.error || 'Failed to record time in. Please try again.';
       showNotification(errorMessage, 'error');
     } finally {
@@ -249,30 +270,51 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         position = await getCurrentPosition();
         setGeolocationStatus('success');
         setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-        // Frontend accuracy check
-        // if (position.coords.accuracy > MINIMUM_LOCATION_ACCURACY_METERS) {
-        //   showNotification(`Location accuracy is too low (${position.coords.accuracy.toFixed(0)}m). Please move to an open area and try again.`, 'error');
-        //   setIsClockingOut(false);
-        //   setGeolocationStatus('idle');
-        //   isTimeOutSubmitting.current = false;
-        //   return;
-        // }
+        
+        // Debug geofencing validation
+        console.log('Time Out - Location Data:', {
+          employee_id: employee.id,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          department_location: employee.department?.location,
+          geofence_radius: employee.department?.location?.geofence_radius
+        });
+        
+        // Test geofence validation before time out
+        try {
+          const geofenceValidation = await timeAPI.validateGeofence({
+            employee_id: employee.id,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy
+          });
+          console.log('Geofence Validation Result:', geofenceValidation);
+        } catch (geofenceError) {
+          console.error('Geofence validation error:', geofenceError);
+        }
+        
       } catch (geoError) {
         console.warn('Geolocation failed, proceeding without coordinates:', geoError);
         setGeolocationStatus('error');
         position = { coords: { latitude: null, longitude: null, accuracy: null } };
         setCurrentCoords({ latitude: null, longitude: null });
       }
-      await timeAPI.timeOut({
+      
+      const timeOutData = {
         employee_id: employee.id,
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         accuracy: position.coords.accuracy
-      });
+      };
+      
+      console.log('Sending time out request:', timeOutData);
+      await timeAPI.timeOut(timeOutData);
       await loadDashboardData();
       showNotification('Time out recorded successfully!', 'success');
     } catch (error) {
       console.error('Error recording time out:', error);
+      console.error('Error response:', error.response?.data);
       const errorMessage = error.response?.data?.details || error.response?.data?.error || 'Failed to record time out. Please try again.';
       showNotification(errorMessage, 'error');
     } finally {
@@ -298,24 +340,42 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   };
 
   const showNotification = (message, type = 'info') => {
-    // Enhanced notification system
+    // Enhanced notification system with higher z-index
     const notificationDiv = document.createElement('div');
-    notificationDiv.className = `fixed bottom-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${
-      type === 'success' ? 'bg-green-500 text-white' :
-      type === 'error' ? 'bg-red-500 text-white' :
-      type === 'warning' ? 'bg-yellow-500 text-white' :
-      'bg-blue-500 text-white'
+    notificationDiv.className = `fixed bottom-4 right-4 z-[9999] p-4 rounded-lg shadow-xl max-w-sm transform transition-all duration-300 ${
+      type === 'success' ? 'bg-green-500 text-white border border-green-600' :
+      type === 'error' ? 'bg-red-500 text-white border border-red-600' :
+      type === 'warning' ? 'bg-yellow-500 text-white border border-yellow-600' :
+      'bg-blue-500 text-white border border-blue-600'
     }`;
-    notificationDiv.textContent = message;
+    
+    // Add close button
+    const closeButton = document.createElement('button');
+    closeButton.innerHTML = '×';
+    closeButton.className = 'absolute top-1 right-2 text-white hover:text-gray-200 text-lg font-bold';
+    closeButton.onclick = () => {
+      if (document.body.contains(notificationDiv)) {
+        document.body.removeChild(notificationDiv);
+      }
+    };
+    
+    notificationDiv.appendChild(closeButton);
+    
+    // Add message
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'pr-6'; // Space for close button
+    messageDiv.textContent = message;
+    notificationDiv.appendChild(messageDiv);
     
     document.body.appendChild(notificationDiv);
     
-    // Auto-remove after 5 seconds
+    // Auto-remove after 8 seconds (longer for errors)
+    const autoRemoveTime = type === 'error' ? 8000 : 5000;
     setTimeout(() => {
       if (document.body.contains(notificationDiv)) {
         document.body.removeChild(notificationDiv);
       }
-    }, 5000);
+    }, autoRemoveTime);
   };
 
   const getStatusColor = (status) => {
@@ -429,19 +489,15 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     );
   }
 
-  console.log('Employee prop:', employee);
-  console.log('Department:', employee?.department);
-  console.log('Department location:', employee?.department?.location);
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Overtime Alerts */}
       {overtimeAlerts.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 relative z-10">
           {overtimeAlerts.map((alert, index) => (
             <div
               key={index}
-              className={`mb-2 p-4 rounded-lg border-l-4 ${
+              className={`mb-2 p-4 rounded-lg border-l-4 shadow-md ${
                 alert.severity === 'warning' ? 'bg-yellow-50 border-yellow-400 text-yellow-800' :
                 alert.severity === 'error' ? 'bg-red-50 border-red-400 text-red-800' :
                 'bg-blue-50 border-blue-400 text-blue-800'

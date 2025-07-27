@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Login from './Login';
 import 'leaflet/dist/leaflet.css';
 import Reports from './Employee_Report/Reports';
@@ -11,6 +12,15 @@ import TeamLeaderReports from './TeamLeader_Report/TeamLeaderReports';
 import EmployeeRequestPage from './EmployeeRequest/EmployeeRequestPage';
 import ApprovalPage from './TeamLeaderApproval/ApprovalPage';
 
+// Create a client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -72,91 +82,93 @@ function App() {
   }
 
   return (
-    <Router>
-      <div className="App">
-        {/* Navbar for authenticated users */}
-        {isAuthenticated && <Navbar user={user} employee={employee} onLogout={handleLogout} />}
-        <Routes>
-          <Route 
-            path="/" 
-            element={
-              isAuthenticated ? (
-                (() => {
-                  if (employee?.role === 'team_leader') {
-                    return <Navigate to="/team-leader-dashboard" replace />;
-                  } else {
-                    return <Navigate to="/employee-dashboard" replace />;
-                  }
-                })()
-              ) : (
-                <Login onLogin={handleLogin} />
-              )
-            } 
-          />
-          <Route 
-            path="/reports"
-            element={
-              isAuthenticated ? (
-                <Reports user={user} onLogout={handleLogout} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            } 
-          />
-          <Route 
-            path="/employee-dashboard"
-            element={
-              isAuthenticated ? (
-                <EmployeeDashboard onLogout={handleLogout} user={user} employee={employee} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            } 
-          />
-          <Route 
-            path="/team-leader-dashboard"
-            element={
-              isAuthenticated ? (
-                <TeamLeaderDashboard onLogout={handleLogout} user={user} employee={employee} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            } 
-          />
-          <Route
-            path="/team-leader-reports"
-            element={
-              isAuthenticated && employee?.role === 'team_leader' ? (
-                <TeamLeaderReports user={user} employee={employee} onLogout={handleLogout} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
-          <Route 
-            path="/employee/request"
-            element={
-              isAuthenticated && employee?.role === 'employee' ? (
-                <EmployeeRequestPage user={user} employee={employee} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
-          <Route
-            path="/approval"
-            element={
-              isAuthenticated && employee?.role === 'team_leader' ? (
-                <ApprovalPage user={user} employee={employee} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </div>
-    </Router>
+    <QueryClientProvider client={queryClient}>
+      <Router>
+        <div className="App">
+          {/* Navbar for authenticated users */}
+          {isAuthenticated && <Navbar user={user} employee={employee} onLogout={handleLogout} />}
+          <Routes>
+            <Route 
+              path="/" 
+              element={
+                isAuthenticated ? (
+                  (() => {
+                    if (employee?.role === 'team_leader') {
+                      return <Navigate to="/team-leader-dashboard" replace />;
+                    } else {
+                      return <Navigate to="/employee-dashboard" replace />;
+                    }
+                  })()
+                ) : (
+                  <Login onLogin={handleLogin} />
+                )
+              } 
+            />
+            <Route 
+              path="/reports"
+              element={
+                isAuthenticated ? (
+                  <Reports user={user} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              } 
+            />
+            <Route 
+              path="/employee-dashboard"
+              element={
+                isAuthenticated ? (
+                  <EmployeeDashboard onLogout={handleLogout} user={user} employee={employee} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              } 
+            />
+            <Route 
+              path="/team-leader-dashboard"
+              element={
+                isAuthenticated ? (
+                  <TeamLeaderDashboard onLogout={handleLogout} user={user} employee={employee} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              } 
+            />
+            <Route
+              path="/team-leader-reports"
+              element={
+                isAuthenticated && employee?.role === 'team_leader' ? (
+                  <TeamLeaderReports user={user} employee={employee} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
+            <Route 
+              path="/employee/request"
+              element={
+                isAuthenticated && employee?.role === 'employee' ? (
+                  <EmployeeRequestPage user={user} employee={employee} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
+            <Route
+              path="/approval"
+              element={
+                isAuthenticated && employee?.role === 'team_leader' ? (
+                  <ApprovalPage user={user} employee={employee} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </div>
+      </Router>
+    </QueryClientProvider>
   );
 }
 

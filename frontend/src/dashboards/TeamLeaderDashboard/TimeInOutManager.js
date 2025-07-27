@@ -11,6 +11,7 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locationError, setLocationError] = useState('');
   const [geofenceValidation, setGeofenceValidation] = useState(null);
+  const [overrideGeofence, setOverrideGeofence] = useState(false);
 
   useEffect(() => {
     getCurrentLocation();
@@ -78,6 +79,12 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
       return;
     }
 
+    // Check geofence validation unless overridden
+    if (geofenceValidation && !geofenceValidation.valid && !overrideGeofence) {
+      setError('Employee is outside the allowed geofence area. Check the override option if this is intentional.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setSuccess('');
@@ -88,11 +95,13 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
         latitude: currentLocation.latitude,
         longitude: currentLocation.longitude,
         accuracy: currentLocation.accuracy,
-        notes: notes.trim() || undefined
+        notes: notes.trim() || undefined,
+        override_geofence: overrideGeofence
       });
 
       setSuccess(`${action.replace('-', ' ')} successful for ${getEmployeeName(selectedEmployee)}`);
       setNotes('');
+      setOverrideGeofence(false); // Reset override after successful submission
       if (onTimeEntryCreated) {
         onTimeEntryCreated(response.data);
       }
@@ -108,7 +117,8 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
     return employee ? employee.full_name : 'Unknown Employee';
   };
 
-
+  // Check if geofence validation is required
+  const isGeofenceBlocking = geofenceValidation && !geofenceValidation.valid && !overrideGeofence;
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
@@ -217,6 +227,26 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
                     </div>
                   )}
                 </div>
+                
+                {/* Geofence Override Checkbox */}
+                {!geofenceValidation.valid && (
+                  <div className="mt-2">
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={overrideGeofence}
+                        onChange={(e) => setOverrideGeofence(e.target.checked)}
+                        className="mr-2"
+                      />
+                      <span className="text-sm text-orange-600 font-medium">
+                        Override geofence restriction (Team Leader authorization)
+                      </span>
+                    </label>
+                    <div className="text-xs text-gray-500 mt-1 ml-6">
+                      Check this box if the employee is authorized to work outside the geofence area
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -235,9 +265,9 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading || !selectedEmployee || !currentLocation || (geofenceValidation && !geofenceValidation.valid)}
+              disabled={loading || !selectedEmployee || !currentLocation || isGeofenceBlocking}
               className={`w-full py-2 px-4 rounded-md font-medium ${
-                loading || !selectedEmployee || !currentLocation || (geofenceValidation && !geofenceValidation.valid)
+                loading || !selectedEmployee || !currentLocation || isGeofenceBlocking
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : action === 'time-in'
                   ? 'bg-green-600 text-white hover:bg-green-700'

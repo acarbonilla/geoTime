@@ -20,12 +20,6 @@ const TimeCorrectionApprovals = ({ search = '', pageSize = 5, onClose }) => {
         
         const data = Array.isArray(response.data) ? response.data : response.data?.results || [];
         
-        if (data.length === 0) {
-          console.warn('No pending time correction requests found');
-        } else {
-          console.log(`Found ${data.length} pending time correction requests`);
-        }
-        
         setApprovals(data);
       } catch (error) {
         console.error('Error fetching time correction requests:', {
@@ -81,9 +75,6 @@ const TimeCorrectionApprovals = ({ search = '', pageSize = 5, onClose }) => {
         return updated;
       });
       
-      // Show success message
-      const action = status === 'approved' ? 'approved' : 'denied';
-      console.log(`Successfully ${action} time correction request ${id}`);
     } catch (error) {
       console.error(`Error ${status === 'approved' ? 'approving' : 'denying'} request ${id}:`, {
         message: error.message,

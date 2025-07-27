@@ -109,26 +109,6 @@ const Reports = () => {
     fetchTimeEntries();
   };
   
-  // Render pagination controls
-  const renderPageSizeSelector = () => (
-    <div className="flex justify-between items-center mb-4">
-      <div className="flex items-center">
-        <span className="text-sm text-gray-700 mr-2">Show</span>
-        <select 
-          value={entriesPerPage} 
-          onChange={handleEntriesPerPageChange}
-          className="border border-gray-300 rounded px-2 py-1 text-sm"
-        >
-          <option value={10}>10</option>
-          <option value={25}>25</option>
-          <option value={50}>50</option>
-          <option value={100}>100</option>
-        </select>
-        <span className="text-sm text-gray-700 ml-2">entries</span>
-      </div>
-    </div>
-  );
-  
   // Initialize component
   // Filter form change handler
   const handleFilterFormChange = (e) => {
@@ -171,40 +151,6 @@ const Reports = () => {
     } catch (e) {
       console.error('Error formatting date:', e);
       return { date: '', time: '' };
-    }
-  };
-
-  // Export to CSV
-  const exportCSV = () => {
-    try {
-      const headers = [
-        'Name', 'Entry Type', 'Date', 'Time', 'Location', 'Overtime', 'Notes', 'Coordinates'
-      ];
-      
-      const rows = filteredEntries.map(entry => {
-        const { date, time } = formatExportDateTime(entry.timestamp);
-        const entryType = entry.entry_type === 'time_in' ? 'Time In' : 
-                        entry.entry_type === 'time_out' ? 'Time Out' : 
-                        entry.entry_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        
-        return [
-          `"${entry.employee_name || 'You'}"`,
-          `"${entryType}"`,
-          `"${date}"`,
-          `"${time}"`,
-          `"${entry.location_name || ''}"`,
-          `"${entry.overtime || ''}"`,
-          `"${(entry.notes || '').replace(/"/g, '""')}"`,
-          `"${entry.latitude && entry.longitude ? `${entry.latitude}, ${entry.longitude}` : ''}"`
-        ].join(',');
-      });
-      
-      const csvContent = [headers.join(','), ...rows].join('\n');
-      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-      saveAs(blob, `time-entries-${new Date().toISOString().split('T')[0]}.csv`);
-    } catch (error) {
-      console.error('Error exporting CSV:', error);
-      alert('Failed to export CSV. Please try again.');
     }
   };
 
@@ -338,36 +284,11 @@ const Reports = () => {
     });
   };
 
-  // Helper to convert a timestamp to a date string in Asia/Manila timezone
-  const getDateString = (entry) => {
-    const ts = entry.formatted_timestamp || entry.timestamp;
-    if (!ts) return '';
-    
-    const dt = new Date(ts);
-    // Use 'en-CA' for YYYY-MM-DD format with Asia/Manila timezone
-    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
-      return dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-    } else {
-      // Fallback: use local date string in 'YYYY-MM-DD' format
-      return dt.getFullYear() + '-' + 
-             String(dt.getMonth() + 1).padStart(2, '0') + '-' + 
-             String(dt.getDate()).padStart(2, '0');
-    }
-  };
-
-  // Helper to convert a YYYY-MM-DD string to a Date object in Asia/Manila timezone
-  const parsePHDate = (dateStr) => {
-    if (!dateStr) return null;
-    const [year, month, day] = dateStr.split('-').map(Number);
-    return new Date(year, month - 1, day);
-  };
-
   // Fetch time entries from the API
   const fetchTimeEntries = useCallback(async () => {
     let isMounted = true;
     try {
       setLoading(true);
-      console.log('fetchTimeEntries called with:', filterForm, currentPage, entriesPerPage);
       const params = new URLSearchParams();
       
       // Add time entries filters
@@ -380,13 +301,11 @@ const Reports = () => {
       params.append('page_size', entriesPerPage);
       
       const response = await axiosInstance.get(`/time-entries/?${params.toString()}`);
-      console.log('API response:', response.data);
       if (isMounted) {
         setEntries(response.data.results || response.data);
         setFilteredEntries(response.data.results || response.data);
         setTotalPages(Math.ceil((response.data.count || response.data.length) / entriesPerPage));
         setShowTable(true);
-        console.log('Set filteredEntries:', response.data.results || response.data);
       }
     } catch (error) {
       console.error('Error fetching time entries:', error);
@@ -475,129 +394,66 @@ const Reports = () => {
     }
   };
 
-  // Render the table rows
-  const renderTableRows = () => {
-    if (!currentEntries || currentEntries.length === 0) {
-      return (
-        <tr>
-          <td colSpan="8" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-            No time entries found matching your filters.
-          </td>
-        </tr>
+  // Enhanced pagination rendering
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+    
+    const pages = [];
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+    
+    // Previous button
+    pages.push(
+      <button
+        key="prev"
+        onClick={() => handlePageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-l-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Previous
+      </button>
+    );
+    
+    // Page numbers
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(
+        <button
+          key={i}
+          onClick={() => handlePageChange(i)}
+          className={`px-3 py-2 text-sm font-medium border ${
+            currentPage === i
+              ? 'bg-blue-50 border-blue-500 text-blue-600'
+              : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          {i}
+        </button>
       );
     }
     
-    return currentEntries.map((entry, idx) => {
-      const date = formatDate(entry.timestamp);
-      const formattedTime = formatTime(entry.timestamp);
-      
-      return (
-        <tr 
-          key={entry.id} 
-          className="transition-colors duration-200 hover:bg-gray-50"
-        >
-          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-            {entry.employee_name || 'You'}
-          </td>
-          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-            {entry.entry_type === 'time_in' ? 'Time In' : 'Time Out'}
-          </td>
-          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{date}</td>
-          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formattedTime}</td>
-          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{entry.location_name || '—'}</td>
-          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{entry.overtime || '—'}</td>
-          <td className="px-6 py-4 text-sm text-gray-500">{entry.notes || '—'}</td>
-          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-            {entry.latitude && entry.longitude ? (
-              <a 
-                href={`https://www.google.com/maps?q=${entry.latitude},${entry.longitude}`} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800"
-              >
-                View on Map
-              </a>
-            ) : '—'}
-          </td>
-        </tr>
-      );
-    });
-  };
-
-  // Enhanced pagination rendering
-  const renderPagination = () => {
-    if (filteredEntries.length <= 0) return null;
-
-    const pageNumbers = [];
-    for (let i = 1; i <= totalPages; i++) {
-      pageNumbers.push(i);
-    }
-
-    const startIdx = (currentPage - 1) * entriesPerPage + 1;
-    const endIdx = Math.min(currentPage * entriesPerPage, filteredEntries.length);
-
+    // Next button
+    pages.push(
+      <button
+        key="next"
+        onClick={() => handlePageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-r-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Next
+      </button>
+    );
+    
     return (
-      <div className="bg-white px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between border-t border-gray-200 sm:px-6 mt-4">
-        <div className="mb-2 md:mb-0 text-sm text-gray-700 flex items-center space-x-4">
-          <span>
-            Showing <span className="font-medium">{startIdx}</span> to <span className="font-medium">{endIdx}</span> of <span className="font-medium">{filteredEntries.length}</span> results
-          </span>
-          <span className="flex items-center">
-            <label htmlFor="entriesPerPage" className="mr-2">Show</label>
-            <select
-              id="entriesPerPage"
-              value={entriesPerPage}
-              onChange={handleEntriesPerPageChange}
-              className="border border-gray-300 rounded px-2 py-1 text-sm"
-            >
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
-            <span className="ml-2">per page</span>
-          </span>
+      <div className="flex items-center justify-between mt-4">
+        <div className="text-sm text-gray-700">
+          Showing {((currentPage - 1) * entriesPerPage) + 1} to {Math.min(currentPage * entriesPerPage, filteredEntries.length)} of {filteredEntries.length} entries
         </div>
-        <div className="flex items-center space-x-1">
-          <button
-            onClick={() => handlePageChange(1)}
-            disabled={currentPage === 1}
-            className={`px-2 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
-          >
-            First
-          </button>
-          <button
-            onClick={() => handlePageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className={`px-2 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
-          >
-            Previous
-          </button>
-          {pageNumbers.map((num) => (
-            <button
-              key={num}
-              onClick={() => handlePageChange(num)}
-              className={`px-3 py-1 rounded-md border ${currentPage === num ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-100'}`}
-              disabled={currentPage === num}
-            >
-              {num}
-            </button>
-          ))}
-          <button
-            onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className={`px-2 py-1 rounded-md ${currentPage === totalPages ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
-          >
-            Next
-          </button>
-          <button
-            onClick={() => handlePageChange(totalPages)}
-            disabled={currentPage === totalPages}
-            className={`px-2 py-1 rounded-md ${currentPage === totalPages ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
-          >
-            Last
-          </button>
-        </div>
+        <div className="flex">{pages}</div>
       </div>
     );
   };
