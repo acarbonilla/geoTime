@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { timeAPI, workSessionAPI } from '../../api';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -13,6 +14,7 @@ L.Icon.Default.mergeOptions({
 });
 
 export default function EmployeeDashboard({ user, employee, onLogout }) {
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [currentStatus, setCurrentStatus] = useState('not_started');
   const [todayEntries, setTodayEntries] = useState([]);
@@ -63,21 +65,42 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     };
   }, [showUserMenu]);
 
-  const loadDashboardData = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Get current session status with overtime analysis
-      const sessionResponse = await timeAPI.getCurrentSession();
-      console.log('sessionResponse', sessionResponse); // Debug print
-      setSessionResponse(sessionResponse);
+  // React Query hooks for data fetching with 30-second polling
+  const { data: sessionData, isLoading: sessionLoading, error: sessionError } = useQuery({
+    queryKey: ['currentSession', employee?.id],
+    queryFn: async () => {
+      console.log('Fetching current session for employee:', employee?.id);
+      const result = await timeAPI.getCurrentSession();
+      console.log('Session data received:', result);
+      return result;
+    },
+    refetchInterval: 30000, // 30 seconds
+    refetchIntervalInBackground: true,
+    enabled: !!employee?.id,
+  });
+
+  const { data: entriesData, isLoading: entriesLoading, error: entriesError } = useQuery({
+    queryKey: ['timeEntries', employee?.id],
+    queryFn: () => timeAPI.getTimeEntries({ limit: 20 }),
+    refetchInterval: 30000, // 30 seconds
+    refetchIntervalInBackground: true,
+    enabled: !!employee?.id && !sessionData?.today_analysis,
+  });
+
+  // Process session data
+  useEffect(() => {
+    console.log('Session data changed:', sessionData);
+    if (sessionData) {
+      console.log('Setting session response:', sessionData);
+      setSessionResponse(sessionData);
       
-      if (sessionResponse.today_analysis) {
-        setOvertimeAnalysis(sessionResponse.today_analysis);
+      if (sessionData.today_analysis) {
+        setOvertimeAnalysis(sessionData.today_analysis);
         
         // Determine current status based on active session
-        if (sessionResponse.active_session) {
+        if (sessionData.active_session) {
           setCurrentStatus('clocked_in');
-        } else if (sessionResponse.today_analysis.total_hours > 0) {
+        } else if (sessionData.today_analysis.total_hours > 0) {
           setCurrentStatus('clocked_out');
         } else {
           setCurrentStatus('not_started');
@@ -85,15 +108,15 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         
         // Check for overtime alerts
         const alerts = [];
-        if (sessionResponse.today_analysis.is_overtime) {
+        if (sessionData.today_analysis.is_overtime) {
           alerts.push({
             type: 'overtime',
-            message: `You have worked ${sessionResponse.today_analysis.overtime_hours} hours of overtime today!`,
+            message: `You have worked ${sessionData.today_analysis.overtime_hours} hours of overtime today!`,
             severity: 'warning'
           });
         }
         
-        if (sessionResponse.active_session && sessionResponse.active_session.is_overtime) {
+        if (sessionData.active_session && sessionData.active_session.is_overtime) {
           alerts.push({
             type: 'active_overtime',
             message: 'You are currently in overtime!',
@@ -101,98 +124,85 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
           });
         }
         
-        if (sessionResponse.active_session && sessionResponse.active_session.hours_until_overtime < 1) {
+        if (sessionData.active_session && sessionData.active_session.hours_until_overtime < 1) {
           alerts.push({
             type: 'approaching_overtime',
-            message: `You are ${(sessionResponse.active_session.hours_until_overtime * 60).toFixed(0)} minutes away from overtime!`,
+            message: `You are ${(sessionData.active_session.hours_until_overtime * 60).toFixed(0)} minutes away from overtime!`,
             severity: 'info'
           });
         }
         
         setOvertimeAlerts(alerts);
-        setTotalHoursToday(sessionResponse.today_analysis.total_hours);
-      } else {
-        // Fallback to old method if overtime analysis not available
-        try {
-          const entriesResponse = await timeAPI.getTimeEntries({ limit: 20 });
-          console.log('Recent entries response:', entriesResponse);
-          
-          // Filter for today's entries
-          const today = new Date().toDateString();
-          const todayEntries = (entriesResponse.results || entriesResponse || []).filter(entry => {
-            const entryDate = new Date(entry.timestamp).toDateString();
-            return entryDate === today;
-          });
-          
-          console.log('Filtered today entries:', todayEntries);
-          console.log('Sample entry location:', todayEntries[0]?.location_name);
-          setTodayEntries(todayEntries);
-          
-          // Calculate total hours from today's entries
-          let totalHours = 0;
-          if (todayEntries.length > 0) {
-            console.log('Calculating hours from entries:', todayEntries);
-            
-            // Sort entries by timestamp
-            const sortedEntries = todayEntries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            const timeInEntries = sortedEntries.filter(e => e.entry_type === 'time_in');
-            const timeOutEntries = sortedEntries.filter(e => e.entry_type === 'time_out');
-            
-            console.log('Time in entries:', timeInEntries);
-            console.log('Time out entries:', timeOutEntries);
-            
-            // Calculate actual hours worked
-            for (let i = 0; i < Math.min(timeInEntries.length, timeOutEntries.length); i++) {
-              const timeIn = new Date(timeInEntries[i].timestamp);
-              const timeOut = new Date(timeOutEntries[i].timestamp);
-              const duration = (timeOut - timeIn) / (1000 * 60 * 60); // Convert to hours
-              console.log(`Session ${i + 1}: ${timeIn.toLocaleTimeString()} - ${timeOut.toLocaleTimeString()} = ${duration.toFixed(2)} hours`);
-              totalHours += duration;
-            }
-            
-            console.log('Total hours calculated:', totalHours);
-          
-          // Test the calculation with our test function
-          const testHours = testTotalHoursCalculation(todayEntries);
-          console.log('Test function result:', testHours);
-          }
-          setTotalHoursToday(totalHours);
-        } catch (entriesError) {
-          console.log('Entries error:', entriesError);
-          setTodayEntries([]);
-          setTotalHoursToday(0);
+        setTotalHoursToday(sessionData.today_analysis.total_hours);
+      }
+    }
+  }, [sessionData]);
+
+  // Process entries data (fallback when no overtime analysis)
+  useEffect(() => {
+    if (entriesData && !sessionData?.today_analysis) {
+      console.log('Recent entries response:', entriesData);
+      
+      // Filter for today's entries
+      const today = new Date().toDateString();
+      const todayEntries = (entriesData.results || entriesData || []).filter(entry => {
+        const entryDate = new Date(entry.timestamp).toDateString();
+        return entryDate === today;
+      });
+      
+      console.log('Filtered today entries:', todayEntries);
+      console.log('Sample entry location:', todayEntries[0]?.location_name);
+      setTodayEntries(todayEntries);
+      
+      // Calculate total hours from today's entries
+      let totalHours = 0;
+      if (todayEntries.length > 0) {
+        console.log('Calculating hours from entries:', todayEntries);
+        
+        // Sort entries by timestamp
+        const sortedEntries = todayEntries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        const timeInEntries = sortedEntries.filter(e => e.entry_type === 'time_in');
+        const timeOutEntries = sortedEntries.filter(e => e.entry_type === 'time_out');
+        
+        console.log('Time in entries:', timeInEntries);
+        console.log('Time out entries:', timeOutEntries);
+        
+        // Calculate actual hours worked
+        for (let i = 0; i < Math.min(timeInEntries.length, timeOutEntries.length); i++) {
+          const timeIn = new Date(timeInEntries[i].timestamp);
+          const timeOut = new Date(timeOutEntries[i].timestamp);
+          const duration = (timeOut - timeIn) / (1000 * 60 * 60); // Convert to hours
+          console.log(`Session ${i + 1}: ${timeIn.toLocaleTimeString()} - ${timeOut.toLocaleTimeString()} = ${duration.toFixed(2)} hours`);
+          totalHours += duration;
         }
+        
+        console.log('Total hours calculated:', totalHours);
+        
+        // Test the calculation with our test function
+        const testHours = testTotalHoursCalculation(todayEntries);
+        console.log('Test function result:', testHours);
       }
-      
-     
-      
-      // Get work sessions for today
-      try {
-        await workSessionAPI.getTodayWorkSessions();
-        // setWorkSessions(sessionsResponse.results || sessionsResponse || []); // <-- Remove this line
-      } catch (sessionsError) {
-        console.log('Work sessions error:', sessionsError);
-        // setWorkSessions([]); // <-- Remove this line
-      }
-      
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      setTotalHoursToday(totalHours);
+    }
+  }, [entriesData, sessionData?.today_analysis]);
+
+  // Set loading state based on React Query loading states
+  useEffect(() => {
+    setLoading(sessionLoading || entriesLoading);
+  }, [sessionLoading, entriesLoading]);
+
+  // Handle errors
+  useEffect(() => {
+    if (sessionError || entriesError) {
+      console.error('Error loading dashboard data:', sessionError || entriesError);
       // Set default values on error
       setCurrentStatus('not_started');
       setTodayEntries([]);
-      // setRecentEntries([]); // <-- Remove this line
       setTotalHoursToday(0);
       setOvertimeAnalysis(null);
       setSessionResponse(null);
-      // setWorkSessions([]); // <-- Remove this line
-    } finally {
-      setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    loadDashboardData();
-  }, [loadDashboardData]);
+  }, [sessionError, entriesError]);
 
   const handleTimeIn = async () => {
     if (isTimeInSubmitting.current) return;
@@ -245,7 +255,11 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       
       console.log('Sending time in request:', timeInData);
       await timeAPI.timeIn(timeInData);
-      await loadDashboardData();
+      
+      // Invalidate and refetch queries to update the dashboard
+      await queryClient.invalidateQueries({ queryKey: ['currentSession', employee?.id] });
+      await queryClient.invalidateQueries({ queryKey: ['timeEntries', employee?.id] });
+      
       showNotification('Time in recorded successfully!', 'success');
     } catch (error) {
       console.error('Error recording time in:', error);
@@ -310,7 +324,11 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       
       console.log('Sending time out request:', timeOutData);
       await timeAPI.timeOut(timeOutData);
-      await loadDashboardData();
+      
+      // Invalidate and refetch queries to update the dashboard
+      await queryClient.invalidateQueries({ queryKey: ['currentSession', employee?.id] });
+      await queryClient.invalidateQueries({ queryKey: ['timeEntries', employee?.id] });
+      
       showNotification('Time out recorded successfully!', 'success');
     } catch (error) {
       console.error('Error recording time out:', error);
@@ -517,51 +535,51 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       )}
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <main className="max-w-7xl mx-auto px-2 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
           {/* Left Column - Sidebar with Tabs (remove tab bar and related logic) */}
-          <div className="lg:col-span-1 space-y-6">
+          <div className="lg:col-span-1 space-y-4 sm:space-y-6">
             {/* Current Status Card */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Current Status</h2>
+            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                              <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Current Status</h2>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Status:</span>
-                  <span className={`font-semibold ${getStatusColor(currentStatus)}`}>
+                  <span className="text-sm sm:text-base text-gray-600">Status:</span>
+                  <span className={`text-sm sm:text-base font-semibold ${getStatusColor(currentStatus)}`}>
                     {getStatusText(currentStatus)}
                   </span>
                 </div>
                 {overtimeAnalysis && (
                   <>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Total Hours Today:</span>
-                      <span className="font-semibold text-gray-900">
+                      <span className="text-sm sm:text-base text-gray-600">Total Hours Today:</span>
+                      <span className="text-sm sm:text-base font-semibold text-gray-900">
                         {formatDuration(overtimeAnalysis.total_hours)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Actual Work Hours:</span>
-                      <span className="font-semibold text-blue-600">
+                      <span className="text-sm sm:text-base text-gray-600">Actual Work Hours:</span>
+                      <span className="text-sm sm:text-base font-semibold text-blue-600">
                         {formatDuration(overtimeAnalysis.actual_work_hours)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Regular Hours:</span>
-                      <span className="font-semibold text-green-600">
+                      <span className="text-sm sm:text-base text-gray-600">Regular Hours:</span>
+                      <span className="text-sm sm:text-base font-semibold text-green-600">
                         {formatDuration(overtimeAnalysis.regular_hours)}
                       </span>
                     </div>
                     {overtimeAnalysis.overtime_hours > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Overtime Hours:</span>
-                        <span className="font-semibold text-orange-600">
+                        <span className="text-sm sm:text-base text-gray-600">Overtime Hours:</span>
+                        <span className="text-sm sm:text-base font-semibold text-orange-600">
                           {formatDuration(overtimeAnalysis.overtime_hours)}
                         </span>
                       </div>
                     )}
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Flexible Break:</span>
-                      <span className="font-semibold text-purple-600">
+                      <span className="text-sm sm:text-base text-gray-600">Flexible Break:</span>
+                      <span className="text-sm sm:text-base font-semibold text-purple-600">
                         {formatDuration(overtimeAnalysis.flexible_break_hours)}
                       </span>
                     </div>
@@ -569,8 +587,8 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 )}
                 {!overtimeAnalysis && (
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Total Hours Today:</span>
-                    <span className="font-semibold text-gray-900">
+                    <span className="text-sm sm:text-base text-gray-600">Total Hours Today:</span>
+                    <span className="text-sm sm:text-base font-semibold text-gray-900">
                       {formatDuration(totalHoursToday)}
                     </span>
                   </div>
@@ -578,13 +596,13 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
               </div>
             </div>
             {/* Time In/Out Controls */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Time Tracking</h2>
+            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                              <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Time Tracking</h2>
               <div className="space-y-4">
                 <button
                   onClick={handleTimeIn}
                   disabled={isClockingIn || (sessionResponse && sessionResponse.active_session)}
-                  className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors ${
+                  className={`w-full py-2 sm:py-3 px-3 sm:px-4 rounded-lg text-sm sm:text-base font-semibold transition-colors ${
                     isClockingIn || (sessionResponse && sessionResponse.active_session)
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-green-600 text-white hover:bg-green-700'
@@ -593,9 +611,20 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                   {isClockingIn ? 'Clocking In...' : 'Time In'}
                 </button>
                 <button
-                  onClick={handleTimeOut}
+                  onClick={(e) => {
+                    console.log('Time Out button clicked!', e);
+                    console.log('Button disabled:', isClockingOut || !(sessionResponse && sessionResponse.active_session));
+                    console.log('Session response:', sessionResponse);
+                    console.log('Active session:', sessionResponse?.active_session);
+                    console.log('Is clocking out:', isClockingOut);
+                    if (!isClockingOut && sessionResponse && sessionResponse.active_session) {
+                      handleTimeOut();
+                    } else {
+                      console.log('Button is disabled or no active session');
+                    }
+                  }}
                   disabled={isClockingOut || !(sessionResponse && sessionResponse.active_session)}
-                  className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors ${
+                  className={`w-full py-2 sm:py-3 px-3 sm:px-4 rounded-lg text-sm sm:text-base font-semibold transition-colors ${
                     isClockingOut || !(sessionResponse && sessionResponse.active_session)
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-red-600 text-white hover:bg-red-700'
@@ -603,6 +632,12 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 >
                   {isClockingOut ? 'Clocking Out...' : 'Time Out'}
                 </button>
+                {/* Debug info for button state */}
+                <div className="text-xs text-gray-500 mt-2">
+                  Debug: Active session: {sessionResponse?.active_session ? 'Yes' : 'No'} | 
+                  Clocking out: {isClockingOut ? 'Yes' : 'No'} | 
+                  Button disabled: {isClockingOut || !(sessionResponse && sessionResponse.active_session) ? 'Yes' : 'No'}
+                </div>
                 {/* Geolocation Status */}
                 <div className="text-sm text-gray-600">
                   {geolocationStatus === 'requesting' && '📍 Getting location...'}
@@ -613,17 +648,17 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
             </div>
           </div>
           {/* Right Column - Main Content */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             {/* Dashboard main content as before */}
             {/* Today's Timeline, Map, Overtime Details, etc. */}
             {/* ...existing dashboard content... */}
             {/* (Copy all content except the overtime requests section) */}
             {/* Today's Timeline */}
             <div className="bg-white rounded-lg shadow">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">Today's Timeline</h2>
+              <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900">Today's Timeline</h2>
               </div>
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 {/* Show active session first if exists */}
                 {sessionResponse && sessionResponse.active_session && (
                   <div className="space-y-4 mb-6">
@@ -697,9 +732,9 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                       </div>
                     ))}
                   </div>
-                ) : (
+                ) : !sessionResponse?.active_session ? (
                   <p className="text-gray-500 text-center py-8">No time entries for today</p>
-                )}
+                ) : null}
               </div>
             </div>
             {/* Map Section */}

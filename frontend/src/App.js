@@ -84,9 +84,13 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
-        <div className="App">
-          {/* Navbar for authenticated users */}
-          {isAuthenticated && <Navbar user={user} employee={employee} onLogout={handleLogout} />}
+        <div className="App w-full min-h-screen">
+          {/* Navbar for authenticated users - rendered at root level */}
+          {isAuthenticated && (
+            <div style={{ position: 'relative', zIndex: 1000 }}>
+              <Navbar user={user} employee={employee} onLogout={handleLogout} />
+            </div>
+          )}
           <Routes>
             <Route 
               path="/" 

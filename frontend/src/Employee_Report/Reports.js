@@ -459,7 +459,7 @@ const Reports = () => {
   };
 
   return (
-    <div className="container mx-auto px-2 py-6 md:px-4 md:py-8">
+    <div className="w-full max-w-7xl mx-auto px-2 py-6 md:px-4 md:py-8">
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden transition-shadow duration-300 hover:shadow-2xl">
         {/* Tab bar */}
         <div className="flex border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">

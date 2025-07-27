@@ -19,26 +19,88 @@ const GeoMap = ({ centerLat, centerLng, radius, userLat, userLng }) => {
         const calculatedDistance = calculateDistance(centerLatNum, centerLngNum, userLatNum, userLngNum);
         setDistance(calculatedDistance);
         
-        // Parse radius and validate
-        const radiusNum = parseFloat(radius);
+        // Parse radius and validate - handle different radius formats
+        let radiusNum = null;
+        if (typeof radius === 'number') {
+          radiusNum = radius;
+        } else if (typeof radius === 'string') {
+          radiusNum = parseFloat(radius);
+        } else if (radius !== null && radius !== undefined) {
+          radiusNum = parseFloat(radius);
+        }
+        
         if (!isNaN(radiusNum) && radiusNum > 0) {
-          setIsWithinGeofence(calculatedDistance <= radiusNum);
+          // Add a small tolerance for very large radius values (e.g., if radius > 50km, add 1% tolerance)
+          let effectiveRadius = radiusNum;
+          if (radiusNum > 50000) { // 50km
+            effectiveRadius = radiusNum * 1.01; // Add 1% tolerance
+            console.log(`Large radius detected (${radiusNum}m), applying 1% tolerance: ${effectiveRadius}m`);
+          }
+          
+          const isWithin = calculatedDistance <= effectiveRadius;
+          setIsWithinGeofence(isWithin);
           console.log('Geofencing Debug:', {
             distance: calculatedDistance,
             radius: radiusNum,
-            isWithin: calculatedDistance <= radiusNum,
-            coordinates: { centerLat: centerLatNum, centerLng: centerLngNum, userLat: userLatNum, userLng: userLngNum }
+            effectiveRadius: effectiveRadius,
+            isWithin: isWithin,
+            coordinates: { 
+              centerLat: centerLatNum, 
+              centerLng: centerLngNum, 
+              userLat: userLatNum, 
+              userLng: userLngNum 
+            },
+            rawRadius: radius,
+            radiusType: typeof radius
+          });
+        } else if (radiusNum === 0 || radiusNum === null || radiusNum === undefined) {
+          // If radius is 0, null, or undefined, allow transactions (fallback)
+          setIsWithinGeofence(true);
+          console.log('Radius is 0/null/undefined, allowing transactions by default', {
+            rawRadius: radius,
+            radiusType: typeof radius,
+            parsedRadius: radiusNum
+          });
+        } else if (radiusNum < 0) {
+          // If radius is negative, allow transactions (fallback)
+          setIsWithinGeofence(true);
+          console.log('Negative radius provided, allowing transactions by default', {
+            rawRadius: radius,
+            radiusType: typeof radius,
+            parsedRadius: radiusNum
           });
         } else {
-          // If no valid radius, allow transactions (fallback)
+          // If radius is NaN or invalid, allow transactions (fallback)
           setIsWithinGeofence(true);
-          console.log('No valid radius provided, allowing transactions by default');
+          console.log('Invalid radius provided, allowing transactions by default', {
+            rawRadius: radius,
+            radiusType: typeof radius,
+            parsedRadius: radiusNum
+          });
         }
+      } else {
+        console.log('Invalid coordinates provided:', {
+          centerLat, centerLng, userLat, userLng,
+          parsed: {
+            centerLatNum: parseFloat(centerLat),
+            centerLngNum: parseFloat(centerLng),
+            userLatNum: parseFloat(userLat),
+            userLngNum: parseFloat(userLng)
+          }
+        });
       }
+    } else {
+      console.log('Missing coordinates:', { centerLat, centerLng, userLat, userLng });
     }
   }, [centerLat, centerLng, userLat, userLng, radius]);
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    // Validate inputs
+    if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) {
+      console.error('Invalid coordinates provided to calculateDistance:', { lat1, lon1, lat2, lon2 });
+      return null;
+    }
+    
     const R = 6371000; // Earth's radius in meters
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -47,7 +109,16 @@ const GeoMap = ({ centerLat, centerLng, radius, userLat, userLng }) => {
       Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
       Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Distance in meters
+    const distance = R * c; // Distance in meters
+    
+    console.log('Distance calculation:', {
+      from: { lat: lat1, lon: lon1 },
+      to: { lat: lat2, lon: lon2 },
+      distance: distance,
+      distanceKm: distance / 1000
+    });
+    
+    return distance;
   };
 
   const formatDistance = (meters) => {
@@ -107,8 +178,12 @@ const GeoMap = ({ centerLat, centerLng, radius, userLat, userLng }) => {
           <strong>Debug Info:</strong>
           <div>Distance: {distance ? `${distance.toFixed(2)}m` : 'Calculating...'}</div>
           <div>Radius: {radius ? `${radiusNum}m` : 'Not provided'}</div>
+          <div>Radius Type: {typeof radius}</div>
           <div>Is Valid Radius: {isValidRadius ? 'Yes' : 'No'}</div>
           <div>Within Geofence: {isWithinGeofence !== null ? (isWithinGeofence ? 'Yes' : 'No') : 'Unknown'}</div>
+          <div>Coordinates Valid: {centerLat && centerLng && userLat && userLng ? 'Yes' : 'No'}</div>
+          <div>Center: {centerLat ? parseFloat(centerLat).toFixed(6) : 'N/A'}, {centerLng ? parseFloat(centerLng).toFixed(6) : 'N/A'}</div>
+          <div>User: {userLat ? parseFloat(userLat).toFixed(6) : 'N/A'}, {userLng ? parseFloat(userLng).toFixed(6) : 'N/A'}</div>
         </div>
         
         {/* Transaction Status */}

@@ -74,9 +74,9 @@ const Navbar = ({ user, employee, onLogout }) => {
   };
 
   return (
-    <nav className="bg-gradient-to-r from-blue-900 via-blue-800 to-purple-900 shadow-2xl border-b sticky top-0 z-50 transition-all duration-500">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center py-3">
+    <nav className="navbar-fixed bg-gradient-to-r from-blue-900 via-blue-800 to-purple-900 shadow-2xl border-b transition-all duration-500">
+      <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
+        <div className="flex justify-between items-center py-3 min-w-0">
           {/* Left: Logo/App Name and Role */}
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-2">
@@ -105,44 +105,44 @@ const Navbar = ({ user, employee, onLogout }) => {
             </button>
           </div>
           {/* Center: NavLinks */}
-          <div className="flex-1 flex justify-center">
+          <div className="flex-1 flex justify-center min-w-0">
             {/* Desktop NavLinks */}
-            <nav className="hidden lg:flex items-center gap-6">
+            <nav className="hidden lg:flex items-center gap-4 xl:gap-6">
               <NavLink to={getDashboardPath()} className={({ isActive }) =>
-                `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
+                `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
                   ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-              }>
+              } style={{ pointerEvents: 'auto' }}>
                 <DashboardIcon /> Dashboard
               </NavLink>
               {employee?.role === 'employee' && (
                 <NavLink to="/employee/request" className={({ isActive }) =>
-                  `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
+                  `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
                     ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-                }>
+                } style={{ pointerEvents: 'auto' }}>
                   <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h3m4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2h3a4 4 0 014 4v2" /></svg>
                   Request
                 </NavLink>
               )}
               {employee?.role === 'team_leader' ? (
                 <NavLink to="/team-leader-reports" className={({ isActive }) =>
-                  `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
+                  `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
                     ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-                }>
+                } style={{ pointerEvents: 'auto' }}>
                   <ReportsIcon /> Team Reports
                 </NavLink>
               ) : (
                 <NavLink to="/reports" className={({ isActive }) =>
-                  `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
+                  `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
                     ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-                }>
+                } style={{ pointerEvents: 'auto' }}>
                   <ReportsIcon /> Reports
                 </NavLink>
               )}
               {employee?.role === 'team_leader' && (
                 <NavLink to="/approval" className={({ isActive }) =>
-                  `flex items-center px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out 
+                  `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
                     ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-                }>
+                } style={{ pointerEvents: 'auto' }}>
                   <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                   For Approval
                 </NavLink>
@@ -150,7 +150,7 @@ const Navbar = ({ user, employee, onLogout }) => {
             </nav>
           </div>
           {/* Mobile NavLinks */}
-          <div className={`absolute top-16 left-0 w-full z-40 lg:hidden transition-all duration-500 ${showMobileMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`} style={{background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 50%, #a78bfa 100%)'}}>
+          <div className={`absolute top-16 left-0 w-full z-[1001] lg:hidden transition-all duration-500 ${showMobileMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`} style={{background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 50%, #a78bfa 100%)', zIndex: 1001}}>
             <nav className="flex flex-col items-center gap-2 py-4">
               <NavLink to={getDashboardPath()} className={({ isActive }) =>
                 `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
@@ -189,11 +189,12 @@ const Navbar = ({ user, employee, onLogout }) => {
             </nav>
           </div>
           {/* Right: Coordinates and User Info */}
-          <div className="flex items-center space-x-4 relative">
-            <div className="text-sm text-white/90 min-w-[120px] text-right">
+          <div className="flex items-center space-x-2 lg:space-x-4 relative">
+            {/* Coordinates - Hide on smaller screens to prevent overflow */}
+            <div className="hidden md:block text-sm text-white/90 min-w-0 max-w-[140px] text-right truncate">
               {coords.latitude && coords.longitude ? (
-                <span>
-                  📍 {coords.latitude.toFixed(4)}, {coords.longitude.toFixed(4)}
+                <span title={`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`}>
+                  📍 {coords.latitude.toFixed(3)}, {coords.longitude.toFixed(3)}
                 </span>
               ) : (
                 <span>📍 Location unavailable</span>
@@ -201,18 +202,21 @@ const Navbar = ({ user, employee, onLogout }) => {
             </div>
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center space-x-2 text-white hover:bg-white/10 rounded px-2 py-1 focus:outline-none transition-all duration-300"
+              className="flex items-center space-x-1 lg:space-x-2 text-white hover:bg-white/10 rounded px-1 lg:px-2 py-1 focus:outline-none transition-all duration-300 min-w-0 cursor-pointer"
+              style={{ pointerEvents: 'auto', zIndex: 1001 }}
             >
-              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
                 {user?.first_name?.[0]}{user?.last_name?.[0]}
               </div>
-              <span className="hidden sm:inline">{user?.first_name} {user?.last_name}</span>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span className="hidden lg:inline text-sm truncate max-w-[120px]" title={`${user?.first_name} ${user?.last_name}`}>
+                {user?.first_name} {user?.last_name}
+              </span>
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
             {showUserMenu && (
-              <div ref={userMenuRef} className="absolute right-0 mt-12 w-56 bg-white rounded-md shadow-lg py-3 z-50 animate-fade-in-down">
+              <div ref={userMenuRef} className="absolute right-0 mt-12 w-56 bg-white rounded-md shadow-lg py-3 z-[1001] animate-fade-in-down" style={{ zIndex: 1001, pointerEvents: 'auto' }}>
                 <div className="flex flex-col items-center mb-2 mt-16">
                   <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold mb-1">
                     {user?.first_name?.[0]}{user?.last_name?.[0]}
@@ -231,7 +235,8 @@ const Navbar = ({ user, employee, onLogout }) => {
                 </button>
                 <button
                   onClick={onLogout}
-                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+                  style={{ pointerEvents: 'auto' }}
                 >
                   Logout
                 </button>

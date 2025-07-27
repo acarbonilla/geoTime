@@ -9,6 +9,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  width: 100%;
 }
 
 code {
@@ -27,4 +28,83 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
+  width: 100%;
+}
+
+.App {
+  width: 100%;
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* Z-Index Hierarchy:
+ * 1-10: Main content
+ * 11-50: Dropdowns, tooltips
+ * 51-100: Modals, overlays
+ * 101-99998: Other UI elements
+ * 99999: Navbar (highest priority)
+ */
+
+/* Ensure navbar stays on top */
+nav {
+  position: sticky !important;
+  z-index: 1000 !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  pointer-events: auto;
+}
+
+/* Ensure navbar elements are clickable */
+nav * {
+  pointer-events: auto;
+}
+
+/* Ensure main content stays below navbar */
+main, .main-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Ensure modals and overlays are below navbar but above content */
+.modal-overlay, .drawer-overlay {
+  z-index: 100;
+}
+
+.modal-content, .drawer-content {
+  z-index: 101;
+}
+
+/* Force navbar to be on top */
+.navbar-fixed {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 1000 !important;
+  pointer-events: auto;
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 400px) {
+  .container {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  
+  /* Ensure content doesn't overflow on very small screens */
+  .min-h-screen {
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  
+  /* Reduce text sizes for very small screens */
+  .text-sm {
+    font-size: 0.875rem;
+  }
+  
+  /* Ensure buttons are properly sized */
+  button {
+    min-height: 2.5rem;
+  }
 }

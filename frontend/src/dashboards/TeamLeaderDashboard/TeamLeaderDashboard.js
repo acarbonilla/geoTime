@@ -230,8 +230,8 @@ const TeamLeaderDashboard = ({ employee }) => {
   if (!dashboard) return <div className="flex items-center justify-center min-h-screen bg-gray-50"><span className="text-lg">Loading dashboard data...</span></div>;
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-8 bg-gray-50 min-h-screen relative z-0">
-      <h1 className="text-3xl font-bold mb-8 text-blue-700">Team Leader Dashboard</h1>
+    <div className="max-w-6xl mx-auto p-2 sm:p-4 md:p-8 bg-gray-50 min-h-screen relative z-0">
+      <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 md:mb-8 text-blue-700">Team Leader Dashboard</h1>
       <TeamOverview
         teamMembersCount={dashboard?.team_members_count || 0}
         teamAttendance={dashboard?.team_attendance || { present: 0, absent: 0, late: 0 }}
@@ -243,16 +243,16 @@ const TeamLeaderDashboard = ({ employee }) => {
       />
 
       {/* Personal Time In/Out Section */}
-      <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-        <h2 className="text-xl font-semibold mb-4 text-gray-700">My Time In/Out</h2>
+      <div className="bg-white rounded-lg shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6 md:mb-8">
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-700">My Time In/Out</h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6">
           {/* Status Display */}
           <div className="text-center">
-            <div className={`text-lg font-semibold ${getStatusColor(personalStatus)}`}>
+            <div className={`text-base sm:text-lg font-semibold ${getStatusColor(personalStatus)}`}>
               {getStatusText(personalStatus)}
             </div>
-            <div className="text-sm text-gray-500 mt-1">
+            <div className="text-xs sm:text-sm text-gray-500 mt-1">
               {employee?.full_name}
             </div>
           </div>
@@ -260,30 +260,30 @@ const TeamLeaderDashboard = ({ employee }) => {
           {/* Location Status */}
           <div className="text-center">
             {locationError ? (
-              <div className="text-red-600 text-sm">{locationError}</div>
+              <div className="text-red-600 text-xs sm:text-sm">{locationError}</div>
             ) : currentLocation ? (
-              <div className="text-green-600 text-sm">
+              <div className="text-green-600 text-xs sm:text-sm">
                 ✓ Location obtained (Accuracy: {currentLocation.accuracy?.toFixed(1)}m)
               </div>
             ) : (
-              <div className="text-yellow-600 text-sm">Location not obtained</div>
+              <div className="text-yellow-600 text-xs sm:text-sm">Location not obtained</div>
             )}
             <button
               type="button"
               onClick={getCurrentLocation}
-              className="text-sm text-blue-600 hover:text-blue-800 underline mt-1"
+              className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 underline mt-1"
             >
               Refresh Location
             </button>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex space-x-3 justify-center">
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 justify-center">
             {personalStatus !== 'clocked_in' ? (
               <button
                 onClick={handlePersonalTimeIn}
                 disabled={isClockingIn}
-                className={`px-4 py-2 rounded-md font-medium ${
+                className={`px-3 sm:px-4 py-2 rounded-md font-medium text-sm sm:text-base ${
                   isClockingIn
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     : 'bg-green-600 text-white hover:bg-green-700'
@@ -295,7 +295,7 @@ const TeamLeaderDashboard = ({ employee }) => {
               <button
                 onClick={handlePersonalTimeOut}
                 disabled={isClockingOut}
-                className={`px-4 py-2 rounded-md font-medium ${
+                className={`px-3 sm:px-4 py-2 rounded-md font-medium text-sm sm:text-base ${
                   isClockingOut
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     : 'bg-red-600 text-white hover:bg-red-700'
@@ -306,7 +306,7 @@ const TeamLeaderDashboard = ({ employee }) => {
             )}
             <button
               onClick={checkCurrentSession}
-              className="px-3 py-2 text-sm bg-gray-500 text-white rounded-md hover:bg-gray-600"
+              className="px-3 py-2 text-xs sm:text-sm bg-gray-500 text-white rounded-md hover:bg-gray-600"
             >
               Check Status
             </button>
@@ -315,7 +315,7 @@ const TeamLeaderDashboard = ({ employee }) => {
 
         {/* Error Message */}
         {error && (
-          <div className="mt-4 text-red-600 text-sm p-2 bg-red-50 rounded">
+          <div className="mt-3 sm:mt-4 text-red-600 text-xs sm:text-sm p-2 bg-red-50 rounded">
             {error}
           </div>
         )}
@@ -334,7 +334,7 @@ const TeamLeaderDashboard = ({ employee }) => {
       <AbsentTodayDrawer open={absentTodayDrawerOpen} onClose={() => setAbsentTodayDrawerOpen(false)} />
       
       {/* Time In/Out Manager and Team Map */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8 relative z-0">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:gap-8 mb-4 sm:mb-6 md:mb-8 relative z-0">
         <div className="lg:col-span-1">
           <TimeInOutManager 
             teamMembers={teamMembers}
