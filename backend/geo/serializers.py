@@ -141,7 +141,7 @@ class TimeEntrySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'employee_pk', 'employee_id', 'user_id', 'username',
             'employee_name', 'department_name', 'location_name',
-            'entry_type', 'timestamp', 'event_time', 'updated_on', 'location', 'latitude', 'longitude', 'accuracy', 'notes', 'ip_address', 'formatted_timestamp', 'updated_by'
+            'entry_type', 'timestamp', 'event_time', 'updated_on', 'location', 'latitude', 'longitude', 'accuracy', 'notes', 'overtime', 'ip_address', 'formatted_timestamp', 'updated_by'
         ]
         read_only_fields = ['id', 'timestamp', 'ip_address']
 
@@ -169,16 +169,13 @@ class TimeEntryListSerializer(serializers.ModelSerializer):
         model = TimeEntry
         fields = [
             'id', 'employee_name', 'employee_id', 'department_name', 'location_name',
-            'entry_type', 'timestamp', 'event_time', 'updated_on', 'latitude', 'longitude', 'accuracy', 'formatted_timestamp', 'notes', 'updated_by'
+            'entry_type', 'timestamp', 'event_time', 'updated_on', 'latitude', 'longitude', 'accuracy', 'formatted_timestamp', 'notes', 'overtime', 'updated_by'
         ]
         read_only_fields = ['id', 'timestamp']
-
+    
     def get_updated_by(self, obj):
         if obj.updated_by:
-            return {
-                'id': obj.updated_by.id,
-                'username': obj.updated_by.username,
-            }
+            return obj.updated_by.get_full_name()
         return None
 
 

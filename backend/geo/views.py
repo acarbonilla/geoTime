@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.contrib.auth.models import User
-from django.db.models import Q, Count, Avg
+from django.db.models import Q, Count, Avg, Sum, F, ExpressionWrapper, DecimalField
+from django.db.models.functions import TruncDate, TruncHour
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
@@ -8,10 +9,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import authenticate
-from django.http import HttpResponse
+from django.contrib.auth import authenticate, login, logout
+from django.http import HttpResponse, JsonResponse
 from datetime import timedelta
 import csv
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.conf import settings
 
 from .models import (
     Location, Department, Employee, TimeEntry, WorkSession, 
@@ -757,6 +763,116 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
             timestamp__date=today_local
         )
         serializer = TimeEntryListSerializer(today_entries, many=True)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Custom partial update to handle timestamp updates"""
+        print(f"[DEBUG] partial_update called with data: {request.data}")
+        print(f"[DEBUG] User: {request.user}")
+        
+        instance = self.get_object()
+        print(f"[DEBUG] TimeEntry instance: {instance.id}")
+        
+        user = request.user
+        
+        # Check if user has permission to update this time entry
+        if not hasattr(user, 'employee_profile'):
+            print("[DEBUG] No employee profile found")
+            return Response({'error': 'Employee profile not found'}, status=status.HTTP_403_FORBIDDEN)
+        
+        employee = user.employee_profile
+        print(f"[DEBUG] Employee: {employee.full_name}, Role: {employee.role}")
+        print(f"[DEBUG] TimeEntry employee: {instance.employee.full_name}")
+        
+        # Only allow Team Leaders to edit time entries (for operational purposes)
+        can_update = employee.role == 'team_leader'
+        
+        # Additional check: Team Leaders can only edit entries of their team members
+        if can_update:
+            team_members = employee.get_team_members()
+            print(f"[DEBUG] Team members: {[tm.full_name for tm in team_members]}")
+            print(f"[DEBUG] Entry employee in team: {instance.employee in team_members}")
+            if instance.employee not in team_members:
+                can_update = False
+                print(f"[DEBUG] Permission denied: Entry employee not in team members")
+        
+        print(f"[DEBUG] Can update: {can_update}")
+        
+        if not can_update:
+            print("[DEBUG] Permission denied")
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Handle timestamp update
+        if 'timestamp' in request.data:
+            print(f"[DEBUG] Processing timestamp: {request.data['timestamp']}")
+            try:
+                from datetime import datetime
+                import pytz
+                
+                timestamp_str = request.data['timestamp']
+                
+                # Try to parse ISO format first
+                try:
+                    new_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                except ValueError:
+                    # Fallback to basic parsing
+                    new_timestamp = datetime.fromisoformat(timestamp_str)
+                
+                print(f"[DEBUG] Parsed timestamp: {new_timestamp}")
+                
+                # If the parsed datetime is naive, assume UTC
+                if new_timestamp.tzinfo is None:
+                    new_timestamp = pytz.UTC.localize(new_timestamp)
+                
+                instance.timestamp = new_timestamp
+                instance.updated_by = user
+                instance.updated_on = timezone.now()
+                
+            except Exception as e:
+                print(f"[DEBUG] Timestamp parsing error: {e}")
+                return Response({
+                    'error': 'Invalid timestamp format',
+                    'details': str(e),
+                    'received_timestamp': timestamp_str
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Handle other fields
+        if 'notes' in request.data:
+            print(f"[DEBUG] Processing notes: {request.data['notes']}")
+            instance.notes = request.data['notes']
+            instance.updated_by = user
+            instance.updated_on = timezone.now()
+        
+        if 'overtime' in request.data:
+            print(f"[DEBUG] Processing overtime: {request.data['overtime']}")
+            # Store overtime in the dedicated overtime field
+            try:
+                overtime_value = float(request.data['overtime'])
+                instance.overtime = overtime_value
+                instance.updated_by = user
+                instance.updated_on = timezone.now()
+                print(f"[DEBUG] Overtime set to: {overtime_value}")
+            except (ValueError, TypeError) as e:
+                print(f"[DEBUG] Invalid overtime value: {request.data['overtime']}")
+                return Response({
+                    'error': 'Invalid overtime value. Must be a number.',
+                    'details': str(e)
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            print("[DEBUG] Saving instance...")
+            instance.save()
+            print("[DEBUG] Instance saved successfully")
+        except Exception as e:
+            print(f"[DEBUG] Save error: {e}")
+            return Response({
+                'error': 'Failed to save time entry',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Return updated data
+        serializer = self.get_serializer(instance)
+        print(f"[DEBUG] Returning updated data: {serializer.data}")
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])

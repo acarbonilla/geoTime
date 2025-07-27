@@ -203,6 +203,7 @@ class TimeEntry(models.Model):
     longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True, help_text='Longitude at time entry')
     accuracy = models.FloatField(null=True, blank=True, help_text='Location accuracy in meters')
     notes = models.TextField(blank=True, null=True)
+    overtime = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True, help_text='Overtime hours for this time entry')
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     device_info = models.CharField(max_length=255, blank=True, null=True)
     updated_by = models.ForeignKey(
