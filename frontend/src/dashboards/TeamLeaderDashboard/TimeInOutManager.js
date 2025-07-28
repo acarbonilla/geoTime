@@ -121,8 +121,8 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
   const isGeofenceBlocking = geofenceValidation && !geofenceValidation.valid && !overrideGeofence;
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      <h2 className="text-xl font-semibold mb-6 text-gray-700">Time In/Out Manager</h2>
+    <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-xl border border-white/20 p-6">
+      <h2 className="text-xl font-semibold mb-6 text-gray-800">Time In/Out Manager</h2>
       
       <div>
         {/* Form Section */}
@@ -135,7 +135,7 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
               <select
                 value={selectedEmployee}
                 onChange={(e) => handleEmployeeChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors bg-white/90"
                 required
               >
                 <option value="">Choose an employee...</option>
@@ -184,7 +184,7 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors bg-white/90"
                 rows="3"
                 placeholder="Add any notes about this time entry..."
               />
@@ -196,18 +196,18 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
                 Location Status
               </label>
               {locationError ? (
-                <div className="text-red-600 text-sm mb-2">{locationError}</div>
+                <div className="text-red-600 text-sm mb-2 bg-red-50 p-2 rounded-lg border border-red-200">{locationError}</div>
               ) : currentLocation ? (
-                <div className="text-green-600 text-sm mb-2">
+                <div className="text-green-600 text-sm mb-2 bg-green-50 p-2 rounded-lg border border-green-200">
                   ✓ Location obtained (Accuracy: {currentLocation.accuracy?.toFixed(1)}m)
                 </div>
               ) : (
-                <div className="text-yellow-600 text-sm mb-2">Getting location...</div>
+                <div className="text-yellow-600 text-sm mb-2 bg-yellow-50 p-2 rounded-lg border border-yellow-200">Getting location...</div>
               )}
               <button
                 type="button"
                 onClick={getCurrentLocation}
-                className="text-sm text-blue-600 hover:text-blue-800 underline"
+                className="text-sm text-blue-600 hover:text-blue-800 underline transition-colors"
               >
                 Refresh Location
               </button>
@@ -219,7 +219,7 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Geofence Validation
                 </label>
-                <div className={`text-sm p-2 rounded ${geofenceValidation.valid ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                <div className={`text-sm p-3 rounded-lg border ${geofenceValidation.valid ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                   {geofenceValidation.message}
                   {geofenceValidation.distance && (
                     <div className="mt-1">
@@ -252,12 +252,12 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
 
             {/* Error/Success Messages */}
             {error && (
-              <div className="text-red-600 text-sm p-2 bg-red-50 rounded">
+              <div className="text-red-600 text-sm p-3 bg-red-50 rounded-lg border border-red-200">
                 {error}
               </div>
             )}
             {success && (
-              <div className="text-green-600 text-sm p-2 bg-green-50 rounded">
+              <div className="text-green-600 text-sm p-3 bg-green-50 rounded-lg border border-green-200">
                 {success}
               </div>
             )}
@@ -266,16 +266,36 @@ const TimeInOutManager = ({ teamMembers, onTimeEntryCreated }) => {
             <button
               type="submit"
               disabled={loading || !selectedEmployee || !currentLocation || isGeofenceBlocking}
-              className={`w-full py-2 px-4 rounded-md font-medium ${
+              className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-200 transform hover:scale-105 ${
                 loading || !selectedEmployee || !currentLocation || isGeofenceBlocking
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : action === 'time-in'
-                  ? 'bg-green-600 text-white hover:bg-green-700'
-                  : 'bg-red-600 text-white hover:bg-red-700'
+                  ? 'bg-gradient-to-r from-green-500 to-green-600 text-white hover:from-green-600 hover:to-green-700 shadow-lg hover:shadow-xl'
+                  : 'bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl'
               }`}
             >
-              {loading ? 'Processing...' : `${action === 'time-in' ? 'Clock In' : 'Clock Out'}`}
+              {loading ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>Processing...</span>
+                </div>
+              ) : (
+                `${action === 'time-in' ? 'Clock In' : 'Clock Out'}`
+              )}
             </button>
+
+            {/* Enhanced Loading Message */}
+            {loading && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <div>
+                    <div className="text-blue-700 font-medium">Processing Time Entry</div>
+                    <div className="text-blue-600 text-sm">Please wait while we save your time entry...</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
       </div>
     </div>

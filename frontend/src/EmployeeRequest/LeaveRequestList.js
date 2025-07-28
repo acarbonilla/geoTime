@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from '../utils/axiosInstance';
 import { FaUserClock, FaCalendarAlt, FaUserCheck, FaUserTimes, FaHourglassHalf, FaSort, FaSortUp, FaSortDown, FaUser, FaEdit, FaTrash } from 'react-icons/fa';
 import LeaveRequestForm from './LeaveRequestForm';
@@ -21,34 +22,25 @@ const LEAVE_TYPE_COLORS = {
   other: 'bg-yellow-100 text-yellow-800',
 };
 
-const LeaveRequestList = () => {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+const LeaveRequestList = ({ requests = [], isLoading = false, error = null }) => {
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
   const [sortField, setSortField] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [editRequest, setEditRequest] = useState(null);
 
-  useEffect(() => {
-    const fetchRequests = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const res = await axios.get('leave-requests/');
-        setRequests(res.data.results || res.data || []);
-      } catch (err) {
-        setError('Failed to load leave requests.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchRequests();
-  }, [refreshKey]);
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (requestId) => {
+      await axios.delete(`leave-requests/${requestId}/`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
+    },
+  });
 
   // Filtering
   const filteredRequests = useMemo(() => {
@@ -101,8 +93,7 @@ const LeaveRequestList = () => {
   const handleDelete = async (req) => {
     if (!window.confirm('Are you sure you want to delete this leave request?')) return;
     try {
-      await axios.delete(`leave-requests/${req.id}/`);
-      setRefreshKey(k => k + 1);
+      await deleteMutation.mutateAsync(req.id);
     } catch (err) {
       alert('Failed to delete leave request. Only pending requests can be deleted.');
     }
@@ -111,15 +102,38 @@ const LeaveRequestList = () => {
   const handleFormSuccess = () => {
     setShowForm(false);
     setEditRequest(null);
-    setRefreshKey(k => k + 1);
   };
 
-  useEffect(() => {
-    setCurrentPage(1);
+  React.useEffect(() => {
+    setCurrentPage(1); // Reset to first page on filter/sort change
   }, [statusFilter, sortField, sortOrder, pageSize]);
 
-  if (loading) return <div className="text-center py-4">Loading leave requests...</div>;
-  if (error) return <div className="text-red-500 text-center py-4">{error}</div>;
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="ml-2 text-gray-600">Loading leave requests...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <FaUserTimes className="h-5 w-5 text-red-400" />
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-red-800">Error loading leave requests</h3>
+            <div className="mt-2 text-sm text-red-700">
+              {error.message || 'Failed to load leave requests. Please try again.'}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white p-8 rounded-2xl shadow-xl mt-6 animate-fade-in">
@@ -207,7 +221,7 @@ const LeaveRequestList = () => {
                     {req.end_date}
                   </td>
                   <td className="px-3 py-2 font-semibold">
-                    {req.duration_days || '-'} day{req.duration_days !== 1 ? 's' : ''}
+                    {req.number_days || req.duration_days || '-'} day{(req.number_days || req.duration_days) !== 1 ? 's' : ''}
                   </td>
                   <td className="px-3 py-2 max-w-xs truncate" title={req.reason}>
                     {req.reason || '-'}

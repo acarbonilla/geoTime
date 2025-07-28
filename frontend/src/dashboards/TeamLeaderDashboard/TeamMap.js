@@ -42,10 +42,10 @@ const TeamMap = ({ teamLeaderLocation, teamMembers = [], refreshTrigger = 0 }) =
   // If no team leader location, show a message
   if (!teamLeaderLocation || !teamLeaderLocation.latitude || !teamLeaderLocation.longitude) {
     return (
-      <div className="bg-white rounded-lg shadow-lg p-6 relative z-0">
-        <h2 className="text-xl font-semibold mb-4 text-gray-700">Team Locations</h2>
-        <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-          <div className="text-gray-500 text-center">
+      <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-xl border border-white/20 p-6 relative z-0">
+        <h2 className="text-xl font-semibold mb-4 text-gray-800">Team Locations</h2>
+        <div className="h-64 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
+          <div className="text-gray-600 text-center">
             No location data available.<br />
             Please contact your administrator to set up your department location.
           </div>
@@ -66,10 +66,10 @@ const TeamMap = ({ teamLeaderLocation, teamMembers = [], refreshTrigger = 0 }) =
   // Check if coordinates are valid
   if (lat === null || lng === null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return (
-      <div className="bg-white rounded-lg shadow-lg p-6 relative z-0">
-        <h2 className="text-xl font-semibold mb-4 text-gray-700">Team Locations</h2>
-        <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-          <div className="text-gray-500 text-center">
+      <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-xl border border-white/20 p-6 relative z-0">
+        <h2 className="text-xl font-semibold mb-4 text-gray-800">Team Locations</h2>
+        <div className="h-64 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
+          <div className="text-gray-600 text-center">
             Invalid location coordinates.<br />
             Please contact your administrator to fix the location data.
           </div>
@@ -81,17 +81,17 @@ const TeamMap = ({ teamLeaderLocation, teamMembers = [], refreshTrigger = 0 }) =
   const center = [lat, lng];
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6 relative z-0">
+    <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-xl border border-white/20 p-6 relative z-0">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-gray-700">Team Locations</h2>
+        <h2 className="text-xl font-semibold text-gray-800">Team Locations</h2>
         <div className="text-xs text-gray-500">
           Last updated: {lastRefresh.toLocaleTimeString()}
         </div>
       </div>
       
       {/* Legend */}
-      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-        <div className="flex items-center space-x-4 text-sm text-gray-600">
+      <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+        <div className="flex items-center space-x-4 text-sm text-gray-700">
           <div className="flex items-center">
             <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
             <span>Team Leader (TL)</span>

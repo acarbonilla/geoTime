@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from '../utils/axiosInstance';
-import { FaCalendarAlt, FaRegStickyNote, FaUserClock } from 'react-icons/fa';
+import { FaCalendarAlt, FaUserClock, FaRegStickyNote } from 'react-icons/fa';
 
 const LEAVE_TYPES = [
   { value: 'vacation', label: 'Vacation Leave' },
@@ -12,13 +11,13 @@ const LEAVE_TYPES = [
   { value: 'other', label: 'Other' },
 ];
 
-const LeaveRequestForm = ({ onSuccess, onClose, request }) => {
+const LeaveRequestForm = ({ onSuccess, onClose, request, mutation }) => {
   const isEdit = !!request;
   const [leaveType, setLeaveType] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [numberDays, setNumberDays] = useState('');
   const [reason, setReason] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -26,11 +25,13 @@ const LeaveRequestForm = ({ onSuccess, onClose, request }) => {
       setLeaveType(request.leave_type || '');
       setStartDate(request.start_date || '');
       setEndDate(request.end_date || '');
+      setNumberDays(request.number_days?.toString() || '');
       setReason(request.reason || '');
     } else {
       setLeaveType('');
       setStartDate('');
       setEndDate('');
+      setNumberDays('');
       setReason('');
     }
   }, [isEdit, request]);
@@ -38,36 +39,43 @@ const LeaveRequestForm = ({ onSuccess, onClose, request }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!leaveType || !startDate || !endDate || !reason) {
+    
+    if (!leaveType || !startDate || !endDate || !numberDays || !reason) {
       setError('All fields are required.');
       return;
     }
-    if (new Date(startDate) > new Date(endDate)) {
-      setError('Start date cannot be after end date.');
+
+    if (parseFloat(numberDays) <= 0) {
+      setError('Number of days must be greater than 0.');
       return;
     }
-    setLoading(true);
+
+    const formData = {
+      leave_type: leaveType,
+      start_date: startDate,
+      end_date: endDate,
+      number_days: parseFloat(numberDays),
+      reason,
+    };
+
     try {
-      if (isEdit) {
-        await axios.patch(`leave-requests/${request.id}/`, {
-          leave_type: leaveType,
-          start_date: startDate,
-          end_date: endDate,
-          reason,
-        });
+      if (mutation) {
+        await mutation.mutateAsync(formData);
       } else {
-        await axios.post('leave-requests/', {
-          leave_type: leaveType,
-          start_date: startDate,
-          end_date: endDate,
-          reason,
-        });
+        // Fallback to direct axios call if no mutation provided
+        const axios = (await import('../utils/axiosInstance')).default;
+        if (isEdit) {
+          await axios.patch(`leave-requests/${request.id}/`, formData);
+        } else {
+          await axios.post('leave-requests/', formData);
+        }
       }
       if (onSuccess) onSuccess();
     } catch (err) {
-      setError('Failed to submit leave request.');
-    } finally {
-      setLoading(false);
+      const errorMessage = err.response?.data?.detail || 
+                          (err.response?.data && Object.values(err.response.data).flat().join(', ')) ||
+                          'Failed to submit leave request.';
+      setError(errorMessage);
     }
   };
 
@@ -121,6 +129,22 @@ const LeaveRequestForm = ({ onSuccess, onClose, request }) => {
           </label>
         </div>
         <label className="flex flex-col font-medium">
+          Number of Days
+          <input
+            type="number"
+            className="mt-1 border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            value={numberDays}
+            onChange={e => setNumberDays(e.target.value)}
+            placeholder="Enter number of days (excluding weekends)"
+            min="0.5"
+            step="0.5"
+            required
+          />
+          <span className="text-xs text-gray-500 mt-1">
+            Enter the actual number of working days (excluding weekends and holidays)
+          </span>
+        </label>
+        <label className="flex flex-col font-medium">
           Reason
           <div className="relative mt-1">
             <span className="absolute left-3 top-2.5 text-blue-400"><FaRegStickyNote /></span>
@@ -140,16 +164,16 @@ const LeaveRequestForm = ({ onSuccess, onClose, request }) => {
           type="button"
           className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold"
           onClick={onClose}
-          disabled={loading}
+          disabled={mutation?.isLoading}
         >
           Cancel
         </button>
         <button
           type="submit"
           className="px-5 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow disabled:opacity-60"
-          disabled={loading}
+          disabled={mutation?.isLoading}
         >
-          {loading ? (isEdit ? 'Saving...' : 'Submitting...') : (isEdit ? 'Save Changes' : 'Submit Request')}
+          {mutation?.isLoading ? (isEdit ? 'Saving...' : 'Submitting...') : (isEdit ? 'Save Changes' : 'Submit Request')}
         </button>
       </div>
     </form>

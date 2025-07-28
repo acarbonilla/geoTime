@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import axios from '../utils/axiosInstance';
 import OvertimeRequestForm from './OvertimeRequestForm';
 import LeaveRequestForm from './LeaveRequestForm';
 import ChangeScheduleRequestForm from './ChangeScheduleRequestForm';
@@ -17,9 +19,67 @@ const EmployeeRequestPage = () => {
   const [showOvertimeForm, setShowOvertimeForm] = useState(false);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [showChangeScheduleForm, setShowChangeScheduleForm] = useState(false);
-  const [overtimeListKey, setOvertimeListKey] = useState(0);
-  const [leaveListKey, setLeaveListKey] = useState(0);
-  const [changeScheduleListKey, setChangeScheduleListKey] = useState(0);
+  const queryClient = useQueryClient();
+
+  // Overtime requests query and mutations
+  const overtimeRequestsQuery = useQuery({
+    queryKey: ['overtime-requests'],
+    queryFn: async () => {
+      const response = await axios.get('overtime-requests/');
+      return response.data.results || response.data || [];
+    },
+  });
+
+  const overtimeMutation = useMutation({
+    mutationFn: async (data) => {
+      const response = await axios.post('overtime-requests/', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overtime-requests'] });
+      setShowOvertimeForm(false);
+    },
+  });
+
+  // Leave requests query and mutations
+  const leaveRequestsQuery = useQuery({
+    queryKey: ['leave-requests'],
+    queryFn: async () => {
+      const response = await axios.get('leave-requests/');
+      return response.data.results || response.data || [];
+    },
+  });
+
+  const leaveMutation = useMutation({
+    mutationFn: async (data) => {
+      const response = await axios.post('leave-requests/', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
+      setShowLeaveForm(false);
+    },
+  });
+
+  // Change schedule requests query and mutations
+  const changeScheduleRequestsQuery = useQuery({
+    queryKey: ['change-schedule-requests'],
+    queryFn: async () => {
+      const response = await axios.get('change-schedule-requests/');
+      return response.data.results || response.data || [];
+    },
+  });
+
+  const changeScheduleMutation = useMutation({
+    mutationFn: async (data) => {
+      const response = await axios.post('change-schedule-requests/', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['change-schedule-requests'] });
+      setShowChangeScheduleForm(false);
+    },
+  });
 
   return (
     <div className="max-w-6xl mx-auto py-10 px-4 animate-fade-in">
@@ -75,15 +135,19 @@ const EmployeeRequestPage = () => {
                   <OvertimeRequestForm
                     onSuccess={() => {
                       setShowOvertimeForm(false);
-                      setOvertimeListKey(k => k + 1);
                     }}
                     onClose={() => setShowOvertimeForm(false)}
+                    mutation={overtimeMutation}
                   />
                 </div>
               </div>
             </>
           )}
-          <OvertimeRequestsList key={overtimeListKey} />
+          <OvertimeRequestsList 
+            requests={overtimeRequestsQuery.data || []}
+            isLoading={overtimeRequestsQuery.isLoading}
+            error={overtimeRequestsQuery.error}
+          />
         </>
       )}
 
@@ -121,15 +185,19 @@ const EmployeeRequestPage = () => {
                   <LeaveRequestForm
                     onSuccess={() => {
                       setShowLeaveForm(false);
-                      setLeaveListKey(k => k + 1);
                     }}
                     onClose={() => setShowLeaveForm(false)}
+                    mutation={leaveMutation}
                   />
                 </div>
               </div>
             </>
           )}
-          <LeaveRequestList key={leaveListKey} />
+          <LeaveRequestList 
+            requests={leaveRequestsQuery.data || []}
+            isLoading={leaveRequestsQuery.isLoading}
+            error={leaveRequestsQuery.error}
+          />
         </>
       )}
 
@@ -167,15 +235,19 @@ const EmployeeRequestPage = () => {
                   <ChangeScheduleRequestForm
                     onSuccess={() => {
                       setShowChangeScheduleForm(false);
-                      setChangeScheduleListKey(k => k + 1);
                     }}
                     onClose={() => setShowChangeScheduleForm(false)}
+                    mutation={changeScheduleMutation}
                   />
                 </div>
               </div>
             </>
           )}
-          <ChangeScheduleRequestList key={changeScheduleListKey} />
+          <ChangeScheduleRequestList 
+            requests={changeScheduleRequestsQuery.data || []}
+            isLoading={changeScheduleRequestsQuery.isLoading}
+            error={changeScheduleRequestsQuery.error}
+          />
         </>
       )}
       {/* Future: Add more tab content here */}

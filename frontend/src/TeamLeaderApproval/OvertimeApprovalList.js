@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import axios from '../utils/axiosInstance';
-import { FaTicketAlt, FaCalendarAlt, FaClock, FaUserCheck, FaUserTimes, FaHourglassHalf, FaSort, FaSortUp, FaSortDown, FaUser, FaCheck, FaTimes } from 'react-icons/fa';
+import React, { useState, useMemo, useEffect } from 'react';
+import { FaTicketAlt, FaCalendarAlt, FaClock, FaUserCheck, FaUserTimes, FaHourglassHalf, FaSort, FaSortUp, FaSortDown, FaUser, FaCheck, FaTimes, FaEdit, FaBan } from 'react-icons/fa';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 const STATUS_OPTIONS = [
@@ -8,39 +7,35 @@ const STATUS_OPTIONS = [
   { value: 'pending', label: 'Pending' },
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
+  { value: 'cancelled', label: 'Cancelled' },
 ];
 
-const OvertimeApprovalList = () => {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+const OvertimeApprovalList = ({ 
+  requests = [], 
+  onApproval, 
+  isApproving = false,
+  onUpdate,
+  isUpdating = false
+}) => {
   const [statusFilter, setStatusFilter] = useState('');
   const [sortField, setSortField] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [approvalAction, setApprovalAction] = useState(''); // 'approve' or 'reject'
   const [approvalComment, setApprovalComment] = useState('');
-  const [approvalLoading, setApprovalLoading] = useState(false);
-
-  useEffect(() => {
-    const fetchRequests = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const res = await axios.get('overtime-requests/');
-        setRequests(res.data.results || res.data || []);
-      } catch (err) {
-        setError('Failed to load overtime requests.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchRequests();
-  }, [refreshKey]);
+  
+  // Edit modal state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    ticket: '',
+    date: '',
+    start_time: '',
+    end_time: '',
+    reason: ''
+  });
 
   // Filtering
   const filteredRequests = useMemo(() => {
@@ -92,24 +87,70 @@ const OvertimeApprovalList = () => {
     setShowApprovalModal(true);
   };
 
+  const handleEdit = (request) => {
+    setSelectedRequest(request);
+    setEditForm({
+      ticket: request.ticket || '',
+      date: request.date || '',
+      start_time: request.start_time || '',
+      end_time: request.end_time || '',
+      reason: request.reason || ''
+    });
+    setShowEditModal(true);
+  };
+
   const submitApproval = async () => {
-    if (!selectedRequest) return;
+    if (!selectedRequest || !onApproval) return;
     
-    setApprovalLoading(true);
     try {
-      const endpoint = approvalAction === 'approve' ? 'approve' : 'reject';
-      await axios.post(`overtime-requests/${selectedRequest.id}/${endpoint}/`, {
+      await onApproval({
+        id: selectedRequest.id,
+        action: approvalAction,
         comments: approvalComment
       });
       setShowApprovalModal(false);
       setSelectedRequest(null);
       setApprovalAction('');
       setApprovalComment('');
-      setRefreshKey(k => k + 1);
     } catch (err) {
       alert(`Failed to ${approvalAction} request: ${err.response?.data?.detail || err.message}`);
-    } finally {
-      setApprovalLoading(false);
+    }
+  };
+
+  const submitEdit = async () => {
+    if (!selectedRequest || !onUpdate) return;
+    
+    try {
+      await onUpdate({
+        id: selectedRequest.id,
+        data: editForm
+      });
+      setShowEditModal(false);
+      setSelectedRequest(null);
+      setEditForm({
+        ticket: '',
+        date: '',
+        start_time: '',
+        end_time: '',
+        reason: ''
+      });
+    } catch (err) {
+      alert(`Failed to update request: ${err.response?.data?.detail || err.message}`);
+    }
+  };
+
+  const handleCancelRequest = async (request) => {
+    if (!window.confirm(`Are you sure you want to cancel this overtime request? This action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      await onUpdate({
+        id: request.id,
+        data: { status: 'cancelled' }
+      });
+    } catch (err) {
+      alert(`Failed to cancel request: ${err.response?.data?.detail || err.message}`);
     }
   };
 
@@ -117,234 +158,544 @@ const OvertimeApprovalList = () => {
     setCurrentPage(1);
   }, [statusFilter, sortField, sortOrder, pageSize]);
 
-  if (loading) return <div className="text-center py-4">Loading overtime requests...</div>;
-  if (error) return <div className="text-red-500 text-center py-4">{error}</div>;
+  if (requests.length === 0) {
+    return (
+      <div className="bg-white p-8 rounded-2xl shadow-xl mt-6 animate-fade-in">
+        <div className="text-center">
+          <div className="text-gray-500 text-lg mb-2">No overtime requests found</div>
+          <div className="text-gray-400">There are no overtime requests to review at this time.</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-white p-8 rounded-2xl shadow-xl mt-6 animate-fade-in">
-      <h2 className="text-2xl font-bold mb-4 text-blue-700 flex items-center gap-2">
-        <FaTicketAlt className="text-blue-400" /> Team Overtime Requests
-      </h2>
-      
-      {/* Filter and sort controls */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Status:</label>
-          <select
-            className="border rounded px-2 py-1 text-sm"
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-          >
-            {STATUS_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Sort by:</label>
-          <button
-            className={`flex items-center gap-1 px-2 py-1 rounded ${sortField === 'created_at' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}
-            onClick={() => handleSort('created_at')}
-          >
-            Date {sortField === 'created_at' && (sortOrder === 'asc' ? <FaSortUp /> : <FaSortDown />)}
-            {sortField !== 'created_at' && <FaSort />}
-          </button>
-          <button
-            className={`flex items-center gap-1 px-2 py-1 rounded ${sortField === 'status' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}
-            onClick={() => handleSort('status')}
-          >
-            Status {sortField === 'status' && (sortOrder === 'asc' ? <FaSortUp /> : <FaSortDown />)}
-            {sortField !== 'status' && <FaSort />}
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Show:</label>
-          <select
-            className="border rounded px-2 py-1 text-sm"
-            value={pageSize}
-            onChange={e => setPageSize(Number(e.target.value))}
-          >
-            {PAGE_SIZE_OPTIONS.map(size => (
-              <option key={size} value={size}>{size}</option>
-            ))}
-          </select>
-          <span className="text-sm">per page</span>
+    <div className="bg-white rounded-2xl shadow-xl mt-6 animate-fade-in">
+      {/* Header */}
+      <div className="p-6 border-b border-gray-200">
+        <h2 className="text-2xl font-bold text-blue-700 mb-4">Overtime Requests</h2>
+        
+        {/* Filters */}
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium text-gray-700">Status:</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {STATUS_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium text-gray-700">Page Size:</label>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {PAGE_SIZE_OPTIONS.map(size => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
       {/* Table */}
-      {paginatedRequests.length === 0 ? (
-        <div className="text-gray-500">No overtime requests found.</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-blue-50">
-                <th className="px-3 py-2 text-left">Employee</th>
-                <th className="px-3 py-2 text-left">Ticket</th>
-                <th className="px-3 py-2 text-left">Date</th>
-                <th className="px-3 py-2 text-left">Start</th>
-                <th className="px-3 py-2 text-left">End</th>
-                <th className="px-3 py-2 text-left">Reason</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-left">Approver</th>
-                <th className="px-3 py-2 text-left">Comments</th>
-                <th className="px-3 py-2 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedRequests.map((req, idx) => (
-                <tr key={req.id} className={`border-b ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} animate-fade-in`} style={{animationDelay: `${idx * 40}ms`}}>
-                  <td className="px-3 py-2 font-semibold">
-                    <FaUser className="text-blue-400 inline mr-1" />
-                    {req.employee_name || '-'}
-                  </td>
-                  <td className="px-3 py-2 font-semibold">
-                    <FaTicketAlt className="text-blue-400 inline mr-1" />
-                    {req.ticket || '-'}
-                  </td>
-                  <td className="px-3 py-2">
-                    <FaCalendarAlt className="text-blue-400 inline mr-1" />
-                    {req.date}
-                  </td>
-                  <td className="px-3 py-2">
-                    <FaClock className="text-blue-400 inline mr-1" />
-                    {req.start_time || '-'}
-                  </td>
-                  <td className="px-3 py-2">
-                    <FaClock className="text-blue-400 inline mr-1" />
-                    {req.end_time || '-'}
-                  </td>
-                  <td className="px-3 py-2">{req.reason || '-'}</td>
-                  <td className="px-3 py-2 capitalize">
-                    {req.status === 'pending' && <span className="inline-flex items-center gap-1 text-yellow-700 bg-yellow-100 px-2 py-1 rounded-full font-semibold"><FaHourglassHalf /> Pending</span>}
-                    {req.status === 'approved' && <span className="inline-flex items-center gap-1 text-green-700 bg-green-100 px-2 py-1 rounded-full font-semibold"><FaUserCheck /> Approved</span>}
-                    {req.status === 'rejected' && <span className="inline-flex items-center gap-1 text-red-700 bg-red-100 px-2 py-1 rounded-full font-semibold"><FaUserTimes /> Rejected</span>}
-                  </td>
-                  <td className="px-3 py-2">{req.approver_name || '-'}</td>
-                  <td className="px-3 py-2">{req.comments || '-'}</td>
-                  <td className="px-3 py-2">
-                    {req.status === 'pending' && (
-                      <div className="flex gap-2">
-                        <button
-                          className="px-3 py-1 rounded bg-green-100 text-green-800 hover:bg-green-200 font-semibold flex items-center gap-1"
-                          onClick={() => handleApproval(req, 'approve')}
-                        >
-                          <FaCheck /> Approve
-                        </button>
-                        <button
-                          className="px-3 py-1 rounded bg-red-100 text-red-800 hover:bg-red-200 font-semibold flex items-center gap-1"
-                          onClick={() => handleApproval(req, 'reject')}
-                        >
-                          <FaTimes /> Reject
-                        </button>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Employee
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <button
+                  onClick={() => handleSort('date')}
+                  className="flex items-center space-x-1 hover:text-blue-600 transition-colors"
+                >
+                  <span>Date</span>
+                  {sortField === 'date' ? (
+                    sortOrder === 'asc' ? <FaSortUp /> : <FaSortDown />
+                  ) : (
+                    <FaSort />
+                  )}
+                </button>
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <button
+                  onClick={() => handleSort('start_time')}
+                  className="flex items-center space-x-1 hover:text-blue-600 transition-colors"
+                >
+                  <span>Time</span>
+                  {sortField === 'start_time' ? (
+                    sortOrder === 'asc' ? <FaSortUp /> : <FaSortDown />
+                  ) : (
+                    <FaSort />
+                  )}
+                </button>
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Ticket
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Reason
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <button
+                  onClick={() => handleSort('status')}
+                  className="flex items-center space-x-1 hover:text-blue-600 transition-colors"
+                >
+                  <span>Status</span>
+                  {sortField === 'status' ? (
+                    sortOrder === 'asc' ? <FaSortUp /> : <FaSortDown />
+                  ) : (
+                    <FaSort />
+                  )}
+                </button>
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <button
+                  onClick={() => handleSort('created_at')}
+                  className="flex items-center space-x-1 hover:text-blue-600 transition-colors"
+                >
+                  <span>Created</span>
+                  {sortField === 'created_at' ? (
+                    sortOrder === 'asc' ? <FaSortUp /> : <FaSortDown />
+                  ) : (
+                    <FaSort />
+                  )}
+                </button>
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {paginatedRequests.map((request) => (
+              <tr key={request.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0 h-8 w-8">
+                      <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                        <FaUser className="h-4 w-4 text-blue-600" />
                       </div>
+                    </div>
+                    <div className="ml-3">
+                      <div className="text-sm font-medium text-gray-900">
+                        {request.employee_name || request.employee?.full_name || 'Unknown'}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    <FaCalendarAlt className="h-4 w-4 text-gray-400 mr-2" />
+                    <span className="text-sm text-gray-900">
+                      {new Date(request.date).toLocaleDateString()}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    <FaClock className="h-4 w-4 text-gray-400 mr-2" />
+                    <span className="text-sm text-gray-900">
+                      {request.start_time} - {request.end_time}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    <FaTicketAlt className="h-4 w-4 text-gray-400 mr-2" />
+                    <span className="text-sm text-gray-900">
+                      {request.ticket || 'N/A'}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="text-sm text-gray-900 max-w-xs truncate" title={request.reason}>
+                    {request.reason}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    request.status === 'pending' 
+                      ? 'bg-yellow-100 text-yellow-800' 
+                      : request.status === 'approved'
+                      ? 'bg-green-100 text-green-800'
+                      : request.status === 'rejected'
+                      ? 'bg-red-100 text-red-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {request.status === 'pending' && <FaHourglassHalf className="mr-1" />}
+                    {request.status === 'approved' && <FaUserCheck className="mr-1" />}
+                    {request.status === 'rejected' && <FaUserTimes className="mr-1" />}
+                    {request.status === 'cancelled' && <FaBan className="mr-1" />}
+                    {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {new Date(request.created_at).toLocaleDateString()}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <div className="flex space-x-2">
+                    {/* Edit button - available for all requests with different contexts */}
+                    <button
+                      onClick={() => handleEdit(request)}
+                      disabled={isUpdating}
+                      className={`inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
+                        request.status === 'pending'
+                          ? 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+                          : request.status === 'approved'
+                          ? 'bg-orange-600 hover:bg-orange-700 focus:ring-orange-500'
+                          : request.status === 'rejected'
+                          ? 'bg-gray-600 hover:bg-gray-700 focus:ring-gray-500'
+                          : 'bg-gray-600 hover:bg-gray-700 focus:ring-gray-500'
+                      }`}
+                      title={
+                        request.status === 'pending'
+                          ? 'Edit pending request'
+                          : request.status === 'approved'
+                          ? 'Modify approved request (may require re-approval)'
+                          : request.status === 'rejected'
+                          ? 'Edit rejected request'
+                          : 'Modify cancelled request'
+                      }
+                    >
+                      <FaEdit className="mr-1" />
+                      {request.status === 'pending' ? 'Edit' : 'Modify'}
+                    </button>
+                    
+                    {/* Approval buttons - only for pending requests */}
+                    {request.status === 'pending' && (
+                      <>
+                        <button
+                          onClick={() => handleApproval(request, 'approve')}
+                          disabled={isApproving}
+                          className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                        >
+                          <FaCheck className="mr-1" />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleApproval(request, 'reject')}
+                          disabled={isApproving}
+                          className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                        >
+                          <FaTimes className="mr-1" />
+                          Reject
+                        </button>
+                      </>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+                    {/* Cancel button - only for pending requests */}
+                    {request.status === 'pending' && (
+                      <button
+                        onClick={() => handleCancelRequest(request)}
+                        disabled={isUpdating}
+                        className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                        title="Cancel request"
+                      >
+                        <FaBan className="mr-1" />
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="px-6 py-3 border-t border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, sortedRequests.length)} of {sortedRequests.length} results
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setCurrentPage(page => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="px-3 py-1 text-sm text-gray-700">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Pagination Controls */}
-      <div className="flex justify-between items-center mt-4">
-        <div className="text-sm text-gray-600">
-          Page {currentPage} of {totalPages}
-        </div>
-        <div className="flex gap-1">
-          <button
-            className="px-2 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
-            onClick={() => setCurrentPage(1)}
-            disabled={currentPage === 1}
-          >First</button>
-          <button
-            className="px-2 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-          >Prev</button>
-          <button
-            className="px-2 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-          >Next</button>
-          <button
-            className="px-2 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
-            onClick={() => setCurrentPage(totalPages)}
-            disabled={currentPage === totalPages}
-          >Last</button>
-        </div>
-      </div>
-
       {/* Approval Modal */}
-      {showApprovalModal && (
-        <>
-          <div
-            className="fixed inset-0 bg-black bg-opacity-40 z-40 animate-fade-in"
-            onClick={() => setShowApprovalModal(false)}
-          />
-          <div className="fixed inset-0 flex items-center justify-center z-50">
-            <div
-              className="bg-white rounded-2xl shadow-2xl p-8 max-w-lg w-full relative animate-fade-in"
-              onClick={e => e.stopPropagation()}
-            >
-              <button
-                className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold focus:outline-none"
-                onClick={() => setShowApprovalModal(false)}
-                aria-label="Close"
-              >
-                &times;
-              </button>
-              <h3 className="text-xl font-bold mb-4 text-blue-700">
+      {showApprovalModal && selectedRequest && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
                 {approvalAction === 'approve' ? 'Approve' : 'Reject'} Overtime Request
               </h3>
               <div className="mb-4">
-                <p className="text-gray-600 mb-2">
-                  Employee: <span className="font-semibold">{selectedRequest?.employee_name}</span>
+                <p className="text-sm text-gray-600 mb-2">
+                  Employee: <span className="font-medium">{selectedRequest.employee_name || selectedRequest.employee?.full_name}</span>
                 </p>
-                <p className="text-gray-600 mb-2">
-                  Date: <span className="font-semibold">{selectedRequest?.date}</span>
+                <p className="text-sm text-gray-600 mb-2">
+                  Date: <span className="font-medium">{new Date(selectedRequest.date).toLocaleDateString()}</span>
                 </p>
-                <p className="text-gray-600 mb-2">
-                  Time: <span className="font-semibold">{selectedRequest?.start_time} - {selectedRequest?.end_time}</span>
+                <p className="text-sm text-gray-600 mb-2">
+                  Time: <span className="font-medium">{selectedRequest.start_time} - {selectedRequest.end_time}</span>
                 </p>
               </div>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Comments (Optional)
+                  Comments (optional)
                 </label>
                 <textarea
-                  className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-                  rows={3}
                   value={approvalComment}
-                  onChange={e => setApprovalComment(e.target.value)}
-                  placeholder={`Add a comment for ${approvalAction === 'approve' ? 'approval' : 'rejection'}...`}
+                  onChange={(e) => setApprovalComment(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows="3"
+                  placeholder="Add any comments about this decision..."
                 />
               </div>
-              <div className="flex justify-end gap-3">
+              <div className="flex justify-end space-x-3">
                 <button
-                  className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold"
-                  onClick={() => setShowApprovalModal(false)}
-                  disabled={approvalLoading}
+                  onClick={() => {
+                    setShowApprovalModal(false);
+                    setSelectedRequest(null);
+                    setApprovalAction('');
+                    setApprovalComment('');
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
                 >
                   Cancel
                 </button>
                 <button
-                  className={`px-5 py-2 rounded font-semibold shadow disabled:opacity-60 ${
-                    approvalAction === 'approve' 
-                      ? 'bg-green-600 hover:bg-green-700 text-white' 
-                      : 'bg-red-600 hover:bg-red-700 text-white'
-                  }`}
                   onClick={submitApproval}
-                  disabled={approvalLoading}
+                  disabled={isApproving}
+                  className={`px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
+                    approvalAction === 'approve'
+                      ? 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
+                      : 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
+                  }`}
                 >
-                  {approvalLoading ? 'Processing...' : (approvalAction === 'approve' ? 'Approve' : 'Reject')}
+                  {isApproving ? 'Processing...' : approvalAction === 'approve' ? 'Approve' : 'Reject'}
                 </button>
               </div>
             </div>
           </div>
-        </>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && selectedRequest && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                {selectedRequest.status === 'pending' ? 'Edit' : selectedRequest.status === 'cancelled' ? 'Modify' : 'Modify'} Overtime Request
+              </h3>
+              
+              {/* Status-specific warnings */}
+              {selectedRequest.status === 'approved' && (
+                <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-md">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-orange-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h4 className="text-sm font-medium text-orange-800">Approved Request Modification</h4>
+                      <p className="text-sm text-orange-700 mt-1">
+                        This request has been approved. Modifying it may affect payroll and scheduling. Consider the impact before making changes.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {selectedRequest.status === 'rejected' && (
+                <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h4 className="text-sm font-medium text-gray-800">Rejected Request Modification</h4>
+                      <p className="text-sm text-gray-700 mt-1">
+                        This request was previously rejected. You can modify it and potentially re-approve if circumstances have changed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedRequest.status === 'cancelled' && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h4 className="text-sm font-medium text-red-800">Cancelled Request Modification</h4>
+                      <p className="text-sm text-red-700 mt-1">
+                        This request was cancelled. You can modify it and potentially reactivate if circumstances have changed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Ticket
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.ticket}
+                    onChange={(e) => setEditForm({...editForm, ticket: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter ticket number"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editForm.date}
+                    onChange={(e) => setEditForm({...editForm, date: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Start Time
+                    </label>
+                    <input
+                      type="time"
+                      value={editForm.start_time}
+                      onChange={(e) => setEditForm({...editForm, start_time: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      End Time
+                    </label>
+                    <input
+                      type="time"
+                      value={editForm.end_time}
+                      onChange={(e) => setEditForm({...editForm, end_time: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Reason
+                  </label>
+                  <textarea
+                    value={editForm.reason}
+                    onChange={(e) => setEditForm({...editForm, reason: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    rows="3"
+                    placeholder="Enter reason for overtime"
+                  />
+                </div>
+
+                {/* Additional options for approved requests */}
+                {selectedRequest.status === 'approved' && (
+                  <div className="border-t pt-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Additional Options</h4>
+                    <div className="space-y-2">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              // Set status back to pending for re-approval
+                              setEditForm({...editForm, status: 'pending'});
+                            } else {
+                              // Remove status from form data
+                              const { status, ...rest } = editForm;
+                              setEditForm(rest);
+                            }
+                          }}
+                        />
+                        <span className="ml-2 text-sm text-gray-700">
+                          Mark for re-approval after changes
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setSelectedRequest(null);
+                    setEditForm({
+                      ticket: '',
+                      date: '',
+                      start_time: '',
+                      end_time: '',
+                      reason: ''
+                    });
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitEdit}
+                  disabled={isUpdating}
+                  className={`px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
+                    selectedRequest.status === 'pending'
+                      ? 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+                      : selectedRequest.status === 'approved'
+                      ? 'bg-orange-600 hover:bg-orange-700 focus:ring-orange-500'
+                      : 'bg-gray-600 hover:bg-gray-700 focus:ring-gray-500'
+                  }`}
+                >
+                  {isUpdating ? 'Saving...' : 
+                    selectedRequest.status === 'pending' ? 'Save Changes' : 
+                    selectedRequest.status === 'approved' ? 'Update Request' :
+                    selectedRequest.status === 'rejected' ? 'Update Request' :
+                    'Update Request'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

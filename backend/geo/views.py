@@ -415,9 +415,11 @@ class DashboardAPIView(APIView):
     
     def _get_employee_dashboard(self, employee, overtime_calc):
         """Get dashboard data for regular employees"""
+        today = timezone.now().date()
         today_entries = TimeEntry.objects.filter(
-            employee=employee,
-            timestamp__date=timezone.now().date()
+            employee=employee
+        ).filter(
+            Q(timestamp__date=today) | Q(event_time__date=today)
         ).order_by('timestamp')
         
         # Get overtime analysis
@@ -435,10 +437,12 @@ class DashboardAPIView(APIView):
     
     def _get_team_leader_dashboard(self, employee):
         """Get dashboard data for team leaders"""
+        today = timezone.now().date()
         team_members = employee.get_team_members()
         team_entries = TimeEntry.objects.filter(
-            employee__in=team_members,
-            timestamp__date=timezone.now().date()
+            employee__in=team_members
+        ).filter(
+            Q(timestamp__date=today) | Q(event_time__date=today)
         ).order_by('timestamp')
         
         return {
@@ -451,10 +455,12 @@ class DashboardAPIView(APIView):
     
     def _get_supervisor_dashboard(self, employee):
         """Get dashboard data for supervisors"""
+        today = timezone.now().date()
         department_employees = Employee.objects.filter(department=employee.department)
         department_entries = TimeEntry.objects.filter(
-            employee__in=department_employees,
-            timestamp__date=timezone.now().date()
+            employee__in=department_employees
+        ).filter(
+            Q(timestamp__date=today) | Q(event_time__date=today)
         ).order_by('timestamp')
         
         return {
@@ -467,9 +473,10 @@ class DashboardAPIView(APIView):
     
     def _get_management_dashboard(self, employee):
         """Get dashboard data for management"""
+        today = timezone.now().date()
         all_employees = Employee.objects.filter(employment_status='active')
         all_entries = TimeEntry.objects.filter(
-            timestamp__date=timezone.now().date()
+            Q(timestamp__date=today) | Q(event_time__date=today)
         ).order_by('timestamp')
         
         return {
@@ -482,9 +489,10 @@ class DashboardAPIView(APIView):
     
     def _get_it_support_dashboard(self, employee):
         """Get dashboard data for IT support"""
+        today = timezone.now().date()
         all_employees = Employee.objects.all()
         all_entries = TimeEntry.objects.filter(
-            timestamp__date=timezone.now().date()
+            Q(timestamp__date=today) | Q(event_time__date=today)
         ).order_by('timestamp')
         
         return {
@@ -496,128 +504,238 @@ class DashboardAPIView(APIView):
         }
     
     def _get_current_status(self, employee):
-        """Get current time status for employee"""
+        """Get current session status for an employee"""
+        today = timezone.now().date()
+        
+        # Get today's time entries
         today_entries = TimeEntry.objects.filter(
-            employee=employee,
-            timestamp__date=timezone.now().date()
+            employee=employee
+        ).filter(
+            Q(timestamp__date=today) | Q(event_time__date=today)
         ).order_by('timestamp')
         
         if not today_entries.exists():
-            return 'not_started'
+            return {
+                'status': 'not_clocked_in',
+                'message': 'No time entries for today',
+                'last_action': None,
+                'current_time': timezone.now()
+            }
         
-        last_entry = today_entries.last()
-        if last_entry.entry_type == 'time_in':
-            return 'clocked_in'
+        # Get the latest entry
+        latest_entry = today_entries.last()
+        
+        if latest_entry.entry_type == 'time_in':
+            return {
+                'status': 'clocked_in',
+                'message': f'Clocked in at {latest_entry.timestamp.strftime("%H:%M")}',
+                'last_action': latest_entry,
+                'current_time': timezone.now()
+            }
         else:
-            return 'clocked_out'
-    
+            return {
+                'status': 'clocked_out',
+                'message': f'Clocked out at {latest_entry.timestamp.strftime("%H:%M")}',
+                'last_action': latest_entry,
+                'current_time': timezone.now()
+            }
+
     def _get_team_attendance(self, team_members):
-        """Get team attendance summary"""
-        attendance = {'present': 0, 'absent': 0, 'total': 0}
-        print(f"Calculating attendance for {team_members.count()} team members")
-        
-        from datetime import timedelta
+        """Get team attendance for today"""
         today = timezone.now().date()
-        yesterday = today - timedelta(days=1)
+        
+        attendance_data = []
         for member in team_members:
-            if member.employment_status != 'active':
-                continue
-            # Get all time entries for yesterday and today
-            yest_entries = TimeEntry.objects.filter(
-                employee=member,
-                timestamp__date=yesterday
-            ).order_by('timestamp')
+            # Get today's entries for this member
             today_entries = TimeEntry.objects.filter(
-                employee=member,
-                timestamp__date=today
+                employee=member
+            ).filter(
+                Q(timestamp__date=today) | Q(event_time__date=today)
             ).order_by('timestamp')
-            # Check for open session from yesterday
-            overnight_active = False
-            overnight_present = False
-            if yest_entries.exists():
-                last_yest_in = yest_entries.filter(entry_type='time_in').last()
-                last_yest_out = yest_entries.filter(entry_type='time_out').last()
-                # If last time_in yesterday has no time_out after it (either yesterday or today), it's an open session
-                if last_yest_in and (not last_yest_out or last_yest_out.timestamp < last_yest_in.timestamp):
-                    # Is there a time_out today after last_yest_in?
-                    today_out = today_entries.filter(entry_type='time_out', timestamp__gt=last_yest_in.timestamp).first()
-                    if today_out:
-                        overnight_present = True  # Ended today, so present for today
-                    else:
-                        overnight_active = True  # Still active (no time_out yet)
-            # Check for session started and ended today
+            
             if today_entries.exists():
-                last_today_in = today_entries.filter(entry_type='time_in').last()
-                last_today_out = today_entries.filter(entry_type='time_out').last()
-                if last_today_in and (not last_today_out or last_today_out.timestamp < last_today_in.timestamp):
-                    # Currently active session started today
-                    attendance['present'] += 1
-                    continue
-                elif last_today_in and last_today_out and last_today_out.timestamp > last_today_in.timestamp:
-                    # Session started and ended today
-                    attendance['present'] += 1
-                    continue
-            if overnight_active:
-                attendance['present'] += 1
-            elif overnight_present:
-                attendance['present'] += 1
+                first_entry = today_entries.first()
+                last_entry = today_entries.last()
+                
+                status = 'present'
+                if first_entry.entry_type == 'time_in':
+                    status = 'clocked_in' if last_entry.entry_type == 'time_in' else 'clocked_out'
+                else:
+                    status = 'clocked_out'
+                
+                attendance_data.append({
+                    'employee_id': member.id,
+                    'employee_name': member.full_name,
+                    'status': status,
+                    'first_entry': first_entry.timestamp.strftime('%H:%M'),
+                    'last_entry': last_entry.timestamp.strftime('%H:%M') if last_entry != first_entry else None
+                })
             else:
-                attendance['absent'] += 1
-        attendance['total'] = attendance['present'] + attendance['absent']
-        return attendance
-    
+                attendance_data.append({
+                    'employee_id': member.id,
+                    'employee_name': member.full_name,
+                    'status': 'absent',
+                    'first_entry': None,
+                    'last_entry': None
+                })
+        
+        return attendance_data
+
     def _get_department_attendance(self, department):
-        """Get department attendance summary"""
-        employees = Employee.objects.filter(department=department, employment_status='active')
-        attendance = {'present': 0, 'absent': 0, 'total': employees.count()}
+        """Get department attendance for today"""
+        today = timezone.now().date()
+        
+        # Get all active employees in the department
+        employees = department.employees.filter(employment_status='active')
+        
+        attendance_data = []
         for employee in employees:
+            # Get today's entries for this employee
             today_entries = TimeEntry.objects.filter(
-                employee=employee,
-                timestamp__date=timezone.now().date()
-            )
+                employee=employee
+            ).filter(
+                Q(timestamp__date=today) | Q(event_time__date=today)
+            ).order_by('timestamp')
+            
             if today_entries.exists():
-                attendance['present'] += 1
+                first_entry = today_entries.first()
+                last_entry = today_entries.last()
+                
+                status = 'present'
+                if first_entry.entry_type == 'time_in':
+                    status = 'clocked_in' if last_entry.entry_type == 'time_in' else 'clocked_out'
+                else:
+                    status = 'clocked_out'
+                
+                attendance_data.append({
+                    'employee_id': employee.id,
+                    'employee_name': employee.full_name,
+                    'status': status,
+                    'first_entry': first_entry.timestamp.strftime('%H:%M'),
+                    'last_entry': last_entry.timestamp.strftime('%H:%M') if last_entry != first_entry else None
+                })
             else:
-                attendance['absent'] += 1
-        return attendance
-    
+                attendance_data.append({
+                    'employee_id': employee.id,
+                    'employee_name': employee.full_name,
+                    'status': 'absent',
+                    'first_entry': None,
+                    'last_entry': None
+                })
+        
+        return attendance_data
+
     def _get_company_attendance(self):
-        """Get company-wide attendance summary"""
+        """Get company-wide attendance for today"""
+        today = timezone.now().date()
+        
+        # Get all active employees
         employees = Employee.objects.filter(employment_status='active')
-        attendance = {'present': 0, 'absent': 0, 'total': employees.count()}
+        
+        attendance_data = []
+        for employee in employees:
+            # Get today's entries for this employee
+            today_entries = TimeEntry.objects.filter(
+                employee=employee
+            ).filter(
+                Q(timestamp__date=today) | Q(event_time__date=today)
+            ).order_by('timestamp')
+            
+            if today_entries.exists():
+                first_entry = today_entries.first()
+                last_entry = today_entries.last()
+                
+                status = 'present'
+                if first_entry.entry_type == 'time_in':
+                    status = 'clocked_in' if last_entry.entry_type == 'time_in' else 'clocked_out'
+                else:
+                    status = 'clocked_out'
+                
+                attendance_data.append({
+                    'employee_id': employee.id,
+                    'employee_name': employee.full_name,
+                    'department': employee.department.name,
+                    'status': status,
+                    'first_entry': first_entry.timestamp.strftime('%H:%M'),
+                    'last_entry': last_entry.timestamp.strftime('%H:%M') if last_entry != first_entry else None
+                })
+            else:
+                attendance_data.append({
+                    'employee_id': employee.id,
+                    'employee_name': employee.full_name,
+                    'department': employee.department.name,
+                    'status': 'absent',
+                    'first_entry': None,
+                    'last_entry': None
+                })
+        
+        return attendance_data
+
+    def _get_department_stats(self, department):
+        """Get department statistics for today"""
+        today = timezone.now().date()
+        
+        # Get all active employees in the department
+        employees = department.employees.filter(employment_status='active')
+        total_employees = employees.count()
+        
+        # Count present employees
+        present_employees = 0
         for employee in employees:
             today_entries = TimeEntry.objects.filter(
-                employee=employee,
-                timestamp__date=timezone.now().date()
-            )
-            if today_entries.exists():
-                attendance['present'] += 1
-            else:
-                attendance['absent'] += 1
-        return attendance
-    
-    def _get_department_stats(self, department):
-        """Get department statistics"""
+                employee=employee
+            ).filter(
+                Q(timestamp__date=today) | Q(event_time__date=today)
+            ).exists()
+            
+            if today_entries:
+                present_employees += 1
+        
         return {
-            'total_employees': department.employees.filter(employment_status='active').count(),
-            'avg_tenure': 0,  # Placeholder for future calculation
+            'total_employees': total_employees,
+            'present_employees': present_employees,
+            'absent_employees': total_employees - present_employees,
+            'attendance_rate': (present_employees / total_employees * 100) if total_employees > 0 else 0
         }
-    
+
     def _get_company_stats(self):
-        """Get company-wide statistics"""
+        """Get company-wide statistics for today"""
+        today = timezone.now().date()
+        
+        # Get all active employees
+        employees = Employee.objects.filter(employment_status='active')
+        total_employees = employees.count()
+        
+        # Count present employees
+        present_employees = 0
+        for employee in employees:
+            today_entries = TimeEntry.objects.filter(
+                employee=employee
+            ).filter(
+                Q(timestamp__date=today) | Q(event_time__date=today)
+            ).exists()
+            
+            if today_entries:
+                present_employees += 1
+        
+        return {
+            'total_employees': total_employees,
+            'present_employees': present_employees,
+            'absent_employees': total_employees - present_employees,
+            'attendance_rate': (present_employees / total_employees * 100) if total_employees > 0 else 0
+        }
+
+    def _get_system_stats(self):
+        """Get system-wide statistics"""
+        today = timezone.now().date()
+        
         return {
             'total_employees': Employee.objects.filter(employment_status='active').count(),
             'total_departments': Department.objects.filter(is_active=True).count(),
             'total_locations': Location.objects.count(),
-        }
-    
-    def _get_system_stats(self):
-        """Get system statistics"""
-        return {
-            'total_users': User.objects.count(),
-            'active_users': User.objects.filter(is_active=True).count(),
-            'total_time_entries': TimeEntry.objects.count(),
-            'today_entries': TimeEntry.objects.filter(timestamp__date=timezone.now().date()).count(),
+            'today_entries': TimeEntry.objects.filter(
+                Q(timestamp__date=today) | Q(event_time__date=today)
+            ).count(),
         }
 
 
@@ -712,7 +830,7 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
     """
     model = TimeEntry
     queryset = TimeEntry.objects.all()
-    filterset_fields = ['employee', 'entry_type', 'location', 'timestamp']
+    filterset_fields = ['employee', 'entry_type', 'location', 'timestamp', 'employee__department']
     search_fields = ['employee__user__first_name', 'employee__user__last_name', 'employee__employee_id', 'notes']
     ordering_fields = ['timestamp', 'employee__user__first_name']
     ordering = ['-timestamp']
@@ -746,7 +864,9 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
             try:
                 from datetime import datetime
                 date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                queryset = queryset.filter(timestamp__date=date)
+                queryset = queryset.filter(
+                    Q(timestamp__date=date) | Q(event_time__date=date)
+                )
             except ValueError:
                 return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
             serializer = self.get_serializer(queryset, many=True)
@@ -760,7 +880,7 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
         from django.utils import timezone
         today_local = timezone.localdate()
         today_entries = self.get_queryset().filter(
-            timestamp__date=today_local
+            Q(timestamp__date=today_local) | Q(event_time__date=today_local)
         )
         serializer = TimeEntryListSerializer(today_entries, many=True)
         return Response(serializer.data)
@@ -784,13 +904,25 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
         print(f"[DEBUG] Employee: {employee.full_name}, Role: {employee.role}")
         print(f"[DEBUG] TimeEntry employee: {instance.employee.full_name}")
         
-        # Only allow Team Leaders to edit time entries (for operational purposes)
+        # Allow Team Leaders to edit time entries (for operational purposes)
         can_update = employee.role == 'team_leader'
         
         # Additional check: Team Leaders can only edit entries of their team members
         if can_update:
+            # First try the standard team members method
             team_members = employee.get_team_members()
-            print(f"[DEBUG] Team members: {[tm.full_name for tm in team_members]}")
+            print(f"[DEBUG] Team members from led_departments: {[tm.full_name for tm in team_members]}")
+            
+            # If no team members found via led_departments, try department-based approach
+            if not team_members.exists():
+                print(f"[DEBUG] No team members found via led_departments, trying department-based approach")
+                # Get all employees in the same department as the team leader
+                team_members = Employee.objects.filter(
+                    department=employee.department,
+                    employment_status='active'
+                ).exclude(id=employee.id)
+                print(f"[DEBUG] Team members from same department: {[tm.full_name for tm in team_members]}")
+            
             print(f"[DEBUG] Entry employee in team: {instance.employee in team_members}")
             if instance.employee not in team_members:
                 can_update = False
@@ -900,8 +1032,16 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
         result = []
         for member in team_members:
             yesterday = today - timedelta(days=1)
-            today_entries = TimeEntry.objects.filter(employee=member, timestamp__date=today).order_by('timestamp')
-            yest_entries = TimeEntry.objects.filter(employee=member, timestamp__date=yesterday).order_by('timestamp')
+            today_entries = TimeEntry.objects.filter(
+                employee=member
+            ).filter(
+                Q(timestamp__date=today) | Q(event_time__date=today)
+            ).order_by('timestamp')
+            yest_entries = TimeEntry.objects.filter(
+                employee=member
+            ).filter(
+                Q(timestamp__date=yesterday) | Q(event_time__date=yesterday)
+            ).order_by('timestamp')
 
             is_active = False
             # Check for open session from yesterday
@@ -1122,8 +1262,9 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
                 
                 # Get entries for this day
                 day_entries = TimeEntry.objects.filter(
-                    employee=member,
-                    timestamp__date=current_date
+                    employee=member
+                ).filter(
+                    Q(timestamp__date=current_date) | Q(event_time__date=current_date)
                 ).order_by('timestamp')
                 
                 if day_entries.exists():
@@ -1707,20 +1848,29 @@ class TimeCorrectionRequestViewSet(viewsets.ModelViewSet):
         return TimeCorrectionRequest.objects.filter(employee=employee)
         
     def create(self, request, *args, **kwargs):
-        print("Received time correction request data:", request.data)
+        print("Received time correction request data:", getattr(request, 'data', request.POST))
         try:
+            # Get user from request, handling both regular and test requests
+            user = getattr(request, 'user', None)
+            if not user:
+                print("No user found in request")
+                return Response(
+                    {'detail': 'Authentication required'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            
             # Ensure the employee is set to the current user's employee profile
-            if not hasattr(request.user, 'employee_profile'):
+            if not hasattr(user, 'employee_profile'):
                 return Response(
                     {'detail': 'User has no associated employee profile'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
                 
             # Create a mutable copy of the request data
-            data = request.data.copy()
+            data = getattr(request, 'data', request.POST).copy()
             
             # Set the employee to the current user's employee profile
-            data['employee'] = request.user.employee_profile.id
+            data['employee'] = user.employee_profile.id
             
             # Validate the data
             serializer = self.get_serializer(data=data)
@@ -1743,6 +1893,238 @@ class TimeCorrectionRequestViewSet(viewsets.ModelViewSet):
                 {'detail': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def approve(self, request, pk=None):
+        """Approve a time correction request and apply the correction to TimeEntry"""
+        print(f"[DEBUG] Approve method called for correction request {pk}")
+        try:
+            correction_request = self.get_object()
+            print(f"[DEBUG] Found correction request: {correction_request.id}")
+            print(f"[DEBUG] Employee: {correction_request.employee.full_name}")
+            print(f"[DEBUG] Date: {correction_request.date}")
+            print(f"[DEBUG] Requested time in: {correction_request.requested_time_in}")
+            print(f"[DEBUG] Requested time out: {correction_request.requested_time_out}")
+            print(f"[DEBUG] Status: {correction_request.status}")
+            
+            # Check if request is pending
+            if correction_request.status != 'pending':
+                print(f"[DEBUG] Request is not pending, status: {correction_request.status}")
+                return Response(
+                    {'detail': 'Only pending requests can be approved.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if user has permission to approve (team leader)
+            user = getattr(request, 'user', None)
+            if not user:
+                print(f"[DEBUG] No user found in request")
+                return Response(
+                    {'detail': 'Authentication required'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            
+            if not hasattr(user, 'employee_profile'):
+                print(f"[DEBUG] User has no employee profile")
+                return Response(
+                    {'detail': 'User has no associated employee profile'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            approver = user.employee_profile
+            print(f"[DEBUG] Approver: {approver.full_name}, Role: {approver.role}")
+            
+            # Check if approver is a team leader and has authority over the employee
+            if not approver.can_view_team_data():
+                print(f"[DEBUG] Approver cannot view team data")
+                return Response(
+                    {'detail': 'You do not have permission to approve this request.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            team_members = approver.get_team_members()
+            print(f"[DEBUG] Team members: {[tm.full_name for tm in team_members]}")
+            if correction_request.employee not in team_members:
+                print(f"[DEBUG] Employee not in team members")
+                return Response(
+                    {'detail': 'You can only approve requests from your team members.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Get comments from request
+            comments = request.data.get('comments', '')
+            print(f"[DEBUG] Comments: {comments}")
+            
+            with transaction.atomic():
+                print(f"[DEBUG] Starting transaction")
+                # Update the correction request
+                correction_request.status = 'approved'
+                correction_request.reviewed_by = approver
+                correction_request.reviewed_at = timezone.now()
+                correction_request.response_message = comments
+                correction_request.save()
+                print(f"[DEBUG] Updated correction request status to approved")
+                
+                # Apply the correction to TimeEntry records
+                print(f"[DEBUG] Calling _apply_time_correction")
+                self._apply_time_correction(correction_request)
+                print(f"[DEBUG] Time correction applied successfully")
+                
+                return Response({
+                    'detail': 'Time correction request approved and applied successfully.',
+                    'status': 'approved'
+                }, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            print(f"[DEBUG] Error in approve method: {str(e)}")
+            return Response(
+                {'detail': f'Error approving request: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def reject(self, request, pk=None):
+        """Reject a time correction request"""
+        try:
+            correction_request = self.get_object()
+            
+            # Check if request is pending
+            if correction_request.status != 'pending':
+                return Response(
+                    {'detail': 'Only pending requests can be rejected.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if user has permission to reject (team leader)
+            user = request.user
+            if not hasattr(user, 'employee_profile'):
+                return Response(
+                    {'detail': 'User has no associated employee profile'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            approver = user.employee_profile
+            
+            # Check if approver is a team leader and has authority over the employee
+            if not approver.can_view_team_data():
+                return Response(
+                    {'detail': 'You do not have permission to reject this request.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            team_members = approver.get_team_members()
+            if correction_request.employee not in team_members:
+                return Response(
+                    {'detail': 'You can only reject requests from your team members.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Get comments from request
+            comments = request.data.get('comments', '')
+            
+            # Update the correction request
+            correction_request.status = 'denied'
+            correction_request.reviewed_by = approver
+            correction_request.reviewed_at = timezone.now()
+            correction_request.response_message = comments
+            correction_request.save()
+            
+            return Response({
+                'detail': 'Time correction request rejected.',
+                'status': 'denied'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'detail': f'Error rejecting request: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def _apply_time_correction(self, correction_request):
+        """Apply the time correction to the actual TimeEntry records"""
+        try:
+            employee = correction_request.employee
+            date = correction_request.date
+            
+            # Find existing TimeEntry records for this employee and date
+            # Include both timestamp and event_time date filtering
+            time_entries = TimeEntry.objects.filter(
+                employee=employee
+            ).filter(
+                Q(timestamp__date=date) | Q(event_time__date=date)
+            ).order_by('timestamp')
+            
+            print(f"Found {time_entries.count()} existing time entries for {employee.full_name} on {date}")
+            
+            # Apply time in correction if requested
+            if correction_request.requested_time_in:
+                print(f"Processing time in correction: {correction_request.requested_time_in}")
+                # Find or create time in entry
+                time_in_entry = time_entries.filter(entry_type='time_in').first()
+                
+                if time_in_entry:
+                    # Update existing time in entry
+                    print(f"Updating existing time in entry: {time_in_entry.id}")
+                    # Create datetime in the correct timezone
+                    corrected_datetime = timezone.datetime.combine(date, correction_request.requested_time_in)
+                    corrected_time = timezone.make_aware(corrected_datetime, timezone=timezone.get_current_timezone())
+                    time_in_entry.event_time = corrected_time
+                    time_in_entry.notes = f"Corrected via approved request. Original: {time_in_entry.timestamp}"
+                    time_in_entry.save()
+                    print(f"Updated time in entry with event_time: {time_in_entry.event_time}")
+                else:
+                    # Create new time in entry
+                    print(f"Creating new time in entry")
+                    # Create datetime in the correct timezone
+                    corrected_datetime = timezone.datetime.combine(date, correction_request.requested_time_in)
+                    corrected_time = timezone.make_aware(corrected_datetime, timezone=timezone.get_current_timezone())
+                    new_time_in = TimeEntry.objects.create(
+                        employee=employee,
+                        entry_type='time_in',
+                        timestamp=corrected_time,
+                        event_time=corrected_time,
+                        notes=f"Created via approved time correction request"
+                    )
+                    print(f"Created new time in entry: {new_time_in.id}")
+                    print(f"Created time in entry with event_time: {new_time_in.event_time}")
+            
+            # Apply time out correction if requested
+            if correction_request.requested_time_out:
+                print(f"Processing time out correction: {correction_request.requested_time_out}")
+                # Find or create time out entry
+                time_out_entry = time_entries.filter(entry_type='time_out').first()
+                
+                if time_out_entry:
+                    # Update existing time out entry
+                    print(f"Updating existing time out entry: {time_out_entry.id}")
+                    # Create datetime in the correct timezone
+                    corrected_datetime = timezone.datetime.combine(date, correction_request.requested_time_out)
+                    corrected_time = timezone.make_aware(corrected_datetime, timezone=timezone.get_current_timezone())
+                    time_out_entry.event_time = corrected_time
+                    time_out_entry.notes = f"Corrected via approved request. Original: {time_out_entry.timestamp}"
+                    time_out_entry.save()
+                    print(f"Updated time out entry with event_time: {time_out_entry.event_time}")
+                else:
+                    # Create new time out entry
+                    print(f"Creating new time out entry")
+                    # Create datetime in the correct timezone
+                    corrected_datetime = timezone.datetime.combine(date, correction_request.requested_time_out)
+                    corrected_time = timezone.make_aware(corrected_datetime, timezone=timezone.get_current_timezone())
+                    new_time_out = TimeEntry.objects.create(
+                        employee=employee,
+                        entry_type='time_out',
+                        timestamp=corrected_time,
+                        event_time=corrected_time,
+                        notes=f"Created via approved time correction request"
+                    )
+                    print(f"Created new time out entry: {new_time_out.id}")
+                    print(f"Created time out entry with event_time: {new_time_out.event_time}")
+            
+            print(f"Time correction applied successfully for employee {employee.full_name} on {date}")
+            
+        except Exception as e:
+            print(f"Error applying time correction: {str(e)}")
+            raise e
 
 
 class OvertimeRequestViewSet(viewsets.ModelViewSet):
@@ -1843,10 +2225,25 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         if not hasattr(user, 'employee_profile'):
             return LeaveRequest.objects.none()
         employee = user.employee_profile
+        
         # Team leaders/managers see requests from their team
         if employee.can_view_team_data():
-            team_members = employee.get_team_members()
-            return LeaveRequest.objects.filter(employee__in=team_members)
+            try:
+                # Get departments where this employee is a team leader
+                led_departments = employee.led_departments.all()
+                if led_departments.exists():
+                    team_members = Employee.objects.filter(
+                        department__in=led_departments, 
+                        employment_status='active'
+                    ).exclude(id=employee.id)
+                    return LeaveRequest.objects.filter(employee__in=team_members)
+                else:
+                    # If no departments led, return empty queryset
+                    return LeaveRequest.objects.none()
+            except Exception as e:
+                # Fallback to empty queryset if there's an error
+                return LeaveRequest.objects.none()
+        
         # Employees see their own requests
         return LeaveRequest.objects.filter(employee=employee)
 

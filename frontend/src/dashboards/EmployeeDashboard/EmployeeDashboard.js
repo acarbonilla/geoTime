@@ -632,12 +632,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 >
                   {isClockingOut ? 'Clocking Out...' : 'Time Out'}
                 </button>
-                {/* Debug info for button state */}
-                <div className="text-xs text-gray-500 mt-2">
-                  Debug: Active session: {sessionResponse?.active_session ? 'Yes' : 'No'} | 
-                  Clocking out: {isClockingOut ? 'Yes' : 'No'} | 
-                  Button disabled: {isClockingOut || !(sessionResponse && sessionResponse.active_session) ? 'Yes' : 'No'}
-                </div>
+
                 {/* Geolocation Status */}
                 <div className="text-sm text-gray-600">
                   {geolocationStatus === 'requesting' && '📍 Getting location...'}

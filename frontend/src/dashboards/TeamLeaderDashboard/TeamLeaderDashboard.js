@@ -9,6 +9,46 @@ import TeamMap from './TeamMap';
 import AbsentTodayDrawer from './AbsentTodayDrawer';
 import { timeAPI } from '../../api';
 
+// Reusable Loading Components
+const LoadingSpinner = ({ size = 'md', text = 'Loading...', description = '' }) => {
+  const sizeClasses = {
+    sm: 'h-4 w-4',
+    md: 'h-8 w-8', 
+    lg: 'h-12 w-12'
+  };
+  
+  return (
+    <div className="flex items-center justify-center space-x-2">
+      <div className={`animate-spin rounded-full border-b-2 border-blue-600 ${sizeClasses[size]}`}></div>
+      <div>
+        <div className="text-blue-700 font-medium">{text}</div>
+        {description && <div className="text-blue-600 text-sm">{description}</div>}
+      </div>
+    </div>
+  );
+};
+
+const ProcessingMessage = ({ title, description, type = 'info' }) => {
+  const colors = {
+    info: 'bg-blue-50 border-blue-200 text-blue-700',
+    success: 'bg-green-50 border-green-200 text-green-700',
+    warning: 'bg-yellow-50 border-yellow-200 text-yellow-700',
+    error: 'bg-red-50 border-red-200 text-red-700'
+  };
+  
+  return (
+    <div className={`mt-4 p-3 border rounded-lg ${colors[type]}`}>
+      <div className="flex items-center space-x-2">
+        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+        <div>
+          <div className="font-medium">{title}</div>
+          <div className="text-sm opacity-80">{description}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TeamLeaderDashboard = ({ employee }) => {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -225,13 +265,40 @@ const TeamLeaderDashboard = ({ employee }) => {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen bg-gray-50"><span className="text-lg">Loading dashboard...</span></div>;
-  if (error) return <div className="flex items-center justify-center min-h-screen bg-gray-50"><span className="text-red-600 text-lg">{error}</span></div>;
-  if (!dashboard) return <div className="flex items-center justify-center min-h-screen bg-gray-50"><span className="text-lg">Loading dashboard data...</span></div>;
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="text-center">
+        <LoadingSpinner size="lg" text="Loading dashboard..." description="Fetching team data and analytics" />
+      </div>
+    </div>
+  );
+  if (error) return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="text-center">
+        <div className="text-red-600 text-lg font-medium mb-2">Error Loading Dashboard</div>
+        <div className="text-gray-600">{error}</div>
+        <button 
+          onClick={fetchDashboardData}
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Try Again
+        </button>
+      </div>
+    </div>
+  );
+  if (!dashboard) return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="text-center">
+        <div className="animate-pulse rounded-full h-12 w-12 bg-blue-200 mx-auto mb-4"></div>
+        <div className="text-lg text-gray-700 font-medium">Loading dashboard data...</div>
+        <div className="text-sm text-gray-500 mt-2">Initializing components</div>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="max-w-6xl mx-auto p-2 sm:p-4 md:p-8 bg-gray-50 min-h-screen relative z-0">
-      <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 md:mb-8 text-blue-700">Team Leader Dashboard</h1>
+    <div className="max-w-6xl mx-auto p-2 sm:p-4 md:p-8 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 min-h-screen relative z-0">
+      <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 md:mb-8 text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Team Leader Dashboard</h1>
       <TeamOverview
         teamMembersCount={dashboard?.team_members_count || 0}
         teamAttendance={dashboard?.team_attendance || { present: 0, absent: 0, late: 0 }}
@@ -243,8 +310,8 @@ const TeamLeaderDashboard = ({ employee }) => {
       />
 
       {/* Personal Time In/Out Section */}
-      <div className="bg-white rounded-lg shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6 md:mb-8">
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-700">My Time In/Out</h2>
+      <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-xl border border-white/20 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6 md:mb-8">
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800">My Time In/Out</h2>
         
         <div className="grid grid-cols-1 gap-4 sm:gap-6">
           {/* Status Display */}
@@ -252,7 +319,7 @@ const TeamLeaderDashboard = ({ employee }) => {
             <div className={`text-base sm:text-lg font-semibold ${getStatusColor(personalStatus)}`}>
               {getStatusText(personalStatus)}
             </div>
-            <div className="text-xs sm:text-sm text-gray-500 mt-1">
+            <div className="text-xs sm:text-sm text-gray-600 mt-1">
               {employee?.full_name}
             </div>
           </div>
@@ -260,18 +327,18 @@ const TeamLeaderDashboard = ({ employee }) => {
           {/* Location Status */}
           <div className="text-center">
             {locationError ? (
-              <div className="text-red-600 text-xs sm:text-sm">{locationError}</div>
+              <div className="text-red-600 text-xs sm:text-sm bg-red-50 p-2 rounded-lg">{locationError}</div>
             ) : currentLocation ? (
-              <div className="text-green-600 text-xs sm:text-sm">
+              <div className="text-green-600 text-xs sm:text-sm bg-green-50 p-2 rounded-lg">
                 ✓ Location obtained (Accuracy: {currentLocation.accuracy?.toFixed(1)}m)
               </div>
             ) : (
-              <div className="text-yellow-600 text-xs sm:text-sm">Location not obtained</div>
+              <div className="text-yellow-600 text-xs sm:text-sm bg-yellow-50 p-2 rounded-lg">Location not obtained</div>
             )}
             <button
               type="button"
               onClick={getCurrentLocation}
-              className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 underline mt-1"
+              className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 underline mt-1 transition-colors"
             >
               Refresh Location
             </button>
@@ -283,39 +350,65 @@ const TeamLeaderDashboard = ({ employee }) => {
               <button
                 onClick={handlePersonalTimeIn}
                 disabled={isClockingIn}
-                className={`px-3 sm:px-4 py-2 rounded-md font-medium text-sm sm:text-base ${
+                className={`px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base transition-all duration-200 transform hover:scale-105 ${
                   isClockingIn
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-gradient-to-r from-green-500 to-green-600 text-white hover:from-green-600 hover:to-green-700 shadow-lg hover:shadow-xl'
                 }`}
               >
-                {isClockingIn ? 'Clocking In...' : 'Clock In'}
+                {isClockingIn ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Clocking In...</span>
+                  </div>
+                ) : (
+                  'Clock In'
+                )}
               </button>
             ) : (
               <button
                 onClick={handlePersonalTimeOut}
                 disabled={isClockingOut}
-                className={`px-3 sm:px-4 py-2 rounded-md font-medium text-sm sm:text-base ${
+                className={`px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base transition-all duration-200 transform hover:scale-105 ${
                   isClockingOut
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-red-600 text-white hover:bg-red-700'
+                    : 'bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl'
                 }`}
               >
-                {isClockingOut ? 'Clocking Out...' : 'Clock Out'}
+                {isClockingOut ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Clocking Out...</span>
+                  </div>
+                ) : (
+                  'Clock Out'
+                )}
               </button>
             )}
             <button
               onClick={checkCurrentSession}
-              className="px-3 py-2 text-xs sm:text-sm bg-gray-500 text-white rounded-md hover:bg-gray-600"
+              className="px-3 py-2 text-xs sm:text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
             >
               Check Status
             </button>
           </div>
+
+          {/* Enhanced Loading Messages */}
+          {(isClockingIn || isClockingOut) && (
+            <ProcessingMessage 
+              title={isClockingIn ? 'Processing Clock In' : 'Processing Clock Out'}
+              description={isClockingIn 
+                ? 'Recording your start time and location...' 
+                : 'Recording your end time and calculating hours...'
+              }
+              type="info"
+            />
+          )}
         </div>
 
         {/* Error Message */}
         {error && (
-          <div className="mt-3 sm:mt-4 text-red-600 text-xs sm:text-sm p-2 bg-red-50 rounded">
+          <div className="mt-3 sm:mt-4 text-red-600 text-xs sm:text-sm p-2 bg-red-50 rounded-lg border border-red-200">
             {error}
           </div>
         )}

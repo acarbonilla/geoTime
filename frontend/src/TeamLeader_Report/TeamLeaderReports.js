@@ -12,6 +12,69 @@ import {
   ArrowPathIcon 
 } from '@heroicons/react/24/outline';
 
+// Add custom CSS animations
+const customStyles = `
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-out;
+  }
+  
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out;
+  }
+  
+  .hover-lift {
+    transition: all 0.2s ease-in-out;
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  }
+  
+  .button-pulse {
+    transition: all 0.2s ease-in-out;
+  }
+  
+  .button-pulse:hover {
+    transform: scale(1.05);
+  }
+  
+  .table-row-hover {
+    transition: all 0.2s ease-in-out;
+  }
+  
+  .table-row-hover:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+  }
+`;
+
+// Inject custom styles
+if (typeof document !== 'undefined') {
+  const styleElement = document.createElement('style');
+  styleElement.textContent = customStyles;
+  document.head.appendChild(styleElement);
+}
+
 const CalendarClockIcon = () => (
   <svg className="w-5 h-5 mr-2 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
     <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
@@ -46,6 +109,26 @@ const Tooltip = ({ text, children }) => (
     </span>
   </span>
 );
+
+// Isolated tooltip for notes column to prevent interference with other columns
+const NotesTooltip = ({ text, children }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  
+  return (
+    <span 
+      className="relative cursor-help"
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      {children}
+      {showTooltip && (
+        <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 bg-gray-800 text-white text-xs rounded px-2 py-1 z-10 max-w-xs break-words shadow-lg">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+};
 
 // Edit Modal Component
 const EditTimeEntryModal = ({ isOpen, onClose, entry, onSave }) => {
@@ -104,17 +187,20 @@ const EditTimeEntryModal = ({ isOpen, onClose, entry, onSave }) => {
       console.log('Original timestamp:', formData.timestamp);
       console.log('Formatted timestamp for API:', formattedTimestamp);
       console.log('Entry ID:', entry.id);
-      console.log('Request data:', {
+      // Prepare request data, only include overtime if it has a value
+      const requestData = {
         timestamp: formattedTimestamp,
-        notes: formData.notes,
-        overtime: formData.overtime
-      });
+        notes: formData.notes
+      };
+      
+      // Only add overtime if it has a value (not empty string)
+      if (formData.overtime && formData.overtime.trim() !== '') {
+        requestData.overtime = parseFloat(formData.overtime);
+      }
 
-      const response = await axiosInstance.patch(`/time-entries/${entry.id}/`, {
-        timestamp: formattedTimestamp,
-        notes: formData.notes,
-        overtime: formData.overtime
-      });
+      console.log('Request data:', requestData);
+
+      const response = await axiosInstance.patch(`/time-entries/${entry.id}/`, requestData);
 
       console.log('API response:', response.data);
       onSave(response.data);
@@ -141,10 +227,10 @@ const EditTimeEntryModal = ({ isOpen, onClose, entry, onSave }) => {
 
   return (
     <div className="fixed inset-0 z-60 overflow-hidden">
-      <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm" onClick={onClose}></div>
+      <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
       
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in">
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-4 rounded-t-xl">
             <div className="flex items-center justify-between">
@@ -182,7 +268,7 @@ const EditTimeEntryModal = ({ isOpen, onClose, entry, onSave }) => {
                 type="datetime-local"
                 value={formData.timestamp}
                 onChange={(e) => setFormData({ ...formData, timestamp: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 transform hover:scale-105"
                 required
               />
             </div>
@@ -195,7 +281,7 @@ const EditTimeEntryModal = ({ isOpen, onClose, entry, onSave }) => {
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 resize-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 transform hover:scale-105 resize-none"
                 placeholder="Add notes about this time entry..."
               />
             </div>
@@ -210,7 +296,7 @@ const EditTimeEntryModal = ({ isOpen, onClose, entry, onSave }) => {
                 min="0"
                 value={formData.overtime}
                 onChange={(e) => setFormData({ ...formData, overtime: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 transform hover:scale-105"
                 placeholder="0.0"
               />
             </div>
@@ -220,14 +306,14 @@ const EditTimeEntryModal = ({ isOpen, onClose, entry, onSave }) => {
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-all duration-200 font-medium"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-all duration-200 transform hover:scale-105 font-medium button-pulse"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 transform hover:scale-105 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 button-pulse"
               >
                 {loading ? (
                   <>
@@ -253,6 +339,7 @@ const TeamLeaderReports = ({ employee }) => {
   const [entries, setEntries] = useState([]);
   const [filteredEntries, setFilteredEntries] = useState([]);
   const [subordinates, setSubordinates] = useState([]);
+  const [departments, setDepartments] = useState([]);
   
   // Set default dates to today and last 7 days
   const today = new Date().toISOString().split('T')[0];
@@ -263,15 +350,18 @@ const TeamLeaderReports = ({ employee }) => {
     endDate: today,
     entryType: 'all',
     selectedEmployee: 'all',
+    selectedDepartment: 'all',
   });
   const [filters, setFilters] = useState({
     startDate: lastWeek,
     endDate: today,
     entryType: 'all',
     selectedEmployee: 'all',
+    selectedDepartment: 'all',
   });
   const [loading, setLoading] = useState(false);
   const [subordinatesLoading, setSubordinatesLoading] = useState(false);
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
   const [showTable, setShowTable] = useState(true); // Set to true by default
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -300,6 +390,22 @@ const TeamLeaderReports = ({ employee }) => {
     }
   }, [employee?.id]);
 
+  // Fetch departments on component mount
+  useEffect(() => {
+    setDepartmentsLoading(true);
+    console.log('Fetching departments...');
+    axiosInstance.get('/departments/active/')
+      .then(res => {
+        console.log('Departments response:', res.data);
+        setDepartments(res.data || []);
+      })
+      .catch(error => {
+        console.error('Error fetching departments:', error);
+        setDepartments([]);
+      })
+      .finally(() => setDepartmentsLoading(false));
+  }, []);
+
   // React Query for fetching time entries with automatic refresh every 30 seconds
   const {
     data: timeEntriesData,
@@ -307,7 +413,7 @@ const TeamLeaderReports = ({ employee }) => {
     error: timeEntriesError,
     refetch: refetchTimeEntries
   } = useQuery({
-    queryKey: ['timeEntries', filters.startDate, filters.endDate, filters.selectedEmployee, currentPage, pageSize],
+    queryKey: ['timeEntries', filters.startDate, filters.endDate, filters.selectedEmployee, filters.selectedDepartment, currentPage, pageSize],
     queryFn: async () => {
       const params = { 
         page_size: pageSize, 
@@ -320,8 +426,13 @@ const TeamLeaderReports = ({ employee }) => {
       if (filters.selectedEmployee !== 'all') {
         params.employee = filters.selectedEmployee;
       }
+      if (filters.selectedDepartment !== 'all') {
+        params.employee__department = filters.selectedDepartment;
+      }
       
+      console.log('Time entries API params:', params);
       const response = await axiosInstance.get('/time-entries/', { params });
+      console.log('Time entries API response:', response.data);
       return response.data;
     },
     enabled: showTable,
@@ -397,6 +508,7 @@ const TeamLeaderReports = ({ employee }) => {
 
   const handleFilterFormChange = (e) => {
     const { name, value } = e.target;
+    console.log('Filter changed:', name, value);
     const newFilterForm = { ...filterForm, [name]: value };
     setFilterForm(newFilterForm);
     
@@ -568,7 +680,7 @@ const TeamLeaderReports = ({ employee }) => {
         <button
           key={i}
           onClick={() => setCurrentPage(i)}
-          className={`px-3 py-1 rounded mx-1 ${currentPage === i ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-blue-100'}`}
+          className={`px-3 py-1 rounded mx-1 transition-all duration-200 transform hover:scale-105 ${currentPage === i ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-blue-100'}`}
           disabled={currentPage === i}
         >
           {i}
@@ -580,13 +692,13 @@ const TeamLeaderReports = ({ employee }) => {
         <button
           onClick={() => setCurrentPage(currentPage - 1)}
           disabled={currentPage === 1}
-          className="px-3 py-1 rounded mx-1 bg-gray-200 text-gray-700 hover:bg-blue-100 disabled:opacity-50"
+          className="px-3 py-1 rounded mx-1 bg-gray-200 text-gray-700 hover:bg-blue-100 disabled:opacity-50 transition-all duration-200 transform hover:scale-105"
         >Prev</button>
         {pages}
         <button
           onClick={() => setCurrentPage(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className="px-3 py-1 rounded mx-1 bg-gray-200 text-gray-700 hover:bg-blue-100 disabled:opacity-50"
+          className="px-3 py-1 rounded mx-1 bg-gray-200 text-gray-700 hover:bg-blue-100 disabled:opacity-50 transition-all duration-200 transform hover:scale-105"
         >Next</button>
       </div>
     );
@@ -600,7 +712,7 @@ const TeamLeaderReports = ({ employee }) => {
         id="pageSize"
         value={pageSize}
         onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-        className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition"
+        className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition-all duration-200 transform hover:scale-105"
       >
         {PAGE_SIZE_OPTIONS.map(size => (
           <option key={size} value={size}>{size}</option>
@@ -611,9 +723,9 @@ const TeamLeaderReports = ({ employee }) => {
 
   return (
     <>
-      <div className="max-w-6xl mx-auto p-4 md:p-8 bg-gray-50 min-h-screen">
+      <div className="max-w-6xl mx-auto p-4 md:p-8 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 min-h-screen relative z-0">
         {successMessage && (
-          <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
             <div className="flex items-center">
               <CheckIcon className="h-5 w-5 text-green-600 mr-2" />
               <p className="text-green-800 font-medium">{successMessage}</p>
@@ -621,12 +733,12 @@ const TeamLeaderReports = ({ employee }) => {
           </div>
         )}
         
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-extrabold text-blue-900 mb-1 tracking-tight drop-shadow">Team Reports & Analytics</h1>
+        <div className="mb-8 animate-fade-in">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 mb-1 tracking-tight drop-shadow">Team Reports & Analytics</h1>
           <p className="mb-4 text-gray-500 text-lg">Generate comprehensive time entry reports for your team members</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border border-blue-100 animate-fade-in">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 mb-8 border border-white/20 hover-lift animate-fade-in">
           <div className="mb-4 font-semibold text-blue-800 text-lg flex items-center gap-2">
             <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h3m4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2h3a4 4 0 014 4v2" />
@@ -642,19 +754,47 @@ const TeamLeaderReports = ({ employee }) => {
                   name="selectedEmployee" 
                   value={filterForm.selectedEmployee} 
                   onChange={handleFilterFormChange} 
-                  className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition min-w-[200px]"
+                  className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition-all duration-200 transform hover:scale-105 min-w-[200px]"
                   disabled={subordinatesLoading}
                 >
                   <option value="all">All Team Members</option>
+                  {employee && (
+                    <option value={employee.id} className="font-semibold text-blue-600">
+                      {employee.full_name}
+                    </option>
+                  )}
                   {subordinates.map(emp => (
                     <option key={emp.id} value={emp.id}>
-                      {emp.full_name} ({emp.employee_id})
+                      {emp.full_name}
                     </option>
                   ))}
                 </select>
               </Tooltip>
               {subordinatesLoading && (
                 <div className="text-xs text-gray-500 mt-1">Loading team members...</div>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+              <Tooltip text="Select a specific department or view all departments.">
+                <select 
+                  name="selectedDepartment" 
+                  value={filterForm.selectedDepartment} 
+                  onChange={handleFilterFormChange} 
+                  className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition-all duration-200 transform hover:scale-105 min-w-[200px]"
+                  disabled={departmentsLoading}
+                >
+                  <option value="all">All Departments</option>
+                  {departments.map(dept => (
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
+              </Tooltip>
+              {departmentsLoading && (
+                <div className="text-xs text-gray-500 mt-1">Loading departments...</div>
               )}
             </div>
             
@@ -666,7 +806,7 @@ const TeamLeaderReports = ({ employee }) => {
                   name="startDate" 
                   value={filterForm.startDate} 
                   onChange={handleFilterFormChange} 
-                  className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition" 
+                  className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition-all duration-200 transform hover:scale-105" 
                 />
               </Tooltip>
             </div>
@@ -679,7 +819,7 @@ const TeamLeaderReports = ({ employee }) => {
                   name="endDate" 
                   value={filterForm.endDate} 
                   onChange={handleFilterFormChange} 
-                  className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition" 
+                  className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition-all duration-200 transform hover:scale-105" 
                 />
               </Tooltip>
             </div>
@@ -691,7 +831,7 @@ const TeamLeaderReports = ({ employee }) => {
                   name="entryType" 
                   value={filterForm.entryType} 
                   onChange={handleFilterFormChange} 
-                  className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition"
+                  className="border border-blue-200 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 transition-all duration-200 transform hover:scale-105"
                 >
                   <option value="all">All Types</option>
                   <option value="time_in">Time In</option>
@@ -710,7 +850,7 @@ const TeamLeaderReports = ({ employee }) => {
               <button 
                 onClick={exportCSV} 
                 disabled={!showTable || filteredEntries.length === 0}
-                className="bg-gradient-to-r from-blue-400 to-blue-600 text-white px-3 py-1.5 rounded shadow hover:from-blue-500 hover:to-blue-700 transition-all font-medium focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-gradient-to-r from-blue-400 to-blue-600 text-white px-3 py-1.5 rounded shadow hover:from-blue-500 hover:to-blue-700 transition-all duration-200 transform hover:scale-105 font-medium focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed button-pulse"
               >
                 CSV
               </button>
@@ -719,7 +859,7 @@ const TeamLeaderReports = ({ employee }) => {
               <button 
                 onClick={exportExcel} 
                 disabled={!showTable || filteredEntries.length === 0}
-                className="bg-gradient-to-r from-green-400 to-green-600 text-white px-3 py-1.5 rounded shadow hover:from-green-500 hover:to-green-700 transition-all font-medium focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-gradient-to-r from-green-400 to-green-600 text-white px-3 py-1.5 rounded shadow hover:from-green-500 hover:to-green-700 transition-all duration-200 transform hover:scale-105 font-medium focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-50 disabled:cursor-not-allowed button-pulse"
               >
                 Excel
               </button>
@@ -728,7 +868,7 @@ const TeamLeaderReports = ({ employee }) => {
               <button 
                 onClick={exportPDF} 
                 disabled={!showTable || filteredEntries.length === 0}
-                className="bg-gradient-to-r from-red-400 to-red-600 text-white px-3 py-1.5 rounded shadow hover:from-red-500 hover:to-red-700 transition-all font-medium focus:outline-none focus:ring-2 focus:ring-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-gradient-to-r from-red-400 to-red-600 text-white px-3 py-1.5 rounded shadow hover:from-red-500 hover:to-red-700 transition-all duration-200 transform hover:scale-105 font-medium focus:outline-none focus:ring-2 focus:ring-red-300 disabled:opacity-50 disabled:cursor-not-allowed button-pulse"
               >
                 PDF
               </button>
@@ -736,7 +876,7 @@ const TeamLeaderReports = ({ employee }) => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-xl p-6 border border-blue-100 animate-fade-in">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-white/20 hover-lift animate-fade-in">
           <div className="mb-4 font-semibold text-blue-800 text-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
               <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -774,9 +914,6 @@ const TeamLeaderReports = ({ employee }) => {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-48">
                         Employee
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-40">
-                        Department
-                      </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-32">
                         Type
                       </th>
@@ -786,19 +923,16 @@ const TeamLeaderReports = ({ employee }) => {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-24">
                         Time
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-40">
-                        Location
-                      </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-20">
                         OT
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-48">
                         Notes
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-16">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-28">
                         Map
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-20">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-32">
                         Actions
                       </th>
                     </tr>
@@ -823,7 +957,7 @@ const TeamLeaderReports = ({ employee }) => {
                         }
                       }
                       return (
-                        <tr key={e.id} className="hover:bg-blue-50 transition-all duration-200 group">
+                        <tr key={e.id} className="hover:bg-blue-50 transition-all duration-200 group table-row-hover">
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center">
                               <div className="flex-shrink-0 h-8 w-8">
@@ -844,11 +978,6 @@ const TeamLeaderReports = ({ employee }) => {
                             </div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <div className="text-sm text-gray-900 font-medium truncate max-w-32">
-                              {e.department_name}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
                             <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               e.entry_type === 'time_in' 
                                 ? 'bg-green-100 text-green-800 ring-1 ring-green-200' 
@@ -863,11 +992,6 @@ const TeamLeaderReports = ({ employee }) => {
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono">
                             {formattedTime}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <div className="text-sm text-gray-900 truncate max-w-36">
-                              {e.location_name || 'No location'}
-                            </div>
-                          </td>
                           <td className="px-4 py-3 whitespace-nowrap text-center">
                             {e.overtime ? (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 ring-1 ring-orange-200">
@@ -879,42 +1003,40 @@ const TeamLeaderReports = ({ employee }) => {
                           </td>
                           <td className="px-4 py-3">
                             <div className="text-sm text-gray-900 max-w-48">
-                              <div className="truncate" title={e.notes || 'No notes'}>
-                                {e.notes || 'No notes'}
-                              </div>
+                              <NotesTooltip text={e.notes || 'No notes'}>
+                                <div className="truncate">
+                                  {e.notes || 'No notes'}
+                                </div>
+                              </NotesTooltip>
                             </div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-center">
                             {e.latitude && e.longitude ? (
-                              <Tooltip text="Open in Google Maps">
-                                <button
-                                  onClick={() => {
-                                    const url = `https://www.google.com/maps?q=${e.latitude},${e.longitude}`;
-                                    window.open(url, '_blank');
-                                  }}
-                                  className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-100 transition-all duration-200 rounded-lg group-hover:bg-blue-50"
-                                  title="Open in Google Maps"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  </svg>
-                                </button>
-                              </Tooltip>
+                              <button
+                                onClick={() => {
+                                  const url = `https://www.google.com/maps?q=${e.latitude},${e.longitude}`;
+                                  window.open(url, '_blank');
+                                }}
+                                className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-100 transition-all duration-200 rounded-lg group-hover:bg-blue-50 button-pulse"
+                                title="Open in Google Maps"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                              </button>
                             ) : (
                               <span className="text-gray-400 text-xs">-</span>
                             )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-center">
-                            <Tooltip text="Edit time entry">
-                              <button
-                                onClick={() => handleEditEntry(e)}
-                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-100 transition-all duration-200 rounded-lg group-hover:bg-blue-50"
-                                title="Edit time entry"
-                              >
-                                <PencilIcon className="h-4 w-4" />
-                              </button>
-                            </Tooltip>
+                            <button
+                              onClick={() => handleEditEntry(e)}
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-100 transition-all duration-200 rounded-lg group-hover:bg-blue-50 button-pulse"
+                              title="Edit time entry"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
                           </td>
                         </tr>
                       );

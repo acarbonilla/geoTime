@@ -173,18 +173,7 @@ const GeoMap = ({ centerLat, centerLng, radius, userLat, userLng }) => {
           </div>
         </div>
         
-        {/* Debug Information */}
-        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-          <strong>Debug Info:</strong>
-          <div>Distance: {distance ? `${distance.toFixed(2)}m` : 'Calculating...'}</div>
-          <div>Radius: {radius ? `${radiusNum}m` : 'Not provided'}</div>
-          <div>Radius Type: {typeof radius}</div>
-          <div>Is Valid Radius: {isValidRadius ? 'Yes' : 'No'}</div>
-          <div>Within Geofence: {isWithinGeofence !== null ? (isWithinGeofence ? 'Yes' : 'No') : 'Unknown'}</div>
-          <div>Coordinates Valid: {centerLat && centerLng && userLat && userLng ? 'Yes' : 'No'}</div>
-          <div>Center: {centerLat ? parseFloat(centerLat).toFixed(6) : 'N/A'}, {centerLng ? parseFloat(centerLng).toFixed(6) : 'N/A'}</div>
-          <div>User: {userLat ? parseFloat(userLat).toFixed(6) : 'N/A'}, {userLng ? parseFloat(userLng).toFixed(6) : 'N/A'}</div>
-        </div>
+
         
         {/* Transaction Status */}
         {distance !== null && (

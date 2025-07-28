@@ -41,6 +41,11 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Don't handle token refresh for login requests
+    if (originalRequest.url === '/login/' || originalRequest.url.endsWith('/login/')) {
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise(function(resolve, reject) {
@@ -288,6 +293,77 @@ export const searchAPI = {
 export const hierarchyAPI = {
   getHierarchy: async () => {
     const response = await api.get('/hierarchy/');
+    return response.data;
+  },
+};
+
+// Approval API functions
+export const approvalAPI = {
+  // Overtime requests
+  getOvertimeRequests: async (params = {}) => {
+    const response = await api.get('/overtime-requests/', { params });
+    return response.data;
+  },
+  updateOvertimeRequest: async (id, data) => {
+    const response = await api.patch(`/overtime-requests/${id}/`, data);
+    return response.data;
+  },
+  approveOvertimeRequest: async (id, data = {}) => {
+    const response = await api.post(`/overtime-requests/${id}/approve/`, data);
+    return response.data;
+  },
+  rejectOvertimeRequest: async (id, data = {}) => {
+    const response = await api.post(`/overtime-requests/${id}/reject/`, data);
+    return response.data;
+  },
+
+  // Leave requests
+  getLeaveRequests: async (params = {}) => {
+    const response = await api.get('/leave-requests/', { params });
+    return response.data;
+  },
+  updateLeaveRequest: async (id, data) => {
+    const response = await api.patch(`/leave-requests/${id}/`, data);
+    return response.data;
+  },
+  approveLeaveRequest: async (id, data = {}) => {
+    const response = await api.post(`/leave-requests/${id}/approve/`, data);
+    return response.data;
+  },
+  rejectLeaveRequest: async (id, data = {}) => {
+    const response = await api.post(`/leave-requests/${id}/reject/`, data);
+    return response.data;
+  },
+
+  // Change schedule requests
+  getChangeScheduleRequests: async (params = {}) => {
+    const response = await api.get('/change-schedule-requests/', { params });
+    return response.data;
+  },
+  updateChangeScheduleRequest: async (id, data) => {
+    const response = await api.patch(`/change-schedule-requests/${id}/`, data);
+    return response.data;
+  },
+  approveChangeScheduleRequest: async (id, data = {}) => {
+    const response = await api.post(`/change-schedule-requests/${id}/approve/`, data);
+    return response.data;
+  },
+  rejectChangeScheduleRequest: async (id, data = {}) => {
+    const response = await api.post(`/change-schedule-requests/${id}/reject/`, data);
+    return response.data;
+  },
+
+  // Time correction requests
+  getTimeCorrectionRequests: async (params = {}) => {
+    const response = await api.get('/time-correction-requests/', { params });
+    return response.data;
+  },
+  approveTimeCorrectionRequest: async (id, data = {}) => {
+    const response = await api.post(`/time-correction-requests/${id}/approve/`, data);
+    return response.data;
+  },
+  rejectTimeCorrectionRequest: async (id, data = {}) => {
+    const response = await api.post(`/time-correction-requests/${id}/reject/`, data);
     return response.data;
   },
 };

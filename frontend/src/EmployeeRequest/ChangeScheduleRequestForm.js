@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import axios from '../utils/axiosInstance';
-import { FaCalendarAlt, FaClock, FaRegStickyNote, FaExchangeAlt } from 'react-icons/fa';
+import { FaCalendarAlt, FaClock, FaExchangeAlt, FaRegStickyNote } from 'react-icons/fa';
 
-const ChangeScheduleRequestForm = ({ onSuccess, onClose, request }) => {
+const ChangeScheduleRequestForm = ({ onSuccess, onClose, request, mutation }) => {
   const isEdit = !!request;
   const [originalDate, setOriginalDate] = useState('');
   const [originalStartTime, setOriginalStartTime] = useState('');
@@ -11,7 +10,6 @@ const ChangeScheduleRequestForm = ({ onSuccess, onClose, request }) => {
   const [requestedStartTime, setRequestedStartTime] = useState('');
   const [requestedEndTime, setRequestedEndTime] = useState('');
   const [reason, setReason] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -37,38 +35,38 @@ const ChangeScheduleRequestForm = ({ onSuccess, onClose, request }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!originalDate || !originalStartTime || !originalEndTime || !requestedDate || !requestedStartTime || !requestedEndTime || !reason) {
+    
+    if (!originalDate || !originalStartTime || !originalEndTime || 
+        !requestedDate || !requestedStartTime || !requestedEndTime || !reason) {
       setError('All fields are required.');
       return;
     }
-    setLoading(true);
+
+    const formData = {
+      original_date: originalDate,
+      original_start_time: originalStartTime,
+      original_end_time: originalEndTime,
+      requested_date: requestedDate,
+      requested_start_time: requestedStartTime,
+      requested_end_time: requestedEndTime,
+      reason,
+    };
+
     try {
-      if (isEdit) {
-        await axios.patch(`change-schedule-requests/${request.id}/`, {
-          original_date: originalDate,
-          original_start_time: originalStartTime,
-          original_end_time: originalEndTime,
-          requested_date: requestedDate,
-          requested_start_time: requestedStartTime,
-          requested_end_time: requestedEndTime,
-          reason,
-        });
+      if (mutation) {
+        await mutation.mutateAsync(formData);
       } else {
-        await axios.post('change-schedule-requests/', {
-          original_date: originalDate,
-          original_start_time: originalStartTime,
-          original_end_time: originalEndTime,
-          requested_date: requestedDate,
-          requested_start_time: requestedStartTime,
-          requested_end_time: requestedEndTime,
-          reason,
-        });
+        // Fallback to direct axios call if no mutation provided
+        const axios = (await import('../utils/axiosInstance')).default;
+        if (isEdit) {
+          await axios.patch(`change-schedule-requests/${request.id}/`, formData);
+        } else {
+          await axios.post('change-schedule-requests/', formData);
+        }
       }
       if (onSuccess) onSuccess();
     } catch (err) {
       setError('Failed to submit change schedule request.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -184,16 +182,16 @@ const ChangeScheduleRequestForm = ({ onSuccess, onClose, request }) => {
           type="button"
           className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold"
           onClick={onClose}
-          disabled={loading}
+          disabled={mutation?.isLoading}
         >
           Cancel
         </button>
         <button
           type="submit"
           className="px-5 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow disabled:opacity-60"
-          disabled={loading}
+          disabled={mutation?.isLoading}
         >
-          {loading ? (isEdit ? 'Saving...' : 'Submitting...') : (isEdit ? 'Save Changes' : 'Submit Request')}
+          {mutation?.isLoading ? (isEdit ? 'Saving...' : 'Submitting...') : (isEdit ? 'Save Changes' : 'Submit Request')}
         </button>
       </div>
     </form>

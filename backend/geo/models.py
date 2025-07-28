@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator
 
 
 class Location(models.Model):
@@ -358,6 +359,9 @@ class LeaveRequest(models.Model):
     leave_type = models.CharField(max_length=20, choices=LEAVE_TYPE_CHOICES)
     start_date = models.DateField()
     end_date = models.DateField()
+    number_days = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, 
+                                    help_text='Manual input of number of days (excluding weekends)',
+                                    validators=[MinValueValidator(0)])
     reason = models.TextField()
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_leave_requests')

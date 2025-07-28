@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import axios from '../utils/axiosInstance';
 import { FaCalendarAlt, FaClock, FaTicketAlt, FaRegStickyNote } from 'react-icons/fa';
 
-const OvertimeRequestForm = ({ onSuccess, onClose, request }) => {
+const OvertimeRequestForm = ({ onSuccess, onClose, request, mutation }) => {
   const isEdit = !!request;
   const [ticket, setTicket] = useState('');
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [reason, setReason] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -35,30 +33,30 @@ const OvertimeRequestForm = ({ onSuccess, onClose, request }) => {
       setError('All fields are required.');
       return;
     }
-    setLoading(true);
+
+    const formData = {
+      ticket,
+      date,
+      start_time: startTime,
+      end_time: endTime,
+      reason,
+    };
+
     try {
-      if (isEdit) {
-        await axios.patch(`overtime-requests/${request.id}/`, {
-          ticket,
-          date,
-          start_time: startTime,
-          end_time: endTime,
-          reason,
-        });
+      if (mutation) {
+        await mutation.mutateAsync(formData);
       } else {
-        await axios.post('overtime-requests/', {
-          ticket,
-          date,
-          start_time: startTime,
-          end_time: endTime,
-          reason,
-        });
+        // Fallback to direct axios call if no mutation provided
+        const axios = (await import('../utils/axiosInstance')).default;
+        if (isEdit) {
+          await axios.patch(`overtime-requests/${request.id}/`, formData);
+        } else {
+          await axios.post('overtime-requests/', formData);
+        }
       }
       if (onSuccess) onSuccess();
     } catch (err) {
       setError('Failed to submit overtime request.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -141,16 +139,16 @@ const OvertimeRequestForm = ({ onSuccess, onClose, request }) => {
           type="button"
           className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold"
           onClick={onClose}
-          disabled={loading}
+          disabled={mutation?.isLoading}
         >
           Cancel
         </button>
         <button
           type="submit"
           className="px-5 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow disabled:opacity-60"
-          disabled={loading}
+          disabled={mutation?.isLoading}
         >
-          {loading ? (isEdit ? 'Saving...' : 'Submitting...') : (isEdit ? 'Save Changes' : 'Submit Request')}
+          {mutation?.isLoading ? (isEdit ? 'Saving...' : 'Submitting...') : (isEdit ? 'Save Changes' : 'Submit Request')}
         </button>
       </div>
     </form>
