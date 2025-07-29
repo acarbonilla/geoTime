@@ -108,3 +108,31 @@ main, .main-content {
     min-height: 2.5rem;
   }
 }
+
+/* View toggle animations */
+.view-toggle-enter {
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+.view-toggle-enter-active {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.view-toggle-exit {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.view-toggle-exit-active {
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 300ms, transform 300ms;
+}
+
+/* Smooth transitions for view changes */
+.view-transition {
+  transition: all 0.3s ease-in-out;
+}

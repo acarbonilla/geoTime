@@ -8,9 +8,11 @@ import Navbar from './Navbar';
 import { dashboardAPI } from './api';
 import EmployeeDashboard from './dashboards/EmployeeDashboard/EmployeeDashboard';
 import TeamLeaderDashboard from './dashboards/TeamLeaderDashboard/TeamLeaderDashboard';
+import MobileDashboard from './dashboards/MobileDashboard/MobileDashboard';
 import TeamLeaderReports from './TeamLeader_Report/TeamLeaderReports';
 import EmployeeRequestPage from './EmployeeRequest/EmployeeRequestPage';
 import ApprovalPage from './TeamLeaderApproval/ApprovalPage';
+import { shouldShowMobileView, shouldShowFullView, shouldShowNavbar, getFeatureFlags } from './utils/deviceDetection';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -85,8 +87,8 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <div className="App w-full min-h-screen">
-          {/* Navbar for authenticated users - rendered at root level */}
-          {isAuthenticated && (
+          {/* Navbar for authenticated users - only show in full view */}
+          {isAuthenticated && shouldShowNavbar() && (
             <div style={{ position: 'relative', zIndex: 1000 }}>
               <Navbar user={user} employee={employee} onLogout={handleLogout} />
             </div>
@@ -97,16 +99,37 @@ function App() {
               element={
                 isAuthenticated ? (
                   (() => {
-                    if (employee?.role === 'team_leader') {
-                      return <Navigate to="/team-leader-dashboard" replace />;
+                    // Check effective view mode (device detection + user preference)
+                    const isMobileView = shouldShowMobileView();
+                    const isFullView = shouldShowFullView();
+                    
+                    if (isMobileView) {
+                      // Show mobile dashboard for all users in mobile view
+                      return <MobileDashboard user={user} employee={employee} onLogout={handleLogout} />;
                     } else {
-                      return <Navigate to="/employee-dashboard" replace />;
+                      // Show appropriate full dashboard based on role
+                      if (employee?.role === 'team_leader') {
+                        return <Navigate to="/team-leader-dashboard" replace />;
+                      } else {
+                        return <Navigate to="/employee-dashboard" replace />;
+                      }
                     }
                   })()
                 ) : (
                   <Login onLogin={handleLogin} />
                 )
               } 
+            />
+            {/* Mobile view route - accessible from any device */}
+            <Route 
+              path="/mobile-view"
+              element={
+                isAuthenticated ? (
+                  <MobileDashboard user={user} employee={employee} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
             />
             <Route 
               path="/reports"

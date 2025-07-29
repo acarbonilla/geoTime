@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
+import ViewToggle from './components/ViewToggle';
+import { shouldShowViewToggle } from './utils/deviceDetection';
 
 const DashboardIcon = () => (
   <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8v-10h-8v10zm0-18v6h8V3h-8z"/></svg>
@@ -37,7 +39,9 @@ const Navbar = ({ user, employee, onLogout }) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [coords, setCoords] = useState({ latitude: null, longitude: null });
   const userMenuRef = useRef(null);
+  const mobileMenuRef = useRef(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const shouldShowToggle = shouldShowViewToggle();
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -66,6 +70,20 @@ const Navbar = ({ user, employee, onLogout }) => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showUserMenu]);
+
+  // Click-away logic for mobile menu
+  useEffect(() => {
+    if (!showMobileMenu) return;
+    function handleClickOutside(event) {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
+        setShowMobileMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMobileMenu]);
 
   const getDashboardPath = () => {
     if (employee?.role === 'team_leader') return '/team-leader-dashboard';
@@ -150,7 +168,7 @@ const Navbar = ({ user, employee, onLogout }) => {
             </nav>
           </div>
           {/* Mobile NavLinks */}
-          <div className={`absolute top-16 left-0 w-full z-[1001] lg:hidden transition-all duration-500 ${showMobileMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`} style={{background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 50%, #a78bfa 100%)', zIndex: 1001}}>
+          <div ref={mobileMenuRef} className={`absolute top-16 left-0 w-full z-[1001] lg:hidden transition-all duration-500 ${showMobileMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`} style={{background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 50%, #a78bfa 100%)', zIndex: 1001}}>
             <nav className="flex flex-col items-center gap-2 py-4">
               <NavLink to={getDashboardPath()} className={({ isActive }) =>
                 `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
@@ -227,6 +245,17 @@ const Navbar = ({ user, employee, onLogout }) => {
                     Role: {employee?.role_display || (employee?.role === 'employee' ? 'Employee' : employee?.role) || 'Not set'}
                   </span>
                 </div>
+                {shouldShowToggle && (
+                  <div className="px-4 py-2 border-b border-gray-100">
+                    <ViewToggle 
+                      className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200"
+                      onViewChange={(newMode) => {
+                        console.log('Switching to:', newMode);
+                        setShowUserMenu(false);
+                      }}
+                    />
+                  </div>
+                )}
                 <button
                   className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled
