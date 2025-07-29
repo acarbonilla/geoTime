@@ -1435,20 +1435,28 @@ class TimeInOutAPIView(APIView):
         # Check if the current user is a team leader
         if hasattr(user, 'employee_profile'):
             is_team_leader_user = user.employee_profile.role == 'team_leader'
+            print(f"User {user.id} role: {user.employee_profile.role}")
+            print(f"User {user.id} is team leader: {is_team_leader_user}")
+            print(f"Request location_id: {location_id}")
+            print(f"Request employee_id: {employee_id}")
         
-        # Check if user is TL for the specific location
-        if location_id and hasattr(user, 'employee_profile'):
+        # Check if user is TL for the specific location (only for team leaders)
+        if location_id and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader':
             tl_employee = user.employee_profile
             is_tl = Department.objects.filter(team_leaders=tl_employee, location_id=location_id).exists()
             managed_location_ids = set(
                 Department.objects.filter(team_leaders=tl_employee).values_list('location_id', flat=True)
             )
+            print(f"Team Leader {tl_employee.id} checking location {location_id}")
+            print(f"Managed locations: {managed_location_ids}")
             if int(location_id) not in managed_location_ids:
                 return Response({'error': 'You do not have permission to use this location.'}, status=403)
         
         # Geofencing validation - Skip for Team Leaders (they can clock in/out from anywhere)
         if not is_team_leader_user:
+            print(f"Regular employee {employee_id} - checking geofence")
             geofence_result = self.validate_geofence(employee_id, latitude, longitude, accuracy, location_id)
+            print(f"Geofence result: {geofence_result}")
             if not geofence_result['valid']:
                 return Response({
                     'error': 'Geofence validation failed',
