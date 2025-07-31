@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import ViewToggle from './components/ViewToggle';
 import { shouldShowViewToggle } from './utils/deviceDetection';
 
@@ -7,7 +7,10 @@ const DashboardIcon = () => (
   <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8v-10h-8v10zm0-18v6h8V3h-8z"/></svg>
 );
 const ReportsIcon = () => (
-  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h3m4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2h3a4 4 0 014 4v2" /></svg>
+  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+);
+const RequestIcon = () => (
+  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 );
 const ProfileIcon = () => (
   <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A13.937 13.937 0 0112 15c2.5 0 4.847.655 6.879 1.804M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -42,6 +45,7 @@ const Navbar = ({ user, employee, onLogout }) => {
   const mobileMenuRef = useRef(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const shouldShowToggle = shouldShowViewToggle();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -91,6 +95,11 @@ const Navbar = ({ user, employee, onLogout }) => {
     return '/employee-dashboard';
   };
 
+  const handleNavLinkClick = (e, path) => {
+    e.preventDefault();
+    navigate(path);
+  };
+
   return (
     <nav className="navbar-fixed bg-gradient-to-r from-blue-900 via-blue-800 to-purple-900 shadow-2xl border-b transition-all duration-500">
       <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
@@ -129,30 +138,29 @@ const Navbar = ({ user, employee, onLogout }) => {
               <NavLink to={getDashboardPath()} className={({ isActive }) =>
                 `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
                   ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-              } style={{ pointerEvents: 'auto' }}>
+              } style={{ pointerEvents: 'auto' }} onClick={(e) => handleNavLinkClick(e, getDashboardPath())}>
                 <DashboardIcon /> Dashboard
               </NavLink>
-              {employee?.role === 'employee' && (
-                <NavLink to="/employee/request" className={({ isActive }) =>
-                  `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
-                    ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-                } style={{ pointerEvents: 'auto' }}>
-                  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h3m4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2h3a4 4 0 014 4v2" /></svg>
-                  Request
-                </NavLink>
-              )}
+                             {employee?.role === 'employee' && (
+                 <NavLink to="/employee/request" className={({ isActive }) =>
+                   `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
+                     ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
+                 } style={{ pointerEvents: 'auto' }} onClick={(e) => handleNavLinkClick(e, '/employee/request')}>
+                   <RequestIcon /> Request
+                 </NavLink>
+               )}
               {employee?.role === 'team_leader' ? (
                 <NavLink to="/team-leader-reports" className={({ isActive }) =>
                   `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
                     ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-                } style={{ pointerEvents: 'auto' }}>
+                } style={{ pointerEvents: 'auto' }} onClick={(e) => handleNavLinkClick(e, '/team-leader-reports')}>
                   <ReportsIcon /> Team Reports
                 </NavLink>
               ) : (
                 <NavLink to="/reports" className={({ isActive }) =>
                   `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
                     ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-                } style={{ pointerEvents: 'auto' }}>
+                } style={{ pointerEvents: 'auto' }} onClick={(e) => handleNavLinkClick(e, '/reports')}>
                   <ReportsIcon /> Reports
                 </NavLink>
               )}
@@ -160,48 +168,45 @@ const Navbar = ({ user, employee, onLogout }) => {
                 <NavLink to="/approval" className={({ isActive }) =>
                   `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
                     ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
-                } style={{ pointerEvents: 'auto' }}>
-                  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  For Approval
+                } style={{ pointerEvents: 'auto' }} onClick={(e) => handleNavLinkClick(e, '/approval')}>
+                  <ProfileIcon /> For Approval
                 </NavLink>
               )}
             </nav>
           </div>
           {/* Mobile NavLinks */}
-          <div ref={mobileMenuRef} className={`absolute top-16 left-0 w-full z-[1001] lg:hidden transition-all duration-500 ${showMobileMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`} style={{background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 50%, #a78bfa 100%)', zIndex: 1001}}>
-            <nav className="flex flex-col items-center gap-2 py-4">
+          <div ref={mobileMenuRef} className={`absolute top-16 left-0 w-full z-[999] lg:hidden transition-all duration-500 ${showMobileMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`} style={{background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 50%, #a78bfa 100%)', zIndex: 999}}>
+            <nav className="flex flex-row items-center justify-center gap-1 sm:gap-2 py-3 px-2 overflow-x-auto">
               <NavLink to={getDashboardPath()} className={({ isActive }) =>
-                `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
-              } onClick={() => setShowMobileMenu(false)}>
-                <DashboardIcon /> Dashboard
+                `flex items-center px-2 sm:px-3 py-2 rounded transition font-medium text-xs sm:text-sm whitespace-nowrap ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+              } onClick={(e) => handleNavLinkClick(e, getDashboardPath())}>
+                <DashboardIcon /> <span className="hidden sm:inline ml-1">Dashboard</span>
               </NavLink>
-              {employee?.role === 'employee' && (
-                <NavLink to="/employee/request" className={({ isActive }) =>
-                  `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
-                } onClick={() => setShowMobileMenu(false)}>
-                  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h3m4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2h3a4 4 0 014 4v2" /></svg>
-                  Request
-                </NavLink>
-              )}
+                             {employee?.role === 'employee' && (
+                 <NavLink to="/employee/request" className={({ isActive }) =>
+                   `flex items-center px-2 sm:px-3 py-2 rounded transition font-medium text-xs sm:text-sm whitespace-nowrap ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+                 } onClick={(e) => handleNavLinkClick(e, '/employee/request')}>
+                   <RequestIcon /> <span className="hidden sm:inline ml-1">Request</span>
+                 </NavLink>
+               )}
               {employee?.role === 'team_leader' ? (
                 <NavLink to="/team-leader-reports" className={({ isActive }) =>
-                  `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
-                } onClick={() => setShowMobileMenu(false)}>
-                  <ReportsIcon /> Team Reports
+                  `flex items-center px-2 sm:px-3 py-2 rounded transition font-medium text-xs sm:text-sm whitespace-nowrap ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+                } onClick={(e) => handleNavLinkClick(e, '/team-leader-reports')}>
+                  <ReportsIcon /> <span className="hidden sm:inline ml-1">Team Reports</span>
                 </NavLink>
               ) : (
                 <NavLink to="/reports" className={({ isActive }) =>
-                  `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
-                } onClick={() => setShowMobileMenu(false)}>
-                  <ReportsIcon /> Reports
+                  `flex items-center px-2 sm:px-3 py-2 rounded transition font-medium text-xs sm:text-sm whitespace-nowrap ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+                } onClick={(e) => handleNavLinkClick(e, '/reports')}>
+                  <ReportsIcon /> <span className="hidden sm:inline ml-1">Reports</span>
                 </NavLink>
               )}
               {employee?.role === 'team_leader' && (
                 <NavLink to="/approval" className={({ isActive }) =>
-                  `flex items-center px-4 py-2 rounded transition font-medium w-full justify-center ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
-                } onClick={() => setShowMobileMenu(false)}>
-                  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  For Approval
+                  `flex items-center px-2 sm:px-3 py-2 rounded transition font-medium text-xs sm:text-sm whitespace-nowrap ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+                } onClick={(e) => handleNavLinkClick(e, '/approval')}>
+                  <ProfileIcon /> <span className="hidden sm:inline ml-1">Approval</span>
                 </NavLink>
               )}
             </nav>
@@ -221,7 +226,7 @@ const Navbar = ({ user, employee, onLogout }) => {
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center space-x-1 lg:space-x-2 text-white hover:bg-white/10 rounded px-1 lg:px-2 py-1 focus:outline-none transition-all duration-300 min-w-0 cursor-pointer"
-              style={{ pointerEvents: 'auto', zIndex: 1001 }}
+              style={{ pointerEvents: 'auto', zIndex: 999 }}
             >
               <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
                 {user?.first_name?.[0]}{user?.last_name?.[0]}
@@ -234,21 +239,21 @@ const Navbar = ({ user, employee, onLogout }) => {
               </svg>
             </button>
             {showUserMenu && (
-              <div ref={userMenuRef} className="absolute right-0 mt-12 w-56 bg-white rounded-md shadow-lg py-3 z-[1001] animate-fade-in-down" style={{ zIndex: 1001, pointerEvents: 'auto' }}>
-                <div className="flex flex-col items-center mb-2 mt-16">
+              <div ref={userMenuRef} className="absolute right-0 mt-12 w-48 sm:w-56 bg-white rounded-md shadow-lg py-3 z-[999] animate-fade-in-down max-w-[calc(100vw-2rem)] sm:right-0 right-2" style={{ zIndex: 999, pointerEvents: 'auto' }}>
+                <div className="flex flex-col items-center mb-2 mt-16 px-2">
                   <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold mb-1">
                     {user?.first_name?.[0]}{user?.last_name?.[0]}
                   </div>
-                  <span className="font-medium text-gray-900 mb-1">{user?.first_name} {user?.last_name}</span>
+                  <span className="font-medium text-gray-900 mb-1 text-center text-sm sm:text-base truncate w-full">{user?.first_name} {user?.last_name}</span>
                   {/* Role as simple text */}
-                  <span className="text-xs text-gray-600 mb-1">
+                  <span className="text-xs text-gray-600 mb-1 text-center">
                     Role: {employee?.role_display || (employee?.role === 'employee' ? 'Employee' : employee?.role) || 'Not set'}
                   </span>
                 </div>
                 {shouldShowToggle && (
-                  <div className="px-4 py-2 border-b border-gray-100">
+                  <div className="px-3 sm:px-4 py-2 border-b border-gray-100">
                     <ViewToggle 
-                      className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200"
+                      className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 text-xs sm:text-sm"
                       onViewChange={(newMode) => {
                         console.log('Switching to:', newMode);
                         setShowUserMenu(false);
@@ -257,14 +262,14 @@ const Navbar = ({ user, employee, onLogout }) => {
                   </div>
                 )}
                 <button
-                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="block w-full text-left px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled
                 >
                   Settings
                 </button>
                 <button
                   onClick={onLogout}
-                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+                  className="block w-full text-left px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
                   style={{ pointerEvents: 'auto' }}
                 >
                   Logout

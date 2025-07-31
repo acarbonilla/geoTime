@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { timeAPI, workSessionAPI } from '../../api';
+import { timeAPI } from '../../api';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import GeoMap from './GeoMap';
@@ -69,9 +69,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   const { data: sessionData, isLoading: sessionLoading, error: sessionError } = useQuery({
     queryKey: ['currentSession', employee?.id],
     queryFn: async () => {
-      console.log('Fetching current session for employee:', employee?.id);
       const result = await timeAPI.getCurrentSession();
-      console.log('Session data received:', result);
       return result;
     },
     refetchInterval: 30000, // 30 seconds
@@ -89,9 +87,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
 
   // Process session data
   useEffect(() => {
-    console.log('Session data changed:', sessionData);
     if (sessionData) {
-      console.log('Setting session response:', sessionData);
       setSessionResponse(sessionData);
       
       if (sessionData.today_analysis) {
@@ -141,7 +137,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   // Process entries data (fallback when no overtime analysis)
   useEffect(() => {
     if (entriesData && !sessionData?.today_analysis) {
-      console.log('Recent entries response:', entriesData);
       
       // Filter for today's entries
       const today = new Date().toDateString();
@@ -150,37 +145,26 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         return entryDate === today;
       });
       
-      console.log('Filtered today entries:', todayEntries);
-      console.log('Sample entry location:', todayEntries[0]?.location_name);
       setTodayEntries(todayEntries);
       
       // Calculate total hours from today's entries
       let totalHours = 0;
       if (todayEntries.length > 0) {
-        console.log('Calculating hours from entries:', todayEntries);
         
         // Sort entries by timestamp
         const sortedEntries = todayEntries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         const timeInEntries = sortedEntries.filter(e => e.entry_type === 'time_in');
         const timeOutEntries = sortedEntries.filter(e => e.entry_type === 'time_out');
         
-        console.log('Time in entries:', timeInEntries);
-        console.log('Time out entries:', timeOutEntries);
+
         
-        // Calculate actual hours worked
-        for (let i = 0; i < Math.min(timeInEntries.length, timeOutEntries.length); i++) {
-          const timeIn = new Date(timeInEntries[i].timestamp);
-          const timeOut = new Date(timeOutEntries[i].timestamp);
-          const duration = (timeOut - timeIn) / (1000 * 60 * 60); // Convert to hours
-          console.log(`Session ${i + 1}: ${timeIn.toLocaleTimeString()} - ${timeOut.toLocaleTimeString()} = ${duration.toFixed(2)} hours`);
-          totalHours += duration;
-        }
-        
-        console.log('Total hours calculated:', totalHours);
-        
-        // Test the calculation with our test function
-        const testHours = testTotalHoursCalculation(todayEntries);
-        console.log('Test function result:', testHours);
+                 // Calculate actual hours worked
+         for (let i = 0; i < Math.min(timeInEntries.length, timeOutEntries.length); i++) {
+           const timeIn = new Date(timeInEntries[i].timestamp);
+           const timeOut = new Date(timeOutEntries[i].timestamp);
+           const duration = (timeOut - timeIn) / (1000 * 60 * 60); // Convert to hours
+           totalHours += duration;
+         }
       }
       setTotalHoursToday(totalHours);
     }
@@ -216,28 +200,19 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         setGeolocationStatus('success');
         setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
         
-        // Debug geofencing validation
-        console.log('Time In - Location Data:', {
-          employee_id: employee.id,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          department_location: employee.department?.location,
-          geofence_radius: employee.department?.location?.geofence_radius
-        });
         
-        // Test geofence validation before time in
-        try {
-          const geofenceValidation = await timeAPI.validateGeofence({
-            employee_id: employee.id,
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy
-          });
-          console.log('Geofence Validation Result:', geofenceValidation);
-        } catch (geofenceError) {
-          console.error('Geofence validation error:', geofenceError);
-        }
+        
+                 // Test geofence validation before time in
+         try {
+           await timeAPI.validateGeofence({
+             employee_id: employee.id,
+             latitude: position.coords.latitude,
+             longitude: position.coords.longitude,
+             accuracy: position.coords.accuracy
+           });
+         } catch (geofenceError) {
+           console.error('Geofence validation error:', geofenceError);
+         }
         
       } catch (geoError) {
         console.warn('Geolocation failed, proceeding without coordinates:', geoError);
@@ -253,8 +228,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         accuracy: position.coords.accuracy
       };
       
-      console.log('Sending time in request:', timeInData);
-      await timeAPI.timeIn(timeInData);
+             await timeAPI.timeIn(timeInData);
       
       // Invalidate and refetch queries to update the dashboard
       await queryClient.invalidateQueries({ queryKey: ['currentSession', employee?.id] });
@@ -285,28 +259,19 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         setGeolocationStatus('success');
         setCurrentCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
         
-        // Debug geofencing validation
-        console.log('Time Out - Location Data:', {
-          employee_id: employee.id,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          department_location: employee.department?.location,
-          geofence_radius: employee.department?.location?.geofence_radius
-        });
         
-        // Test geofence validation before time out
-        try {
-          const geofenceValidation = await timeAPI.validateGeofence({
-            employee_id: employee.id,
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy
-          });
-          console.log('Geofence Validation Result:', geofenceValidation);
-        } catch (geofenceError) {
-          console.error('Geofence validation error:', geofenceError);
-        }
+        
+                 // Test geofence validation before time out
+         try {
+           await timeAPI.validateGeofence({
+             employee_id: employee.id,
+             latitude: position.coords.latitude,
+             longitude: position.coords.longitude,
+             accuracy: position.coords.accuracy
+           });
+         } catch (geofenceError) {
+           console.error('Geofence validation error:', geofenceError);
+         }
         
       } catch (geoError) {
         console.warn('Geolocation failed, proceeding without coordinates:', geoError);
@@ -322,8 +287,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         accuracy: position.coords.accuracy
       };
       
-      console.log('Sending time out request:', timeOutData);
-      await timeAPI.timeOut(timeOutData);
+             await timeAPI.timeOut(timeOutData);
       
       // Invalidate and refetch queries to update the dashboard
       await queryClient.invalidateQueries({ queryKey: ['currentSession', employee?.id] });
@@ -610,19 +574,8 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 >
                   {isClockingIn ? 'Clocking In...' : 'Time In'}
                 </button>
-                <button
-                  onClick={(e) => {
-                    console.log('Time Out button clicked!', e);
-                    console.log('Button disabled:', isClockingOut || !(sessionResponse && sessionResponse.active_session));
-                    console.log('Session response:', sessionResponse);
-                    console.log('Active session:', sessionResponse?.active_session);
-                    console.log('Is clocking out:', isClockingOut);
-                    if (!isClockingOut && sessionResponse && sessionResponse.active_session) {
-                      handleTimeOut();
-                    } else {
-                      console.log('Button is disabled or no active session');
-                    }
-                  }}
+                                 <button
+                   onClick={handleTimeOut}
                   disabled={isClockingOut || !(sessionResponse && sessionResponse.active_session)}
                   className={`w-full py-2 sm:py-3 px-3 sm:px-4 rounded-lg text-sm sm:text-base font-semibold transition-colors ${
                     isClockingOut || !(sessionResponse && sessionResponse.active_session)

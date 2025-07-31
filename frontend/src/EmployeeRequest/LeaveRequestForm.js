@@ -100,34 +100,32 @@ const LeaveRequestForm = ({ onSuccess, onClose, request, mutation }) => {
             ))}
           </select>
         </label>
-        <div className="flex gap-4">
-          <label className="flex flex-col font-medium flex-1">
-            Start Date
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-2.5 text-blue-400"><FaCalendarAlt /></span>
-              <input
-                type="date"
-                className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                required
-              />
-            </div>
-          </label>
-          <label className="flex flex-col font-medium flex-1">
-            End Date
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-2.5 text-blue-400"><FaCalendarAlt /></span>
-              <input
-                type="date"
-                className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                required
-              />
-            </div>
-          </label>
-        </div>
+        <label className="flex flex-col font-medium">
+          Start Date
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-2.5 text-blue-400"><FaCalendarAlt /></span>
+            <input
+              type="date"
+              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              required
+            />
+          </div>
+        </label>
+        <label className="flex flex-col font-medium">
+          End Date
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-2.5 text-blue-400"><FaCalendarAlt /></span>
+            <input
+              type="date"
+              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              required
+            />
+          </div>
+        </label>
         <label className="flex flex-col font-medium">
           Number of Days
           <input

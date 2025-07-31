@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { FaClock, FaMapMarkerAlt, FaSignInAlt, FaSignOutAlt, FaUser, FaCog, FaBars, FaDesktop, FaMobile } from 'react-icons/fa';
+import { FaClock, FaMapMarkerAlt, FaSignInAlt, FaSignOutAlt, FaUser, FaBars, FaDesktop, FaMobile } from 'react-icons/fa';
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import timeAPI from '../../api/timeAPI';
 import { getCurrentPosition } from '../../utils/geolocation';
-import ViewToggle from '../../components/ViewToggle';
 import { setUserViewPreference, VIEW_MODES } from '../../utils/deviceDetection';
 
 // Fix for default markers in react-leaflet
@@ -18,7 +16,6 @@ L.Icon.Default.mergeOptions({
 });
 
 const MobileDashboard = ({ user, employee, onLogout }) => {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [currentStatus, setCurrentStatus] = useState('not_started');
   const [isClockingIn, setIsClockingIn] = useState(false);
@@ -100,7 +97,6 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
   // Force refresh data when component mounts (for view switching)
   useEffect(() => {
     if (employee?.id) {
-      console.log('Mobile Dashboard - Force refreshing data');
       refetchSession();
       refetchTodayEntries();
     }
@@ -108,26 +104,18 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
 
   // Update current status based on session
   useEffect(() => {
-    console.log('Status Update - Session Response:', sessionResponse);
-    console.log('Status Update - Today Entries:', todayEntries);
-    
     if (sessionResponse?.active_session) {
-      console.log('Status Update - Setting to clocked_in (active session)');
       setCurrentStatus('clocked_in');
     } else {
       // Check if there are any time entries today to determine status
       if (todayEntries?.length > 0) {
         const lastEntry = todayEntries[todayEntries.length - 1];
-        console.log('Status Update - Last entry:', lastEntry);
         if (lastEntry.entry_type === 'time_in') {
-          console.log('Status Update - Setting to clocked_in (last entry was time_in)');
           setCurrentStatus('clocked_in');
         } else {
-          console.log('Status Update - Setting to clocked_out (last entry was time_out)');
           setCurrentStatus('clocked_out');
         }
       } else {
-        console.log('Status Update - Setting to not_started (no entries today)');
         setCurrentStatus('not_started');
       }
     }
@@ -173,16 +161,6 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
         location_id: employee.department?.location?.id || null,
         notes: `Mobile clock-in (${employee.role})`
       };
-      
-      console.log('Clock In - User:', user);
-      console.log('Clock In - Employee:', employee);
-      console.log('Clock In - Employee Role:', employee.role);
-      console.log('Clock In - Employee ID:', employee.id);
-      console.log('Clock In - Position:', position.coords);
-      console.log('Clock In - Request Data:', clockInData);
-      console.log('Clock In - Department Location:', employee.department?.location);
-      console.log('Clock In - Department Location ID:', employee.department?.location?.id);
-      console.log('Clock In - Auth Token:', localStorage.getItem('access_token') ? 'Present' : 'Missing');
       
       await clockInMutation.mutateAsync(clockInData);
       
@@ -246,16 +224,6 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
         location_id: employee.department?.location?.id || null,
         notes: `Mobile clock-out (${employee.role})`
       };
-      
-      console.log('Clock Out - User:', user);
-      console.log('Clock Out - Employee:', employee);
-      console.log('Clock Out - Employee Role:', employee.role);
-      console.log('Clock Out - Employee ID:', employee.id);
-      console.log('Clock Out - Position:', position.coords);
-      console.log('Clock Out - Request Data:', clockOutData);
-      console.log('Clock Out - Department Location:', employee.department?.location);
-      console.log('Clock Out - Department Location ID:', employee.department?.location?.id);
-      console.log('Clock Out - Auth Token:', localStorage.getItem('access_token') ? 'Present' : 'Missing');
       
       await clockOutMutation.mutateAsync(clockOutData);
       

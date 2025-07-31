@@ -185,7 +185,7 @@ export default function Login({ onLogin }) {
       </div>
 
       {/* CSS for animations */}
-      <style jsx>{`
+      <style>{`
         @keyframes gradient-xy {
           0%, 100% {
             background-position: 0% 0%;

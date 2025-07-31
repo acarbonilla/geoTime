@@ -28,6 +28,8 @@ const OvertimeRequestForm = ({ onSuccess, onClose, request, mutation }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    console.log('Overtime form submitted');
     setError('');
     if (!ticket || !date || !startTime || !endTime || !reason) {
       setError('All fields are required.');
@@ -43,6 +45,7 @@ const OvertimeRequestForm = ({ onSuccess, onClose, request, mutation }) => {
     };
 
     try {
+      console.log('Submitting overtime request:', formData);
       if (mutation) {
         await mutation.mutateAsync(formData);
       } else {
@@ -54,8 +57,10 @@ const OvertimeRequestForm = ({ onSuccess, onClose, request, mutation }) => {
           await axios.post('overtime-requests/', formData);
         }
       }
+      console.log('Overtime request submitted successfully');
       if (onSuccess) onSuccess();
     } catch (err) {
+      console.error('Error submitting overtime request:', err);
       setError('Failed to submit overtime request.');
     }
   };
@@ -91,34 +96,32 @@ const OvertimeRequestForm = ({ onSuccess, onClose, request, mutation }) => {
             />
           </div>
         </label>
-        <div className="flex gap-4">
-          <label className="flex flex-col font-medium flex-1">
-            Start Time
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
-              <input
-                type="time"
-                className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={startTime}
-                onChange={e => setStartTime(e.target.value)}
-                required
-              />
-            </div>
-          </label>
-          <label className="flex flex-col font-medium flex-1">
-            End Time
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
-              <input
-                type="time"
-                className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={endTime}
-                onChange={e => setEndTime(e.target.value)}
-                required
-              />
-            </div>
-          </label>
-        </div>
+        <label className="flex flex-col font-medium">
+          Start Time
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
+            <input
+              type="time"
+              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={startTime}
+              onChange={e => setStartTime(e.target.value)}
+              required
+            />
+          </div>
+        </label>
+        <label className="flex flex-col font-medium">
+          End Time
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
+            <input
+              type="time"
+              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={endTime}
+              onChange={e => setEndTime(e.target.value)}
+              required
+            />
+          </div>
+        </label>
         <label className="flex flex-col font-medium">
           Reason
           <div className="relative mt-1">

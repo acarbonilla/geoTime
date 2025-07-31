@@ -42,8 +42,9 @@ html, body, #root {
  * 1-10: Main content
  * 11-50: Dropdowns, tooltips
  * 51-100: Modals, overlays
- * 101-99998: Other UI elements
- * 99999: Navbar (highest priority)
+ * 101-998: Other UI elements
+ * 999: Navbar dropdowns and menus
+ * 1000: Navbar (highest priority)
  */
 
 /* Ensure navbar stays on top */

@@ -77,90 +77,86 @@ const ChangeScheduleRequestForm = ({ onSuccess, onClose, request, mutation }) =>
       </h2>
       {error && <div className="text-red-500 text-sm mb-2">{error}</div>}
       <div className="flex flex-col gap-4">
-        {/* Original Schedule Row */}
-        <div className="flex flex-col md:flex-row md:gap-4">
-          <label className="flex flex-col font-medium flex-1 mb-2 md:mb-0">
-            Original Date
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-2.5 text-blue-400"><FaCalendarAlt /></span>
-              <input
-                type="date"
-                className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={originalDate}
-                onChange={e => setOriginalDate(e.target.value)}
-                required
-              />
-            </div>
-          </label>
-          <label className="flex flex-col font-medium flex-1 mb-2 md:mb-0">
-            Original Start Time
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
-              <input
-                type="time"
-                className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={originalStartTime}
-                onChange={e => setOriginalStartTime(e.target.value)}
-                required
-              />
-            </div>
-          </label>
-          <label className="flex flex-col font-medium flex-1">
-            Original End Time
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
-              <input
-                type="time"
-                className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={originalEndTime}
-                onChange={e => setOriginalEndTime(e.target.value)}
-                required
-              />
-            </div>
-          </label>
-        </div>
-        {/* Requested Schedule Row */}
-        <div className="flex flex-col md:flex-row md:gap-4">
-          <label className="flex flex-col font-medium flex-1 mb-2 md:mb-0">
-            Requested Date
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-2.5 text-blue-400"><FaCalendarAlt /></span>
-              <input
-                type="date"
-                className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={requestedDate}
-                onChange={e => setRequestedDate(e.target.value)}
-                required
-              />
-            </div>
-          </label>
-          <label className="flex flex-col font-medium flex-1 mb-2 md:mb-0">
-            Requested Start Time
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
-              <input
-                type="time"
-                className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={requestedStartTime}
-                onChange={e => setRequestedStartTime(e.target.value)}
-                required
-              />
-            </div>
-          </label>
-          <label className="flex flex-col font-medium flex-1">
-            Requested End Time
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
-              <input
-                type="time"
-                className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={requestedEndTime}
-                onChange={e => setRequestedEndTime(e.target.value)}
-                required
-              />
-            </div>
-          </label>
-        </div>
+        {/* Original Schedule */}
+        <label className="flex flex-col font-medium">
+          Original Date
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-2.5 text-blue-400"><FaCalendarAlt /></span>
+            <input
+              type="date"
+              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={originalDate}
+              onChange={e => setOriginalDate(e.target.value)}
+              required
+            />
+          </div>
+        </label>
+        <label className="flex flex-col font-medium">
+          Original Start Time
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
+            <input
+              type="time"
+              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={originalStartTime}
+              onChange={e => setOriginalStartTime(e.target.value)}
+              required
+            />
+          </div>
+        </label>
+        <label className="flex flex-col font-medium">
+          Original End Time
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
+            <input
+              type="time"
+              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={originalEndTime}
+              onChange={e => setOriginalEndTime(e.target.value)}
+              required
+            />
+          </div>
+        </label>
+        {/* Requested Schedule */}
+        <label className="flex flex-col font-medium">
+          Requested Date
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-2.5 text-blue-400"><FaCalendarAlt /></span>
+            <input
+              type="date"
+              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={requestedDate}
+              onChange={e => setRequestedDate(e.target.value)}
+              required
+            />
+          </div>
+        </label>
+        <label className="flex flex-col font-medium">
+          Requested Start Time
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
+            <input
+              type="time"
+              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={requestedStartTime}
+              onChange={e => setRequestedStartTime(e.target.value)}
+              required
+            />
+          </div>
+        </label>
+        <label className="flex flex-col font-medium">
+          Requested End Time
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
+            <input
+              type="time"
+              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={requestedEndTime}
+              onChange={e => setRequestedEndTime(e.target.value)}
+              required
+            />
+          </div>
+        </label>
         {/* Reason */}
         <label className="flex flex-col font-medium">
           Reason

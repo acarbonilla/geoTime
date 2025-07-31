@@ -34,70 +34,27 @@ const GeoMap = ({ centerLat, centerLng, radius, userLat, userLng }) => {
           let effectiveRadius = radiusNum;
           if (radiusNum > 50000) { // 50km
             effectiveRadius = radiusNum * 1.01; // Add 1% tolerance
-            console.log(`Large radius detected (${radiusNum}m), applying 1% tolerance: ${effectiveRadius}m`);
           }
           
           const isWithin = calculatedDistance <= effectiveRadius;
           setIsWithinGeofence(isWithin);
-          console.log('Geofencing Debug:', {
-            distance: calculatedDistance,
-            radius: radiusNum,
-            effectiveRadius: effectiveRadius,
-            isWithin: isWithin,
-            coordinates: { 
-              centerLat: centerLatNum, 
-              centerLng: centerLngNum, 
-              userLat: userLatNum, 
-              userLng: userLngNum 
-            },
-            rawRadius: radius,
-            radiusType: typeof radius
-          });
         } else if (radiusNum === 0 || radiusNum === null || radiusNum === undefined) {
           // If radius is 0, null, or undefined, allow transactions (fallback)
           setIsWithinGeofence(true);
-          console.log('Radius is 0/null/undefined, allowing transactions by default', {
-            rawRadius: radius,
-            radiusType: typeof radius,
-            parsedRadius: radiusNum
-          });
         } else if (radiusNum < 0) {
           // If radius is negative, allow transactions (fallback)
           setIsWithinGeofence(true);
-          console.log('Negative radius provided, allowing transactions by default', {
-            rawRadius: radius,
-            radiusType: typeof radius,
-            parsedRadius: radiusNum
-          });
         } else {
           // If radius is NaN or invalid, allow transactions (fallback)
           setIsWithinGeofence(true);
-          console.log('Invalid radius provided, allowing transactions by default', {
-            rawRadius: radius,
-            radiusType: typeof radius,
-            parsedRadius: radiusNum
-          });
         }
-      } else {
-        console.log('Invalid coordinates provided:', {
-          centerLat, centerLng, userLat, userLng,
-          parsed: {
-            centerLatNum: parseFloat(centerLat),
-            centerLngNum: parseFloat(centerLng),
-            userLatNum: parseFloat(userLat),
-            userLngNum: parseFloat(userLng)
-          }
-        });
       }
-    } else {
-      console.log('Missing coordinates:', { centerLat, centerLng, userLat, userLng });
     }
   }, [centerLat, centerLng, userLat, userLng, radius]);
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
     // Validate inputs
     if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) {
-      console.error('Invalid coordinates provided to calculateDistance:', { lat1, lon1, lat2, lon2 });
       return null;
     }
     
@@ -110,13 +67,6 @@ const GeoMap = ({ centerLat, centerLng, radius, userLat, userLng }) => {
       Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     const distance = R * c; // Distance in meters
-    
-    console.log('Distance calculation:', {
-      from: { lat: lat1, lon: lon1 },
-      to: { lat: lat2, lon: lon2 },
-      distance: distance,
-      distanceKm: distance / 1000
-    });
     
     return distance;
   };

@@ -106,9 +106,9 @@ export const shouldShowFullView = () => {
   return getEffectiveViewMode() === VIEW_MODES.FULL;
 };
 
-// Check if navbar should be shown (only in full view mode)
+// Check if navbar should be shown (only show in full view mode)
 export const shouldShowNavbar = () => {
-  return shouldShowFullView();
+  return shouldShowFullView(); // Only show navbar in full view mode
 };
 
 // Check if view toggle should be shown (only on mobile/tablet devices)
@@ -121,7 +121,6 @@ export const getFeatureFlags = () => {
   const isMobileView = shouldShowMobileView();
   const isFullView = shouldShowFullView();
   const isMobileDevice = shouldShowMobileInterface();
-  const isDesktopDevice = shouldShowDesktopInterface();
   
   return {
     // Mobile view features
