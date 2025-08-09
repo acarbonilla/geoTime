@@ -2,6 +2,37 @@
 
 This guide provides complete instructions for deploying and maintaining your geoTime application in production, covering both initial setup and ongoing maintenance.
 
+## 🏠 Production Server Information
+
+### Current Production Environment
+- **Domain**: iais.online, www.iais.online
+- **Server Location**: /opt/geoTime
+- **IP Address**: 178.128.18.58
+- **Server Type**: VPS/Cloud instance
+- **Deployment Date**: [To be filled when deployed]
+
+### Server Access
+- **SSH Access**: `ssh user@178.128.18.58`
+- **Application Directory**: `/opt/geoTime`
+- **Backend Directory**: `/opt/geoTime/backend`
+- **Frontend Directory**: `/opt/geoTime/frontend`
+
+### Environment Details
+- **Python Version**: 3.x
+- **Node.js Version**: 18+
+- **Database**: PostgreSQL
+- **Web Server**: Nginx
+- **Application Server**: Gunicorn
+- **SSL Certificate**: Let's Encrypt (auto-renewal configured)
+
+### Notes
+- **Recorded Date**: December 2024
+- **Server Status**: Production ready
+- **Last Updated**: [To be filled when updated]
+- **Deployment Path**: All scripts and configurations have been updated to use `/opt/geoTime` as the application directory
+
+---
+
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)

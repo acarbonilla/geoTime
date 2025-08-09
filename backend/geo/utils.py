@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import List, Dict, Tuple, Optional
 from django.utils import timezone
 from .models import TimeEntry, WorkSession, Employee
+import logging
 
 
 class OvertimeCalculator:
@@ -858,71 +859,108 @@ def get_employee_time_attendance_report(employee, start_date, end_date):
     Returns:
         dict: Complete report data
     """
-    from .models import DailyTimeSummary
+    from .models import DailyTimeSummary, TimeEntry, EmployeeSchedule
     from datetime import date, timedelta
+    import logging
     
-    # Get all daily summaries for the period
-    summaries = DailyTimeSummary.objects.filter(
-        employee=employee,
-        date__gte=start_date,
-        date__lte=end_date
-    ).order_by('date')
+    logger = logging.getLogger(__name__)
     
-    # Convert to report format
-    report_data = []
-    total_billed_hours = 0
-    total_late_minutes = 0
-    total_undertime_minutes = 0
-    total_night_differential = 0
-    days_worked = 0
-    
-    current_date = start_date
-    while current_date <= end_date:
-        try:
-            summary = summaries.get(date=current_date)
-        except DailyTimeSummary.DoesNotExist:
-            summary = None
+    try:
+        logger.info(f"Starting time attendance report generation for employee {employee.employee_id} from {start_date} to {end_date}")
         
-        if summary and summary.status in ['present', 'late', 'half_day']:
-            days_worked += 1
-            total_billed_hours += float(summary.billed_hours or 0)
-            total_late_minutes += summary.late_minutes or 0
-            total_undertime_minutes += summary.undertime_minutes or 0
-            total_night_differential += float(summary.night_differential_hours or 0)
+        # Get all daily summaries for the period
+        summaries = DailyTimeSummary.objects.filter(
+            employee=employee,
+            date__gte=start_date,
+            date__lte=end_date
+        ).order_by('date')
         
-        report_data.append({
-            'date': current_date,
-            'day': current_date.strftime('%a'),
-            'status': summary.status if summary else 'absent',
-            'time_in': summary.formatted_time_in if summary else '-',
-            'time_out': summary.formatted_time_out if summary else '-',
-            'scheduled_in': summary.formatted_scheduled_in if summary else '-',
-            'scheduled_out': summary.formatted_scheduled_out if summary else '-',
-            'billed_hours': summary.formatted_billed_hours if summary else '-',
-            'late_minutes': summary.formatted_late_minutes if summary else '-',
-            'undertime_minutes': summary.formatted_undertime_minutes if summary else '-',
-            'night_differential': summary.formatted_night_differential if summary else '-',
-        })
+        logger.info(f"Found {summaries.count()} daily summaries for the period")
         
-        current_date += timedelta(days=1)
-    
-    return {
-        'employee': {
-            'id': employee.id,
-            'name': employee.full_name,
-            'employee_id': employee.employee_id,
-            'department': employee.department.name,
-        },
-        'period': {
-            'start_date': start_date,
-            'end_date': end_date,
-        },
-        'summary': {
-            'days_worked': days_worked,
-            'total_billed_hours': round(total_billed_hours, 2),
-            'total_late_minutes': total_late_minutes,
-            'total_undertime_minutes': total_undertime_minutes,
-            'total_night_differential': round(total_night_differential, 2),
-        },
-        'daily_records': report_data
-    } 
+        # Convert to report format
+        report_data = []
+        total_billed_hours = 0
+        total_late_minutes = 0
+        total_undertime_minutes = 0
+        total_night_differential = 0
+        days_worked = 0
+        
+        current_date = start_date
+        while current_date <= end_date:
+            try:
+                summary = summaries.get(date=current_date)
+            except DailyTimeSummary.DoesNotExist:
+                summary = None
+            except Exception as e:
+                logger.warning(f"Error getting summary for {current_date}: {str(e)}")
+                summary = None
+            
+            if summary and summary.status in ['present', 'late', 'half_day']:
+                days_worked += 1
+                try:
+                    total_billed_hours += float(summary.billed_hours or 0)
+                    total_late_minutes += summary.late_minutes or 0
+                    total_undertime_minutes += summary.undertime_minutes or 0
+                    total_night_differential += float(summary.night_differential_hours or 0)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error processing summary metrics for {current_date}: {str(e)}")
+            
+            # Create report record with safe property access
+            try:
+                report_data.append({
+                    'date': current_date,
+                    'day': current_date.strftime('%a'),
+                    'status': summary.status if summary else 'absent',
+                    'time_in': summary.formatted_time_in if summary else '-',
+                    'time_out': summary.formatted_time_out if summary else '-',
+                    'scheduled_in': summary.formatted_scheduled_in if summary else '-',
+                    'scheduled_out': summary.formatted_scheduled_out if summary else '-',
+                    'billed_hours': summary.formatted_billed_hours if summary else '-',
+                    'late_minutes': summary.formatted_late_minutes if summary else '-',
+                    'undertime_minutes': summary.formatted_undertime_minutes if summary else '-',
+                    'night_differential': summary.formatted_night_differential if summary else '-',
+                })
+            except Exception as e:
+                logger.warning(f"Error creating report record for {current_date}: {str(e)}")
+                # Create a fallback record
+                report_data.append({
+                    'date': current_date,
+                    'day': current_date.strftime('%a'),
+                    'status': 'absent',
+                    'time_in': '-',
+                    'time_out': '-',
+                    'scheduled_in': '-',
+                    'scheduled_out': '-',
+                    'billed_hours': '-',
+                    'late_minutes': '-',
+                    'undertime_minutes': '-',
+                    'night_differential': '-',
+                })
+            
+            current_date += timedelta(days=1)
+        
+        logger.info(f"Generated report with {len(report_data)} daily records, {days_worked} days worked")
+        
+        return {
+            'employee': {
+                'id': employee.id,
+                'name': employee.full_name,
+                'employee_id': employee.employee_id,
+                'department': employee.department.name if employee.department else 'N/A',
+            },
+            'period': {
+                'start_date': start_date,
+                'end_date': end_date,
+            },
+            'summary': {
+                'days_worked': days_worked,
+                'total_billed_hours': round(total_billed_hours, 2),
+                'total_late_minutes': total_late_minutes,
+                'total_undertime_minutes': total_undertime_minutes,
+                'total_night_differential': round(total_night_differential, 2),
+            },
+            'daily_records': report_data
+        }
+    except Exception as e:
+        logger.error(f"Error in get_employee_time_attendance_report: {str(e)}", exc_info=True)
+        raise 

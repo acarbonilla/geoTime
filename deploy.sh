@@ -14,11 +14,11 @@ NC='\033[0m' # No Color
 # Configuration
 APP_NAME="geotime"
 APP_USER="geotime"
-APP_DIR="/home/$APP_USER/geoTime"
+APP_DIR="/opt/geoTime"  # Updated to match production server location
 BACKEND_DIR="$APP_DIR/backend"
 FRONTEND_DIR="$APP_DIR/frontend"
 SERVICE_NAME="geotime"
-DOMAIN="your-domain.com"  # Change this to your actual domain
+DOMAIN="iais.online"  # Updated to match production domain
 
 echo -e "${GREEN}Starting GeoTime Deployment...${NC}"
 
@@ -50,6 +50,14 @@ fi
 # Step 1: Update code from repository
 print_status "Updating code from repository..."
 cd $APP_DIR
+
+# Configure git pull strategy to handle divergent branches
+git config pull.rebase false
+
+# Fetch latest changes
+git fetch origin
+
+# Pull latest changes (will now use merge strategy)
 git pull origin main
 
 # Step 2: Backend deployment

@@ -15,12 +15,12 @@ NC='\033[0m' # No Color
 # Configuration
 APP_NAME="geotime"
 APP_USER="geotime"
-APP_DIR="/home/$APP_USER/geoTime"
+APP_DIR="/opt/geoTime"  # Updated to match production server location
 BACKEND_DIR="$APP_DIR/backend"
 FRONTEND_DIR="$APP_DIR/frontend"
 SERVICE_NAME="geotime"
-DOMAIN="your-domain.com"  # Change this to your actual domain
-BACKUP_DIR="/home/$APP_USER/backups"
+DOMAIN="iais.online"  # Updated to match production domain
+BACKUP_DIR="/opt/geoTime/backups"  # Updated to match production server location
 
 echo -e "${GREEN}Starting GeoTime Production Update...${NC}"
 

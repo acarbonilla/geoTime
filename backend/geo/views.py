@@ -18,6 +18,8 @@ from django.utils.decorators import method_decorator
 from django.core.exceptions import ValidationError
 from django.db import transaction, models
 from django.conf import settings
+import logging
+import traceback
 
 from .models import (
     Location, Department, Employee, TimeEntry, WorkSession, 
@@ -2891,12 +2893,19 @@ class DailyTimeSummaryViewSet(viewsets.ReadOnlyModelViewSet):
         """Get TIME ATTENDANCE report for an employee"""
         from datetime import date
         from .utils import get_employee_time_attendance_report
+        import logging
+        import traceback
+        
+        logger = logging.getLogger(__name__)
         
         employee_id = request.query_params.get('employee_id')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         
+        logger.info(f"Time attendance report request - employee_id: {employee_id}, start_date: {start_date}, end_date: {end_date}")
+        
         if not employee_id or not start_date or not end_date:
+            logger.error("Missing required parameters for time attendance report")
             return Response(
                 {'error': 'employee_id, start_date, and end_date are required'}, 
                 status=status.HTTP_400_BAD_REQUEST
@@ -2904,28 +2913,63 @@ class DailyTimeSummaryViewSet(viewsets.ReadOnlyModelViewSet):
         
         try:
             employee = Employee.objects.get(employee_id=employee_id)
-            start_date = date.fromisoformat(start_date)
-            end_date = date.fromisoformat(end_date)
+            logger.info(f"Found employee: {employee.full_name} ({employee.employee_id})")
         except Employee.DoesNotExist:
+            logger.error(f"Employee with ID {employee_id} not found")
             return Response(
                 {'error': f'Employee with ID {employee_id} not found'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
-        except ValueError:
+        except Exception as e:
+            logger.error(f"Error finding employee {employee_id}: {str(e)}")
+            return Response(
+                {'error': f'Error finding employee: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        try:
+            start_date = date.fromisoformat(start_date)
+            end_date = date.fromisoformat(end_date)
+            logger.info(f"Parsed dates - start_date: {start_date}, end_date: {end_date}")
+        except ValueError as e:
+            logger.error(f"Invalid date format: {e}")
             return Response(
                 {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Check if user has permission to view this employee's data
-        if not request.user.is_staff and request.user.employee_profile != employee:
+        except Exception as e:
+            logger.error(f"Error parsing dates: {str(e)}")
             return Response(
-                {'error': 'You do not have permission to view this employee\'s data'}, 
-                status=status.HTTP_403_FORBIDDEN
+                {'error': f'Error parsing dates: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        # Generate report
-        report = get_employee_time_attendance_report(employee, start_date, end_date)
+        # Check if user has permission to view this employee's data
+        try:
+            if not request.user.is_staff and request.user.employee_profile != employee:
+                logger.warning(f"User {request.user.username} attempted to access data for employee {employee.employee_id} without permission")
+                return Response(
+                    {'error': 'You do not have permission to view this employee\'s data'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except Exception as e:
+            logger.error(f"Error checking permissions: {str(e)}")
+            return Response(
+                {'error': f'Error checking permissions: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
-        return Response(report)
+        try:
+            # Generate report
+            logger.info(f"Generating time attendance report for employee {employee.employee_id} from {start_date} to {end_date}")
+            report = get_employee_time_attendance_report(employee, start_date, end_date)
+            logger.info(f"Successfully generated report with {len(report.get('daily_records', []))} daily records")
+            return Response(report)
+        except Exception as e:
+            logger.error(f"Error generating time attendance report: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return Response(
+                {'error': f'Failed to generate report: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 

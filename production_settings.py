@@ -27,7 +27,7 @@ SECRET_KEY = env('SECRET_KEY')
 DEBUG = False
 
 # Production allowed hosts
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['your-domain.com', 'www.your-domain.com'])
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['iais.online', 'www.iais.online', '178.128.18.58'])
 
 # Application definition
 INSTALLED_APPS = [
@@ -163,8 +163,8 @@ SIMPLE_JWT = {
 
 # CORS Settings for Production
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
-    "https://your-domain.com",
-    "https://www.your-domain.com",
+    "https://iais.online",
+    "https://www.iais.online",
 ])
 
 CORS_ALLOW_CREDENTIALS = True
@@ -269,7 +269,7 @@ EMAIL_PORT = env.int('EMAIL_PORT', default=587)
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@your-domain.com')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@iais.online')
 
 # File Upload Settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB

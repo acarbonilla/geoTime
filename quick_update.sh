@@ -13,7 +13,7 @@ NC='\033[0m'
 
 # Configuration
 APP_USER="geotime"
-APP_DIR="/home/$APP_USER/geoTime"
+APP_DIR="/opt/geoTime"  # Updated to match production server location
 BACKEND_DIR="$APP_DIR/backend"
 FRONTEND_DIR="$APP_DIR/frontend"
 SERVICE_NAME="geotime"

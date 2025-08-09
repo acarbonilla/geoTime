@@ -7,15 +7,15 @@ Wants=postgresql.service
 Type=notify
 User=geotime
 Group=geotime
-WorkingDirectory=/home/geotime/geoTime/backend
-Environment="PATH=/home/geotime/geoTime/backend/.venv/bin"
+WorkingDirectory=/opt/geoTime/backend
+Environment="PATH=/opt/geoTime/backend/.venv/bin"
 Environment="DJANGO_SETTINGS_MODULE=backend.settings"
-Environment="PYTHONPATH=/home/geotime/geoTime/backend"
-ExecStart=/home/geotime/geoTime/backend/.venv/bin/gunicorn \
+Environment="PYTHONPATH=/opt/geoTime/backend"
+ExecStart=/opt/geoTime/backend/.venv/bin/gunicorn \
     --workers 3 \
-    --bind unix:/home/geotime/geoTime/backend/geotime.sock \
-    --access-logfile /home/geotime/geoTime/backend/logs/gunicorn_access.log \
-    --error-logfile /home/geotime/geoTime/backend/logs/gunicorn_error.log \
+    --bind unix:/opt/geoTime/backend/geotime.sock \
+    --access-logfile /opt/geoTime/backend/logs/gunicorn_access.log \
+    --error-logfile /opt/geoTime/backend/logs/gunicorn_error.log \
     --log-level info \
     --timeout 120 \
     --keep-alive 2 \
@@ -34,7 +34,7 @@ RestartSec=10
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/home/geotime/geoTime/backend/logs /home/geotime/geoTime/backend/staticfiles /home/geotime/geoTime/backend/media
+ReadWritePaths=/opt/geoTime/backend/logs /opt/geoTime/backend/staticfiles /opt/geoTime/backend/media
 
 [Install]
 WantedBy=multi-user.target 

@@ -1,0 +1,41 @@
+# Production Fix Commands for Schedule Report Issue
+
+# 1. Navigate to the production directory
+cd /opt/geoTime
+
+# 2. Pull the latest changes (if using git)
+git pull origin main
+
+# 3. Activate the virtual environment
+cd backend
+source .venv/bin/activate
+
+# 4. Install any new dependencies (if needed)
+pip install -r requirements.txt
+
+# 5. Run database migrations (if any)
+python manage.py migrate
+
+# 6. Collect static files
+python manage.py collectstatic --noinput
+
+# 7. Restart the application service
+sudo systemctl restart geotime
+
+# 8. Check the service status
+sudo systemctl status geotime
+
+# 9. Check the logs for any errors
+sudo journalctl -u geotime -f
+
+# 10. Test the schedule report endpoint
+curl -H "Authorization: Bearer YOUR_TOKEN" "https://iais.online/api/daily-summaries/time_attendance_report/?employee_id=YOUR_EMPLOYEE_ID&start_date=2024-12-01&end_date=2024-12-31"
+
+# 11. If there are still issues, check the logs
+sudo tail -f /opt/geoTime/backend/logs/django.log
+
+# 12. Restart nginx if needed
+sudo systemctl restart nginx
+
+# 13. Verify the application is working
+curl -I https://iais.online/api/

@@ -663,42 +663,66 @@ class DailyTimeSummary(models.Model):
     @property
     def formatted_time_in(self):
         """Get formatted time in"""
-        return self.time_in.strftime('%H:%M') if self.time_in else '-'
+        try:
+            return self.time_in.strftime('%H:%M') if self.time_in else '-'
+        except (AttributeError, ValueError):
+            return '-'
     
     @property
     def formatted_time_out(self):
         """Get formatted time out"""
-        return self.time_out.strftime('%H:%M') if self.time_out else '-'
+        try:
+            return self.time_out.strftime('%H:%M') if self.time_out else '-'
+        except (AttributeError, ValueError):
+            return '-'
     
     @property
     def formatted_scheduled_in(self):
         """Get formatted scheduled time in"""
-        return self.scheduled_time_in.strftime('%H:%M') if self.scheduled_time_in else '-'
+        try:
+            return self.scheduled_time_in.strftime('%H:%M') if self.scheduled_time_in else '-'
+        except (AttributeError, ValueError):
+            return '-'
     
     @property
     def formatted_scheduled_out(self):
         """Get formatted scheduled time out"""
-        return self.scheduled_time_out.strftime('%H:%M') if self.scheduled_time_out else '-'
+        try:
+            return self.scheduled_time_out.strftime('%H:%M') if self.scheduled_time_out else '-'
+        except (AttributeError, ValueError):
+            return '-'
     
     @property
     def formatted_billed_hours(self):
         """Get formatted billed hours"""
-        return f"{self.billed_hours:.2f}" if self.billed_hours > 0 else '-'
+        try:
+            return f"{self.billed_hours:.2f}" if self.billed_hours and self.billed_hours > 0 else '-'
+        except (AttributeError, ValueError, TypeError):
+            return '-'
     
     @property
     def formatted_late_minutes(self):
         """Get formatted late minutes"""
-        return str(self.late_minutes) if self.late_minutes > 0 else '-'
+        try:
+            return str(self.late_minutes) if self.late_minutes and self.late_minutes > 0 else '-'
+        except (AttributeError, ValueError, TypeError):
+            return '-'
     
     @property
     def formatted_undertime_minutes(self):
         """Get formatted undertime minutes"""
-        return str(self.undertime_minutes) if self.undertime_minutes > 0 else '-'
+        try:
+            return str(self.undertime_minutes) if self.undertime_minutes and self.undertime_minutes > 0 else '-'
+        except (AttributeError, ValueError, TypeError):
+            return '-'
     
     @property
     def formatted_night_differential(self):
         """Get formatted night differential hours"""
-        return f"{self.night_differential_hours:.2f}" if self.night_differential_hours > 0 else '-'
+        try:
+            return f"{self.night_differential_hours:.2f}" if self.night_differential_hours and self.night_differential_hours > 0 else '-'
+        except (AttributeError, ValueError, TypeError):
+            return '-'
     
     def calculate_metrics(self):
         """Calculate all metrics based on time entries and scheduled times"""
