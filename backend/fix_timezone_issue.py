@@ -73,7 +73,7 @@ def fix_timezone_and_regenerate():
         else:
             status = 'present'
     elif time_in and not time_out:
-        status = 'half_day'
+        status = 'present'  # Still working - not half_day
     else:
         status = 'absent'
     

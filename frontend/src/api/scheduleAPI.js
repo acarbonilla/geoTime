@@ -186,16 +186,27 @@ export const getEmployeeScheduleReport = async (startDate, endDate) => {
 // Get time attendance report
 export const getTimeAttendanceReport = async (filters) => {
   try {
+    console.log('getTimeAttendanceReport called with filters:', filters);
+    
     const params = new URLSearchParams({
       employee_id: filters.employeeId,
       start_date: filters.startDate,
       end_date: filters.endDate
     });
     
+    console.log('Making request to:', `/daily-summaries/time_attendance_report/?${params}`);
+    
     const response = await axios.get(`/daily-summaries/time_attendance_report/?${params}`);
+    console.log('Response received:', response.data);
     return response.data;
   } catch (error) {
     console.error('Error fetching time attendance report:', error);
+    console.error('Error details:', {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data
+    });
     throw error;
   }
 };

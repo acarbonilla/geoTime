@@ -2,6 +2,35 @@ import React, { useState, useEffect } from 'react';
 import moment from 'moment';
 import { toast } from 'react-toastify';
 import { getTimeAttendanceReport } from '../api/scheduleAPI';
+import { 
+  CalendarDaysIcon,
+  DocumentChartBarIcon,
+  ClockIcon,
+  UserIcon,
+  BuildingOfficeIcon,
+  CalendarIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  MagnifyingGlassIcon,
+  ArrowPathIcon,
+  PrinterIcon,
+  XMarkIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  PlayIcon,
+  StopIcon
+} from '@heroicons/react/24/outline';
+import { 
+  FaCalendarAlt, 
+  FaFilter,
+  FaExclamationTriangle,
+  FaClock,
+  FaCalendarCheck,
+  FaHourglassHalf,
+  FaRegClock
+} from 'react-icons/fa';
 
 const ScheduleReport = () => {
   const [report, setReport] = useState(null);
@@ -43,16 +72,37 @@ const ScheduleReport = () => {
 
   // Separate useEffect to handle auto-detection after employee ID is set
   useEffect(() => {
-    if (currentEmployeeId && !hasAutoDetected) {
-      // Auto-detect and set the current cut-off period
-      const currentCutOffPeriod = getCurrentCutOffPeriod();
-      if (currentCutOffPeriod) {
-        console.log('Auto-detected cut-off period:', currentCutOffPeriod);
-        setAutoDetectedCutOff(true);
-        setHasAutoDetected(true);
-        handleCutOffPeriodChange({ target: { value: currentCutOffPeriod } });
+    let isMounted = true;
+    
+    const handleAutoDetection = async () => {
+      if (currentEmployeeId && !hasAutoDetected && isMounted) {
+        // Auto-detect and set the current cut-off period
+        const currentCutOffPeriod = getCurrentCutOffPeriod();
+        if (currentCutOffPeriod) {
+          console.log('Auto-detected cut-off period:', currentCutOffPeriod);
+          if (isMounted) {
+            setAutoDetectedCutOff(true);
+            setHasAutoDetected(true);
+          }
+          
+          // Call the async function properly
+          try {
+            if (isMounted) {
+              await handleCutOffPeriodChange({ target: { value: currentCutOffPeriod } });
+            }
+          } catch (error) {
+            console.error('Error in auto-detection:', error);
+          }
+        }
       }
-    }
+    };
+
+    handleAutoDetection();
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
   }, [currentEmployeeId, hasAutoDetected]); // This will run when currentEmployeeId changes
 
   const getCurrentCutOffPeriod = () => {
@@ -162,12 +212,13 @@ const ScheduleReport = () => {
             ...newFilters,
             employeeId: currentEmployeeId
           };
+          console.log('Generating report with filters:', reportFilters);
           const data = await getTimeAttendanceReport(reportFilters);
           setReport(data);
           toast.success('Report generated automatically');
         } catch (error) {
           console.error('Error loading report:', error);
-          toast.error('Failed to generate report');
+          toast.error(`Failed to generate report: ${error.message || 'Unknown error'}`);
         } finally {
           setLoading(false);
         }
@@ -177,29 +228,66 @@ const ScheduleReport = () => {
 
   const formatTime = (time) => {
     if (!time || time === '-') return '-';
-    return moment(time, 'HH:mm:ss').format('hh:mm A');
+    
+    // Handle both 'HH:mm:ss' and 'HH:mm' formats
+    let momentTime;
+    if (time.includes(':')) {
+      const parts = time.split(':');
+      if (parts.length === 2) {
+        // Format: 'HH:mm'
+        momentTime = moment(time, 'HH:mm');
+      } else if (parts.length === 3) {
+        // Format: 'HH:mm:ss'
+        momentTime = moment(time, 'HH:mm:ss');
+      } else {
+        return time; // Return as is if format is unknown
+      }
+    } else {
+      return time; // Return as is if no colon found
+    }
+    
+    return momentTime.isValid() ? momentTime.format('hh:mm A') : time;
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'present': return 'text-green-600 bg-green-100';
-      case 'late': return 'text-orange-600 bg-orange-100';
-      case 'absent': return 'text-red-600 bg-red-100';
-      case 'weekend': return 'text-gray-600 bg-gray-100';
-      case 'half_day': return 'text-yellow-600 bg-yellow-100';
-      case 'not_scheduled': return 'text-blue-600 bg-blue-100';
-      default: return 'text-gray-600 bg-gray-100';
+      case 'present': return 'text-green-700 bg-green-100 border-green-200';
+      case 'late': return 'text-orange-700 bg-orange-100 border-orange-200';
+      case 'absent': return 'text-red-700 bg-red-100 border-red-200';
+      case 'weekend': return 'text-gray-700 bg-gray-100 border-gray-200';
+      case 'half_day': return 'text-yellow-700 bg-yellow-100 border-yellow-200';
+      case 'not_scheduled': return 'text-blue-700 bg-blue-100 border-blue-200';
+      default: return 'text-gray-700 bg-gray-100 border-gray-200';
     }
   };
 
-  const getStatusDisplay = (status) => {
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'present': return <CheckCircleIcon className="w-4 h-4" />;
+      case 'late': return <ExclamationTriangleIcon className="w-4 h-4" />;
+      case 'absent': return <XCircleIcon className="w-4 h-4" />;
+      case 'weekend': return <CalendarIcon className="w-4 h-4" />;
+      case 'half_day': return <ClockIcon className="w-4 h-4" />;
+      case 'not_scheduled': return <InformationCircleIcon className="w-4 h-4" />;
+      default: return <InformationCircleIcon className="w-4 h-4" />;
+    }
+  };
+
+  const getStatusDisplay = (status, scheduledIn = null, scheduledOut = null) => {
+    console.log('getStatusDisplay called with:', { status, scheduledIn, scheduledOut });
     switch (status) {
       case 'present': return 'Present';
       case 'late': return 'Late';
       case 'absent': return 'Absent';
       case 'weekend': return 'Weekend';
       case 'half_day': return 'Half Day';
-      case 'not_scheduled': return 'Not Yet Scheduled';
+      case 'not_scheduled': 
+        // Check if there's a schedule (not "-" or empty)
+        const hasSchedule = scheduledIn && scheduledOut && 
+                           scheduledIn !== '-' && scheduledOut !== '-' && 
+                           scheduledIn.toString().trim() !== '' && scheduledOut.toString().trim() !== '';
+        console.log('not_scheduled case - hasSchedule:', hasSchedule, 'scheduledIn:', scheduledIn, 'scheduledOut:', scheduledOut);
+        return hasSchedule ? 'Scheduled' : 'Not Yet Scheduled';
       default: return '-';
     }
   };
@@ -237,62 +325,96 @@ const ScheduleReport = () => {
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+      <div className="max-w-7xl mx-auto p-6">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Schedule Report</h1>
-          <p className="text-gray-600">View your TIME ATTENDANCE report</p>
+        <div className="mb-8">
+          <div className="flex items-center space-x-4 mb-4">
+            <div className="p-3 bg-blue-600 rounded-xl shadow-lg">
+              <DocumentChartBarIcon className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Schedule Report</h1>
+              <p className="text-gray-600 flex items-center space-x-2">
+                <ClockIcon className="w-4 h-4" />
+                <span>View your TIME ATTENDANCE report</span>
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Report Filters</h2>
+        {/* Filters Card */}
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-800 flex items-center space-x-2">
+              <FaFilter className="w-5 h-5 text-blue-600" />
+              <span>Report Filters</span>
+            </h2>
+          </div>
           
           {/* Cut Off Period Filter */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Cut Off Period (Auto-generates report)
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center space-x-2">
+              <CalendarDaysIcon className="w-4 h-4 text-blue-600" />
+              <span>Cut Off Period (Auto-generates report)</span>
             </label>
-            <select
-              name="cutOffPeriod"
-              value={filters.cutOffPeriod}
-              onChange={handleCutOffPeriodChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Select Cut Off Period</option>
-              <option value="first_cutoff_26_10">First Cut Off 26 to 10</option>
-              <option value="second_cutoff_11_25">Second Cut Off 11 to 25</option>
-              <option value="first_cutoff_21_5">First Cut Off 21 to 5</option>
-              <option value="second_cutoff_6_20">Second Cut Off 6 to 20</option>
-            </select>
-            {filters.cutOffPeriod && (
-              <div className="mt-2 text-sm text-blue-600 font-medium">
-                📅 Period: {getCutOffPeriodDisplay(filters.cutOffPeriod)}
-                {autoDetectedCutOff && (
-                  <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
-                    Auto-detected
+            <div className="relative">
+              <select
+                name="cutOffPeriod"
+                value={filters.cutOffPeriod}
+                onChange={handleCutOffPeriodChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
+              >
+                <option value="">Select Cut Off Period</option>
+                <option value="first_cutoff_26_10">First Cut Off 26 to 10</option>
+                <option value="second_cutoff_11_25">Second Cut Off 11 to 25</option>
+                <option value="first_cutoff_21_5">First Cut Off 21 to 5</option>
+                <option value="second_cutoff_6_20">Second Cut Off 6 to 20</option>
+              </select>
+              {filters.cutOffPeriod && (
+                <div className="mt-3 flex items-center space-x-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <CalendarIcon className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm text-blue-700 font-medium">
+                    Period: {getCutOffPeriodDisplay(filters.cutOffPeriod)}
                   </span>
-                )}
-              </div>
-            )}
+                  {autoDetectedCutOff && (
+                    <span className="ml-2 text-xs text-green-700 bg-green-100 px-2 py-1 rounded-full flex items-center space-x-1">
+                      <CheckCircleIcon className="w-3 h-3" />
+                      <span>Auto-detected</span>
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Manual Date Picker Toggle */}
           <div className="mb-4">
             <button
               onClick={() => setShowManualDatePicker(!showManualDatePicker)}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center"
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-2 transition-colors duration-200"
             >
-              {showManualDatePicker ? '🔽' : '▶️'} 
-              {showManualDatePicker ? 'Hide Manual Date Picker' : 'Show Manual Date Picker'}
+              {showManualDatePicker ? (
+                <>
+                  <ChevronUpIcon className="w-4 h-4" />
+                  <span>Hide Manual Date Picker</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDownIcon className="w-4 h-4" />
+                  <span>Show Manual Date Picker</span>
+                </>
+              )}
             </button>
           </div>
 
           {/* Manual Date Range Filters */}
           {showManualDatePicker && (
-            <div className="border-t pt-4 mb-4">
-              <h3 className="text-lg font-medium text-gray-800 mb-3">Manual Date Selection</h3>
+            <div className="border-t border-gray-200 pt-6 mb-4">
+              <h3 className="text-lg font-medium text-gray-800 mb-4 flex items-center space-x-2">
+                <FaCalendarAlt className="w-4 h-4 text-blue-600" />
+                <span>Manual Date Selection</span>
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -303,7 +425,7 @@ const ScheduleReport = () => {
                     name="startDate"
                     value={filters.startDate}
                     onChange={handleFilterChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
                   />
                 </div>
                 <div>
@@ -315,16 +437,26 @@ const ScheduleReport = () => {
                     name="endDate"
                     value={filters.endDate}
                     onChange={handleFilterChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
                   />
                 </div>
                 <div className="flex items-end space-x-2">
                   <button
                     onClick={loadReport}
                     disabled={loading}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl"
                   >
-                    {loading ? 'Loading...' : 'Generate Report'}
+                    {loading ? (
+                      <>
+                        <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                        <span>Loading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <MagnifyingGlassIcon className="w-4 h-4" />
+                        <span>Generate Report</span>
+                      </>
+                    )}
                   </button>
                   <button
                     onClick={() => {
@@ -337,9 +469,10 @@ const ScheduleReport = () => {
                       setAutoDetectedCutOff(false);
                       setHasAutoDetected(false);
                     }}
-                    className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    className="px-4 py-3 bg-gray-500 text-white rounded-xl hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl"
                   >
-                    Clear
+                    <XMarkIcon className="w-4 h-4" />
+                    <span>Clear</span>
                   </button>
                 </div>
               </div>
@@ -349,125 +482,193 @@ const ScheduleReport = () => {
 
         {/* Report Display */}
         {report && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
             {/* Report Header */}
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                TIME ATTENDANCE REPORT
-              </h2>
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-gray-900 flex items-center space-x-2">
+                  <DocumentChartBarIcon className="w-6 h-6 text-blue-600" />
+                  <span>TIME ATTENDANCE REPORT</span>
+                </h2>
+                <button
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl"
+                >
+                  <PrinterIcon className="w-4 h-4" />
+                  <span>Print Report</span>
+                </button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
-                <div>
-                  <strong>Employee:</strong> {report.employee.name} ({report.employee.employee_id})
+                <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg">
+                  <UserIcon className="w-4 h-4 text-blue-600" />
+                  <div>
+                    <strong>Employee:</strong> {report.employee.name} ({report.employee.employee_id})
+                  </div>
                 </div>
-                <div>
-                  <strong>Department:</strong> {report.employee.department}
+                <div className="flex items-center space-x-2 p-3 bg-green-50 rounded-lg">
+                  <BuildingOfficeIcon className="w-4 h-4 text-green-600" />
+                  <div>
+                    <strong>Department:</strong> {report.employee.department}
+                  </div>
                 </div>
-                <div>
-                  <strong>Period:</strong> {moment(report.period.start_date).format('MMM DD')} - {moment(report.period.end_date).format('MMM DD, YYYY')}
+                <div className="flex items-center space-x-2 p-3 bg-purple-50 rounded-lg">
+                  <CalendarIcon className="w-4 h-4 text-purple-600" />
+                  <div>
+                    <strong>Period:</strong> {moment(report.period.start_date).format('MMM DD')} - {moment(report.period.end_date).format('MMM DD, YYYY')}
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Summary Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-              <div className="bg-blue-50 p-4 rounded-lg text-center">
-                <div className="text-2xl font-bold text-blue-600">{report.summary.days_worked}</div>
-                <div className="text-sm text-blue-800">Days Worked</div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-2xl text-center border border-blue-200 shadow-lg hover:shadow-xl transition-all duration-200">
+                <div className="flex justify-center mb-2">
+                  <FaCalendarCheck className="w-8 h-8 text-blue-600" />
+                </div>
+                <div className="text-3xl font-bold text-blue-700">{report.summary.days_worked}</div>
+                <div className="text-sm text-blue-800 font-medium">Days Worked</div>
               </div>
-              <div className="bg-green-50 p-4 rounded-lg text-center">
-                <div className="text-2xl font-bold text-green-600">{report.summary.total_billed_hours}</div>
-                <div className="text-sm text-green-800">Total BH</div>
+              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-2xl text-center border border-green-200 shadow-lg hover:shadow-xl transition-all duration-200">
+                <div className="flex justify-center mb-2">
+                  <FaClock className="w-8 h-8 text-green-600" />
+                </div>
+                <div className="text-3xl font-bold text-green-700">{report.summary.total_billed_hours}</div>
+                <div className="text-sm text-green-800 font-medium">Total BH (minutes)</div>
               </div>
-              <div className="bg-orange-50 p-4 rounded-lg text-center">
-                <div className="text-2xl font-bold text-orange-600">{report.summary.total_late_minutes}</div>
-                <div className="text-sm text-orange-800">Total LT</div>
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-2xl text-center border border-orange-200 shadow-lg hover:shadow-xl transition-all duration-200">
+                <div className="flex justify-center mb-2">
+                  <FaExclamationTriangle className="w-8 h-8 text-orange-600" />
+                </div>
+                <div className="text-3xl font-bold text-orange-700">{report.summary.total_late_minutes}</div>
+                <div className="text-sm text-orange-800 font-medium">Total LT</div>
               </div>
-              <div className="bg-red-50 p-4 rounded-lg text-center">
-                <div className="text-2xl font-bold text-red-600">{report.summary.total_undertime_minutes}</div>
-                <div className="text-sm text-red-800">Total UT</div>
+              <div className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-2xl text-center border border-red-200 shadow-lg hover:shadow-xl transition-all duration-200">
+                <div className="flex justify-center mb-2">
+                  <FaRegClock className="w-8 h-8 text-red-600" />
+                </div>
+                <div className="text-3xl font-bold text-red-700">{report.summary.total_undertime_minutes}</div>
+                <div className="text-sm text-red-800 font-medium">Total UT</div>
               </div>
-              <div className="bg-purple-50 p-4 rounded-lg text-center">
-                <div className="text-2xl font-bold text-purple-600">{report.summary.total_night_differential}</div>
-                <div className="text-sm text-purple-800">Total ND</div>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-2xl text-center border border-purple-200 shadow-lg hover:shadow-xl transition-all duration-200">
+                <div className="flex justify-center mb-2">
+                  <FaHourglassHalf className="w-8 h-8 text-purple-600" />
+                </div>
+                <div className="text-3xl font-bold text-purple-700">{report.summary.total_night_differential}</div>
+                <div className="text-sm text-purple-800 font-medium">Total ND</div>
               </div>
             </div>
 
             {/* Daily Records Table */}
-            <div className="overflow-x-auto">
-              <table className="min-w-full bg-white border border-gray-200">
-                <thead className="bg-gray-50">
+            <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-lg">
+              <table className="min-w-full bg-white">
+                <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      Date
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <CalendarIcon className="w-4 h-4" />
+                        <span>Date</span>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      Day
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <CalendarDaysIcon className="w-4 h-4" />
+                        <span>Day</span>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      Status
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <InformationCircleIcon className="w-4 h-4" />
+                        <span>Status</span>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      Time In
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <PlayIcon className="w-4 h-4" />
+                        <span>Time In</span>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      Time Out
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <StopIcon className="w-4 h-4" />
+                        <span>Time Out</span>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      Scheduled In
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <ClockIcon className="w-4 h-4" />
+                        <span>Scheduled In</span>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      Scheduled Out
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <ClockIcon className="w-4 h-4" />
+                        <span>Scheduled Out</span>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      BH
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <FaClock className="w-3 h-3" />
+                        <span>BH (min)</span>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      LT
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <FaExclamationTriangle className="w-3 h-3" />
+                        <span>LT</span>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      UT
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <FaRegClock className="w-3 h-3" />
+                        <span>UT</span>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      ND
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <FaHourglassHalf className="w-3 h-3" />
+                        <span>ND</span>
+                      </div>
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {report.daily_records.map((record, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                    <tr key={index} className="hover:bg-gray-50 transition-colors duration-200">
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
                         {moment(record.date).format('MMM DD')}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 border-b">
+                      <td className="px-6 py-4 text-sm text-gray-600">
                         {record.day}
                       </td>
-                      <td className="px-4 py-3 text-sm border-b">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(record.status)}`}>
-                          {getStatusDisplay(record.status)}
+                      <td className="px-6 py-4 text-sm">
+                        <span className={`inline-flex items-center space-x-2 px-3 py-1 text-xs font-medium rounded-full border ${getStatusColor(record.status)}`}>
+                          {getStatusIcon(record.status)}
+                          <span>{getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out)}</span>
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                         {formatTime(record.time_in)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                         {formatTime(record.time_out)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                         {formatTime(record.scheduled_in)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                         {formatTime(record.scheduled_out)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 border-b">
-                        {record.billed_hours}
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                        {record.billed_hours || '-'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                         {record.late_minutes}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                         {record.undertime_minutes}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 border-b">
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                         {record.night_differential}
                       </td>
                     </tr>
@@ -475,28 +676,18 @@ const ScheduleReport = () => {
                 </tbody>
               </table>
             </div>
-
-            {/* Print Button */}
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => window.print()}
-                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
-              >
-                Print Report
-              </button>
-            </div>
           </div>
         )}
 
         {/* No Report State */}
         {!report && !loading && (
-          <div className="bg-white rounded-lg shadow-lg p-6 text-center">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-12 text-center">
             <div className="text-gray-500">
-              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No Report Generated</h3>
-              <p className="mt-1 text-sm text-gray-500">
+              <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <DocumentChartBarIcon className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Report Generated</h3>
+              <p className="text-gray-500 max-w-md mx-auto">
                 Set your filters and click "Generate Report" to view your TIME ATTENDANCE report.
               </p>
             </div>
