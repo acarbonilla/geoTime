@@ -1,6 +1,10 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Location, Department, Employee, TimeEntry, WorkSession, TimeCorrectionRequest, OvertimeRequest, LeaveRequest, ChangeScheduleRequest
+from .models import (
+    Location, Department, Employee, TimeEntry, WorkSession, 
+    TimeCorrectionRequest, OvertimeRequest, LeaveRequest, ChangeScheduleRequest,
+    ScheduleTemplate, EmployeeSchedule, DailyTimeSummary
+)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -305,3 +309,120 @@ class ChangeScheduleRequestSerializer(serializers.ModelSerializer):
             'reason', 'status', 'approver', 'approver_name', 'comments', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'employee_name', 'approver_name'] 
+
+
+class ScheduleTemplateSerializer(serializers.ModelSerializer):
+    formatted_time = serializers.CharField(read_only=True)
+    duration_hours = serializers.DecimalField(max_digits=4, decimal_places=2, read_only=True)
+    created_by_name = serializers.CharField(source='created_by.user.get_full_name', read_only=True)
+    team_name = serializers.CharField(source='team.name', read_only=True)
+
+    class Meta:
+        model = ScheduleTemplate
+        fields = [
+            'id', 'name', 'time_in', 'time_out', 'is_night_shift', 
+            'template_type', 'created_by', 'team', 'is_active', 
+            'created_at', 'updated_at', 'formatted_time', 'duration_hours',
+            'created_by_name', 'team_name'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'created_by']
+
+    def create(self, validated_data):
+        # Set the created_by to the current user
+        validated_data['created_by'] = self.context['request'].user.employee_profile
+        return super().create(validated_data)
+    
+    def validate(self, data):
+        # Ensure created_by is not in the data since we set it automatically
+        if 'created_by' in data:
+            data.pop('created_by')
+        return data
+
+
+class EmployeeScheduleSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.user.get_full_name', read_only=True)
+    template_name = serializers.CharField(source='template_used.name', read_only=True)
+    formatted_time = serializers.CharField(read_only=True)
+    duration_hours = serializers.DecimalField(max_digits=4, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = EmployeeSchedule
+        fields = [
+            'id', 'employee', 'date', 'scheduled_time_in', 'scheduled_time_out',
+            'is_night_shift', 'template_used', 'notes', 'created_at', 'updated_at',
+            'employee_name', 'template_name', 'formatted_time', 'duration_hours'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'employee']
+
+    def validate(self, data):
+        # Ensure employee can only create/edit their own schedules
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            if not request.user.is_staff and data.get('employee') != request.user.employee_profile:
+                raise serializers.ValidationError("You can only manage your own schedules.")
+        
+        # For non-staff users, ensure they can only manage their own schedules
+        if request and hasattr(request, 'user') and not request.user.is_staff:
+            data['employee'] = request.user.employee_profile
+        
+        return data
+
+
+class DailyTimeSummarySerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.user.get_full_name', read_only=True)
+    time_in_formatted = serializers.CharField(source='time_in', read_only=True)
+    time_out_formatted = serializers.CharField(source='time_out', read_only=True)
+    scheduled_time_in_formatted = serializers.CharField(source='scheduled_time_in', read_only=True)
+    scheduled_time_out_formatted = serializers.CharField(source='scheduled_time_out', read_only=True)
+
+    class Meta:
+        model = DailyTimeSummary
+        fields = [
+            'id', 'employee', 'date', 'time_in', 'time_out', 'scheduled_time_in', 'scheduled_time_out',
+            'status', 'billed_hours', 'late_minutes', 'undertime_minutes', 'night_differential_hours',
+            'overtime_hours', 'total_break_minutes', 'lunch_break_minutes', 'time_in_entry', 'time_out_entry',
+            'schedule_reference', 'is_weekend', 'is_holiday', 'notes', 'calculated_at', 'updated_at',
+            'employee_name', 'time_in_formatted', 'time_out_formatted', 
+            'scheduled_time_in_formatted', 'scheduled_time_out_formatted'
+        ]
+        read_only_fields = ['calculated_at', 'updated_at']
+
+
+# Bulk Schedule Creation Serializer
+class BulkScheduleSerializer(serializers.Serializer):
+    template_id = serializers.IntegerField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    weekdays_only = serializers.BooleanField(default=False)
+    flip_am_pm = serializers.BooleanField(default=False)
+    overwrite_existing = serializers.BooleanField(default=False)
+    notes = serializers.CharField(required=False, allow_blank=True)
+
+class CheckExistingSchedulesSerializer(serializers.Serializer):
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    weekdays_only = serializers.BooleanField(default=False)
+
+    def validate(self, data):
+        if data['start_date'] > data['end_date']:
+            raise serializers.ValidationError("Start date must be before end date.")
+        return data
+
+
+# Copy Previous Month Serializer
+class CopyPreviousMonthSerializer(serializers.Serializer):
+    target_month = serializers.IntegerField(min_value=1, max_value=12)
+    target_year = serializers.IntegerField()
+    flip_am_pm = serializers.BooleanField(default=False)
+
+
+# Schedule Report Serializer
+class ScheduleReportSerializer(serializers.Serializer):
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    employee_id = serializers.IntegerField(required=False)
+
+    def validate(self, data):
+        if data['start_date'] > data['end_date']:
+            raise serializers.ValidationError("Start date must be before end date.")
+        return data 

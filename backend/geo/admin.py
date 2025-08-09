@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.db.models import Count
-from .models import Location, Department, Employee, TimeEntry, WorkSession, OvertimeRequest
+from .models import Location, Department, Employee, TimeEntry, WorkSession, OvertimeRequest, ScheduleTemplate, EmployeeSchedule, DailyTimeSummary
 
 
 @admin.register(Location)
@@ -73,7 +73,7 @@ class EmployeeAdmin(admin.ModelAdmin):
             'fields': ('hire_date', 'employment_status', 'phone', 'emergency_contact')
         }),
         ('Overtime Configuration', {
-            'fields': ('daily_work_hours', 'overtime_threshold_hours', 'total_schedule_hours', 'flexible_break_hours', 'lunch_break_minutes', 'break_threshold_minutes'),
+            'fields': ('daily_work_hours', 'overtime_threshold_hours', 'total_schedule_hours', 'flexible_break_hours', 'lunch_break_minutes', 'break_threshold_minutes', 'grace_period_minutes'),
             'classes': ('collapse',)
         }),
         ('Timestamps', {
@@ -177,3 +177,108 @@ class OvertimeRequestAdmin(admin.ModelAdmin):
     def approver_name(self, obj):
         return obj.approver.get_full_name() if obj.approver else ''
     approver_name.short_description = 'Approver'
+
+
+@admin.register(ScheduleTemplate)
+class ScheduleTemplateAdmin(admin.ModelAdmin):
+    list_display = ('name', 'template_type', 'time_in', 'time_out', 'is_night_shift', 'created_by', 'team', 'is_active', 'created_at')
+    list_filter = ('template_type', 'is_night_shift', 'is_active', 'team', 'created_at')
+    search_fields = ('name', 'created_by__user__first_name', 'created_by__user__last_name', 'created_by__employee_id')
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        ('Template Information', {
+            'fields': ('name', 'template_type', 'is_active')
+        }),
+        ('Schedule Times', {
+            'fields': ('time_in', 'time_out', 'is_night_shift')
+        }),
+        ('Organization', {
+            'fields': ('created_by', 'team')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('created_by__user', 'team')
+
+
+@admin.register(EmployeeSchedule)
+class EmployeeScheduleAdmin(admin.ModelAdmin):
+    list_display = ('employee_name', 'date', 'scheduled_time_in', 'scheduled_time_out', 'is_night_shift', 'notes', 'created_at')
+    list_filter = ('date', 'is_night_shift', 'employee__department', 'created_at')
+    search_fields = ('employee__user__first_name', 'employee__user__last_name', 'employee__employee_id', 'notes')
+    readonly_fields = ('created_at', 'updated_at')
+    date_hierarchy = 'date'
+    fieldsets = (
+        ('Employee Information', {
+            'fields': ('employee',)
+        }),
+        ('Schedule Details', {
+            'fields': ('date', 'scheduled_time_in', 'scheduled_time_out', 'is_night_shift')
+        }),
+        ('Additional Information', {
+            'fields': ('notes', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def employee_name(self, obj):
+        return obj.employee.full_name
+    employee_name.short_description = 'Employee'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('employee__user', 'employee__department')
+
+
+@admin.register(DailyTimeSummary)
+class DailyTimeSummaryAdmin(admin.ModelAdmin):
+    list_display = ('employee_name', 'date', 'status', 'time_in', 'time_out', 'scheduled_time_in', 'scheduled_time_out', 'billed_hours', 'late_minutes', 'undertime_minutes', 'night_differential_hours', 'overtime_hours')
+    list_filter = ('status', 'date', 'is_weekend', 'is_holiday', 'employee__department', 'calculated_at')
+    search_fields = ('employee__user__first_name', 'employee__user__last_name', 'employee__employee_id', 'notes')
+    readonly_fields = ('calculated_at', 'updated_at')
+    date_hierarchy = 'date'
+    ordering = ('-date', 'employee__user__first_name')
+    
+    fieldsets = (
+        ('Employee Information', {
+            'fields': ('employee', 'date')
+        }),
+        ('Time Data', {
+            'fields': ('time_in', 'time_out', 'scheduled_time_in', 'scheduled_time_out')
+        }),
+        ('Calculated Metrics', {
+            'fields': ('status', 'billed_hours', 'late_minutes', 'undertime_minutes', 'night_differential_hours', 'overtime_hours')
+        }),
+        ('Break Tracking', {
+            'fields': ('total_break_minutes', 'lunch_break_minutes'),
+            'classes': ('collapse',)
+        }),
+        ('Reference Data', {
+            'fields': ('time_in_entry', 'time_out_entry', 'schedule_reference'),
+            'classes': ('collapse',)
+        }),
+        ('Metadata', {
+            'fields': ('is_weekend', 'is_holiday', 'notes'),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('calculated_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def employee_name(self, obj):
+        return obj.employee.full_name
+    employee_name.short_description = 'Employee'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'employee__user', 
+            'employee__department',
+            'time_in_entry',
+            'time_out_entry',
+            'schedule_reference'
+        )

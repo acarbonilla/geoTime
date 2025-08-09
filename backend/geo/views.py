@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.db.models import Q, Count, Avg, Sum, F, ExpressionWrapper, DecimalField
 from django.db.models.functions import TruncDate, TruncHour
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -16,20 +16,28 @@ import csv
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import transaction, models
 from django.conf import settings
 
 from .models import (
     Location, Department, Employee, TimeEntry, WorkSession, 
-    TimeCorrectionRequest, OvertimeRequest, LeaveRequest, ChangeScheduleRequest
+    TimeCorrectionRequest, OvertimeRequest, LeaveRequest, ChangeScheduleRequest,
+    ScheduleTemplate, EmployeeSchedule, DailyTimeSummary
 )
 from .serializers import (
     LocationSerializer, LocationListSerializer, DepartmentSerializer, DepartmentListSerializer,
     EmployeeSerializer, EmployeeListSerializer, TimeEntrySerializer, TimeEntryListSerializer,
     TimeInOutSerializer, WorkSessionSerializer, OvertimeAnalysisSerializer, CurrentSessionStatusSerializer,
-    TimeCorrectionRequestSerializer, OvertimeRequestSerializer, LeaveRequestSerializer, ChangeScheduleRequestSerializer
+    TimeCorrectionRequestSerializer, OvertimeRequestSerializer, LeaveRequestSerializer, ChangeScheduleRequestSerializer,
+    ScheduleTemplateSerializer, EmployeeScheduleSerializer, DailyTimeSummarySerializer,
+    BulkScheduleSerializer, CopyPreviousMonthSerializer, ScheduleReportSerializer
 )
-from .utils import OvertimeCalculator, BreakDetector
+from .utils import (
+    OvertimeCalculator, BreakDetector,
+    calculate_daily_summary, generate_daily_summaries_for_period, 
+    apply_template_to_schedule, copy_schedule_from_previous_month,
+    get_available_templates, get_employee_time_attendance_report
+)
 
 
 class RoleBasedPermissionMixin:
@@ -2440,4 +2448,484 @@ def tl_departments_and_locations(request):
         'departments': department_data,
         'locations': location_serializer.data,
     })
+
+
+class ScheduleTemplateViewSet(viewsets.ModelViewSet):
+    queryset = ScheduleTemplate.objects.filter(is_active=True)
+    serializer_class = ScheduleTemplateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            # Staff can see all templates
+            return ScheduleTemplate.objects.filter(is_active=True)
+        else:
+            # Employees can see company, team, and personal templates
+            employee = user.employee_profile
+            return ScheduleTemplate.objects.filter(
+                is_active=True
+            ).filter(
+                models.Q(template_type='company') |
+                models.Q(template_type='team', team=employee.department) |
+                models.Q(template_type='personal', created_by=employee)
+            )
+
+    @action(detail=False, methods=['get'])
+    def available(self, request):
+        """Get available templates for the current user"""
+        templates = get_available_templates(request.user.employee_profile)
+        serializer = self.get_serializer(templates, many=True)
+        return Response(serializer.data)
+
+
+class EmployeeScheduleViewSet(viewsets.ModelViewSet):
+    serializer_class = EmployeeScheduleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            # Staff can see all schedules
+            return EmployeeSchedule.objects.all()
+        else:
+            # Employees can only see their own schedules
+            return EmployeeSchedule.objects.filter(employee=user.employee_profile)
+
+    def create(self, request, *args, **kwargs):
+        """Create a new schedule, automatically setting the employee"""
+        # Check if user is employee and trying to create schedule for past date
+        if not request.user.is_staff:
+            from datetime import date
+            schedule_date = request.data.get('date')
+            if schedule_date:
+                try:
+                    schedule_date = date.fromisoformat(schedule_date)
+                    if schedule_date < date.today():
+                        return Response(
+                            {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                except (ValueError, TypeError):
+                    pass
+        
+        # Check if schedule already exists for this date
+        from .models import EmployeeSchedule
+        schedule_date = request.data.get('date')
+        employee_id = request.user.employee_profile.id
+        
+        if schedule_date and employee_id:
+            try:
+                existing_schedule = EmployeeSchedule.objects.filter(
+                    employee_id=employee_id,
+                    date=schedule_date
+                ).first()
+                
+                if existing_schedule:
+                    return Response(
+                        {'error': f'A schedule already exists for {schedule_date}. Please edit the existing schedule instead of creating a new one.'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except (ValueError, TypeError):
+                pass
+        
+        # Add the employee to the request data
+        request.data['employee'] = request.user.employee_profile.id
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        """Update a schedule with restrictions for employees"""
+        # Check if user is employee and trying to modify past schedule
+        if not request.user.is_staff:
+            from datetime import date
+            instance = self.get_object()
+            
+            # Check if schedule is for past date
+            if instance.date < date.today():
+                return Response(
+                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if trying to modify today's schedule (employees cannot modify daily schedules)
+            if instance.date == date.today():
+                return Response(
+                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Partial update a schedule with restrictions for employees"""
+        # Check if user is employee and trying to modify past schedule
+        if not request.user.is_staff:
+            from datetime import date
+            instance = self.get_object()
+            
+            # Check if schedule is for past date
+            if instance.date < date.today():
+                return Response(
+                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if trying to modify today's schedule (employees cannot modify daily schedules)
+            if instance.date == date.today():
+                return Response(
+                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete a schedule with restrictions for employees"""
+        # Employees cannot delete any schedules - only Team Leaders can
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        return super().destroy(request, *args, **kwargs)
+
+    def list(self, request, *args, **kwargs):
+        # Filter by date range if provided
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        queryset = self.get_queryset()
+        
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def apply_template(self, request):
+        """Apply a template to a date range"""
+        serializer = BulkScheduleSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                # Check if user is employee and trying to create schedules for past dates
+                if not request.user.is_staff:
+                    from datetime import date
+                    start_date = serializer.validated_data['start_date']
+                    end_date = serializer.validated_data['end_date']
+                    
+                    # Check if any date in the range is in the past
+                    if start_date < date.today():
+                        return Response(
+                            {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                    
+                    # Check if trying to modify today's schedule (employees cannot modify daily schedules)
+                    if start_date <= date.today() <= end_date:
+                        return Response(
+                            {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                
+                template_id = serializer.validated_data['template_id']
+                template = ScheduleTemplate.objects.get(id=template_id)
+                
+                result = apply_template_to_schedule(
+                    employee=request.user.employee_profile,
+                    template=template,
+                    start_date=serializer.validated_data['start_date'],
+                    end_date=serializer.validated_data['end_date'],
+                    weekdays_only=serializer.validated_data['weekdays_only'],
+                    overwrite_existing=serializer.validated_data['overwrite_existing']
+                )
+                
+                # Build detailed message
+                message = f'Successfully created {result["schedules_created"]} schedules'
+                if result["dates_updated"] > 0:
+                    message += f', updated {result["dates_updated"]} existing schedules'
+                if result["dates_skipped"] > 0:
+                    message += f', skipped {result["dates_skipped"]} existing dates'
+                
+                return Response({
+                    'message': message,
+                    'schedules_created': result["schedules_created"],
+                    'dates_updated': result["dates_updated"],
+                    'dates_skipped': result["dates_skipped"],
+                    'skipped_dates_list': result["skipped_dates_list"]
+                })
+            except ScheduleTemplate.DoesNotExist:
+                return Response(
+                    {'error': 'Template not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except Exception as e:
+                return Response(
+                    {'error': str(e)}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def check_existing_schedules(self, request):
+        """Check for existing schedules in a date range"""
+        from .serializers import CheckExistingSchedulesSerializer
+        
+        serializer = CheckExistingSchedulesSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                # Check if user is employee and trying to check past dates
+                if not request.user.is_staff:
+                    from datetime import date
+                    start_date = serializer.validated_data['start_date']
+                    end_date = serializer.validated_data['end_date']
+                    
+                    # Check if any date in the range is in the past
+                    if start_date < date.today():
+                        return Response(
+                            {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                
+                from .models import EmployeeSchedule
+                from datetime import timedelta
+                
+                start_date = serializer.validated_data['start_date']
+                end_date = serializer.validated_data['end_date']
+                weekdays_only = serializer.validated_data['weekdays_only']
+                
+                # Get existing schedules in the date range
+                existing_schedules = EmployeeSchedule.objects.filter(
+                    employee=request.user.employee_profile,
+                    date__gte=start_date,
+                    date__lte=end_date
+                ).order_by('date')
+                
+                # Filter by weekdays if needed
+                if weekdays_only:
+                    existing_schedules = [
+                        schedule for schedule in existing_schedules 
+                        if schedule.date.weekday() < 5  # Monday = 0, Friday = 4
+                    ]
+                
+                existing_dates = [schedule.date.strftime('%Y-%m-%d') for schedule in existing_schedules]
+                
+                return Response({
+                    'has_existing_schedules': len(existing_dates) > 0,
+                    'existing_dates_count': len(existing_dates),
+                    'existing_dates': existing_dates,
+                    'message': f'Found {len(existing_dates)} existing schedules in the selected date range.'
+                })
+                
+            except Exception as e:
+                return Response(
+                    {'error': str(e)}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def copy_previous_month(self, request):
+        """Copy schedules from previous month"""
+        serializer = CopyPreviousMonthSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                # Check if user is employee and trying to copy to past months
+                if not request.user.is_staff:
+                    from datetime import date
+                    target_month = serializer.validated_data['target_month']
+                    target_year = serializer.validated_data['target_year']
+                    
+                    # Check if target month is in the past
+                    current_date = date.today()
+                    if target_year < current_date.year or (target_year == current_date.year and target_month < current_date.month):
+                        return Response(
+                            {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                
+                result = copy_schedule_from_previous_month(
+                    employee=request.user.employee_profile,
+                    target_month=serializer.validated_data['target_month'],
+                    target_year=serializer.validated_data['target_year'],
+                    flip_am_pm=serializer.validated_data['flip_am_pm']
+                )
+                
+                return Response({
+                    'message': f'Successfully copied {result} schedules',
+                    'schedules_copied': result
+                })
+            except Exception as e:
+                return Response(
+                    {'error': str(e)}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def report(self, request):
+        """Get schedule report for a date range"""
+        serializer = ScheduleReportSerializer(data=request.query_params)
+        if serializer.is_valid():
+            try:
+                report_data = get_employee_schedule_report(
+                    employee=request.user.employee_profile,
+                    start_date=serializer.validated_data['start_date'],
+                    end_date=serializer.validated_data['end_date']
+                )
+                return Response(report_data)
+            except Exception as e:
+                return Response(
+                    {'error': str(e)}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DailyTimeSummaryViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = DailyTimeSummarySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            # Staff can see all summaries
+            return DailyTimeSummary.objects.all()
+        else:
+            # Employees can only see their own summaries
+            return DailyTimeSummary.objects.filter(employee=user.employee_profile)
+
+    def list(self, request, *args, **kwargs):
+        # Filter by date range if provided
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        queryset = self.get_queryset()
+        
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def generate(self, request):
+        """Generate daily summaries for a date range"""
+        start_date = request.data.get('start_date')
+        end_date = request.data.get('end_date')
+        
+        if not start_date or not end_date:
+            return Response(
+                {'error': 'start_date and end_date are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            result = generate_daily_summaries_for_period(
+                employee=request.user.employee_profile,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            return Response({
+                'message': f'Successfully generated {result} daily summaries',
+                'summaries_generated': result
+            })
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['post'])
+    def generate_summaries(self, request):
+        """Generate DailyTimeSummary records by connecting TimeEntry with EmployeeSchedule data"""
+        from datetime import date
+        from .utils import generate_daily_summaries_for_period
+        
+        start_date = request.data.get('start_date')
+        end_date = request.data.get('end_date')
+        employee_id = request.data.get('employee_id')
+        
+        if not start_date or not end_date:
+            return Response(
+                {'error': 'start_date and end_date are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            start_date = date.fromisoformat(start_date)
+            end_date = date.fromisoformat(end_date)
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get employee if specified
+        employee = None
+        if employee_id:
+            try:
+                employee = Employee.objects.get(employee_id=employee_id)
+            except Employee.DoesNotExist:
+                return Response(
+                    {'error': f'Employee with ID {employee_id} not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        # Generate summaries
+        result = generate_daily_summaries_for_period(start_date, end_date, employee)
+        
+        return Response({
+            'message': 'Daily summaries generated successfully',
+            'result': result
+        })
+
+    @action(detail=False, methods=['get'])
+    def time_attendance_report(self, request):
+        """Get TIME ATTENDANCE report for an employee"""
+        from datetime import date
+        from .utils import get_employee_time_attendance_report
+        
+        employee_id = request.query_params.get('employee_id')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if not employee_id or not start_date or not end_date:
+            return Response(
+                {'error': 'employee_id, start_date, and end_date are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            employee = Employee.objects.get(employee_id=employee_id)
+            start_date = date.fromisoformat(start_date)
+            end_date = date.fromisoformat(end_date)
+        except Employee.DoesNotExist:
+            return Response(
+                {'error': f'Employee with ID {employee_id} not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if user has permission to view this employee's data
+        if not request.user.is_staff and request.user.employee_profile != employee:
+            return Response(
+                {'error': 'You do not have permission to view this employee\'s data'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Generate report
+        report = get_employee_time_attendance_report(employee, start_date, end_date)
+        
+        return Response(report)
 

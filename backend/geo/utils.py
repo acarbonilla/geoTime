@@ -278,3 +278,651 @@ class BreakDetector:
             return 'short_break'
         else:
             return 'brief_pause' 
+
+
+def calculate_daily_summary(employee, date):
+    """
+    Calculate daily time summary for an employee on a specific date.
+    Returns a DailyTimeSummary object.
+    """
+    from .models import DailyTimeSummary, TimeEntry, EmployeeSchedule
+    from datetime import datetime, timedelta
+    
+    # Get or create daily summary
+    summary, created = DailyTimeSummary.objects.get_or_create(
+        employee=employee,
+        date=date,
+        defaults={
+            'status': 'absent',
+            'is_weekend': date.weekday() >= 5,  # Saturday = 5, Sunday = 6
+        }
+    )
+    
+    # Get time entries for this date
+    start_of_day = datetime.combine(date, datetime.min.time())
+    end_of_day = start_of_day + timedelta(days=1)
+    
+    time_entries = TimeEntry.objects.filter(
+        employee=employee,
+        timestamp__gte=start_of_day,
+        timestamp__lt=end_of_day
+    ).order_by('timestamp')
+    
+    time_in_entry = None
+    time_out_entry = None
+    
+    # Find time in and time out entries
+    for entry in time_entries:
+        if entry.entry_type == 'time_in' and not time_in_entry:
+            time_in_entry = entry
+        elif entry.entry_type == 'time_out' and not time_out_entry:
+            time_out_entry = entry
+    
+    # Get scheduled times for this date
+    try:
+        schedule = EmployeeSchedule.objects.get(employee=employee, date=date)
+        summary.scheduled_time_in = schedule.scheduled_time_in
+        summary.scheduled_time_out = schedule.scheduled_time_out
+        summary.schedule_reference = schedule
+    except EmployeeSchedule.DoesNotExist:
+        summary.scheduled_time_in = None
+        summary.scheduled_time_out = None
+        summary.schedule_reference = None
+    
+    # Update summary with time entries
+    if time_in_entry:
+        summary.time_in = time_in_entry.timestamp.time()
+        summary.time_in_entry = time_in_entry
+    
+    if time_out_entry:
+        summary.time_out = time_out_entry.timestamp.time()
+        summary.time_out_entry = time_out_entry
+    
+    # Determine status
+    if time_in_entry and time_out_entry:
+        summary.status = 'present'
+    elif time_in_entry and not time_out_entry:
+        summary.status = 'present'  # Still working
+    else:
+        summary.status = 'not_scheduled'
+    
+    # Calculate metrics if we have both time in and out
+    if summary.time_in and summary.time_out:
+        summary.calculate_metrics()
+    
+    summary.save()
+    return summary
+
+
+def apply_template_to_schedule(employee, template, start_date, end_date, weekdays_only=False, overwrite_existing=False):
+    """
+    Apply a schedule template to a date range for an employee.
+    
+    Args:
+        employee: Employee object
+        template: ScheduleTemplate object
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        weekdays_only: If True, only apply to weekdays (Monday-Friday)
+        overwrite_existing: If True, replace existing schedules instead of skipping them
+    
+    Returns:
+        dict: Contains 'schedules_created', 'dates_updated', 'dates_skipped', 'skipped_dates_list'
+    """
+    from .models import EmployeeSchedule
+    from datetime import timedelta
+    
+    schedules_created = 0
+    dates_updated = 0
+    dates_skipped = 0
+    skipped_dates_list = []
+    current_date = start_date
+    
+    while current_date <= end_date:
+        # Skip weekends if weekdays_only is True
+        if weekdays_only and current_date.weekday() >= 5:
+            current_date += timedelta(days=1)
+            continue
+        
+        # Check if schedule already exists for this date
+        existing_schedule = EmployeeSchedule.objects.filter(
+            employee=employee,
+            date=current_date
+        ).first()
+        
+        if existing_schedule:
+            if overwrite_existing:
+                # Update existing schedule
+                existing_schedule.scheduled_time_in = template.time_in
+                existing_schedule.scheduled_time_out = template.time_out
+                existing_schedule.is_night_shift = template.is_night_shift
+                existing_schedule.template_used = template
+                existing_schedule.save()
+                dates_updated += 1
+            else:
+                # Skip this date and record it
+                dates_skipped += 1
+                skipped_dates_list.append(current_date.strftime('%Y-%m-%d'))
+        else:
+            # Create new schedule
+            EmployeeSchedule.objects.create(
+                employee=employee,
+                date=current_date,
+                scheduled_time_in=template.time_in,
+                scheduled_time_out=template.time_out,
+                is_night_shift=template.is_night_shift,
+                template_used=template,
+            )
+            schedules_created += 1
+        
+        current_date += timedelta(days=1)
+    
+    return {
+        'schedules_created': schedules_created,
+        'dates_updated': dates_updated,
+        'dates_skipped': dates_skipped,
+        'skipped_dates_list': skipped_dates_list
+    }
+
+
+def copy_schedule_from_previous_month(employee, target_month, target_year, flip_am_pm=False):
+    """
+    Copy schedule from the previous month to the target month.
+    
+    Args:
+        employee: Employee object
+        target_month: Target month (1-12)
+        target_year: Target year
+        flip_am_pm: If True, flip AM/PM times when copying
+    """
+    from .models import EmployeeSchedule
+    from datetime import datetime, timedelta
+    import calendar
+    
+    # Calculate previous month
+    if target_month == 1:
+        prev_month = 12
+        prev_year = target_year - 1
+    else:
+        prev_month = target_month - 1
+        prev_year = target_year
+    
+    # Get start and end dates for both months
+    prev_start_date = datetime(prev_year, prev_month, 1).date()
+    prev_end_date = datetime(prev_year, prev_month, calendar.monthrange(prev_year, prev_month)[1]).date()
+    
+    target_start_date = datetime(target_year, target_month, 1).date()
+    target_end_date = datetime(target_year, target_month, calendar.monthrange(target_year, target_month)[1]).date()
+    
+    # Get schedules from previous month
+    prev_schedules = EmployeeSchedule.objects.filter(
+        employee=employee,
+        date__gte=prev_start_date,
+        date__lte=prev_end_date
+    ).order_by('date')
+    
+    schedules_created = 0
+    
+    for prev_schedule in prev_schedules:
+        # Calculate corresponding date in target month
+        day_of_month = prev_schedule.date.day
+        
+        # Handle cases where target month has fewer days
+        try:
+            target_date = datetime(target_year, target_month, day_of_month).date()
+        except ValueError:
+            # If day doesn't exist in target month (e.g., Feb 30), skip it
+            continue
+        
+        if target_date > target_end_date:
+            continue
+        
+        # Create new schedule
+        new_schedule = EmployeeSchedule.objects.create(
+            employee=employee,
+            date=target_date,
+            scheduled_time_in=prev_schedule.scheduled_time_in,
+            scheduled_time_out=prev_schedule.scheduled_time_out,
+            is_night_shift=prev_schedule.is_night_shift,
+            template_used=prev_schedule.template_used,
+            notes=f"Copied from {prev_schedule.date.strftime('%B %Y')}"
+        )
+        
+        # Flip AM/PM if requested
+        if flip_am_pm:
+            # Convert times to datetime for easier manipulation
+            from datetime import datetime, timedelta
+            
+            start_dt = datetime.combine(datetime.today(), new_schedule.scheduled_time_in)
+            end_dt = datetime.combine(datetime.today(), new_schedule.scheduled_time_out)
+            
+            # Flip AM/PM
+            if start_dt.hour < 12:  # AM to PM
+                start_dt += timedelta(hours=12)
+            else:  # PM to AM
+                start_dt -= timedelta(hours=12)
+            
+            if end_dt.hour < 12:  # AM to PM
+                end_dt += timedelta(hours=12)
+            else:  # PM to AM
+                end_dt -= timedelta(hours=12)
+            
+            # Update the schedule
+            new_schedule.scheduled_time_in = start_dt.time()
+            new_schedule.scheduled_time_out = end_dt.time()
+            new_schedule.is_night_shift = not new_schedule.is_night_shift
+            new_schedule.save()
+        
+        schedules_created += 1
+    
+    return schedules_created
+
+
+def get_available_templates(employee):
+    """
+    Get all available schedule templates for an employee.
+    Returns templates in order: personal, team, company.
+    """
+    from .models import ScheduleTemplate
+    
+    templates = []
+    
+    # Personal templates
+    personal_templates = ScheduleTemplate.objects.filter(
+        created_by=employee,
+        template_type='personal',
+        is_active=True
+    )
+    templates.extend(personal_templates)
+    
+    # Team templates
+    team_templates = ScheduleTemplate.objects.filter(
+        team=employee.department,
+        template_type='team',
+        is_active=True
+    )
+    templates.extend(team_templates)
+    
+    # Company templates
+    company_templates = ScheduleTemplate.objects.filter(
+        template_type='company',
+        is_active=True
+    )
+    templates.extend(company_templates)
+    
+    return templates
+
+
+def create_schedule_template(employee, name, time_in, time_out, template_type='personal', team=None):
+    """
+    Create a new schedule template.
+    
+    Args:
+        employee: Employee creating the template
+        name: Template name
+        time_in: Time in (time object)
+        time_out: Time out (time object)
+        template_type: 'personal', 'team', or 'company'
+        team: Department for team templates
+    """
+    from .models import ScheduleTemplate
+    from datetime import datetime, timedelta
+    
+    # Determine if it's a night shift
+    start_dt = datetime.combine(datetime.today(), time_in)
+    end_dt = datetime.combine(datetime.today(), time_out)
+    is_night_shift = end_dt < start_dt
+    
+    # Create template
+    template = ScheduleTemplate.objects.create(
+        name=name,
+        time_in=time_in,
+        time_out=time_out,
+        is_night_shift=is_night_shift,
+        template_type=template_type,
+        created_by=employee,
+        team=team if template_type == 'team' else None
+    )
+    
+    return template
+
+
+def get_employee_time_report(employee, start_date, end_date):
+    """
+    Get a complete time report for an employee for a date range.
+    Returns data formatted for the report shown in the image.
+    """
+    from .models import DailyTimeSummary
+    from datetime import timedelta
+    
+    # Ensure we have summaries for the period
+    generate_daily_summaries_for_period(employee, start_date, end_date)
+    
+    # Get all summaries for the period
+    summaries = DailyTimeSummary.objects.filter(
+        employee=employee,
+        date__gte=start_date,
+        date__lte=end_date
+    ).order_by('date')
+    
+    # Format data for report
+    report_data = []
+    total_days = 0
+    total_billed_hours = 0
+    total_late_minutes = 0
+    total_undertime_minutes = 0
+    total_night_differential = 0
+    total_overtime = 0
+    
+    for i, summary in enumerate(summaries, 1):
+        if summary.status != 'absent':
+            total_days += 1
+            total_billed_hours += summary.billed_hours
+            total_late_minutes += summary.late_minutes
+            total_undertime_minutes += summary.undertime_minutes
+            total_night_differential += summary.night_differential_hours
+            total_overtime += summary.overtime_hours
+        
+        report_data.append({
+            'number': i,
+            'date': summary.formatted_date,
+            'day': summary.day_of_week,
+            'status': summary.get_status_display(),
+            'time_in': summary.formatted_time_in,
+            'time_out': summary.formatted_time_out,
+            'billed_hours': summary.formatted_billed_hours,
+            'late_minutes': summary.formatted_late_minutes,
+            'undertime_minutes': summary.formatted_undertime_minutes,
+            'night_differential': summary.formatted_night_differential,
+        })
+    
+    # Summary totals
+    summary_totals = {
+        'total_days': total_days,
+        'total_overtime': f"{total_overtime:.2f}",
+        'total_billed_hours': f"{total_billed_hours:.2f}",
+        'total_late_minutes': total_late_minutes,
+        'total_undertime_minutes': total_undertime_minutes,
+        'total_night_differential': f"{total_night_differential:.2f}",
+    }
+    
+    return {
+        'employee': employee,
+        'period': f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d')}",
+        'data': report_data,
+        'totals': summary_totals,
+    } 
+
+
+def generate_daily_time_summary_from_entries(employee, start_date, end_date=None):
+    """
+    Generate DailyTimeSummary records by connecting TimeEntry data with EmployeeSchedule data.
+    This function creates the TIME ATTENDANCE report data.
+    
+    Args:
+        employee: Employee instance
+        start_date: Start date for summary generation
+        end_date: End date for summary generation (defaults to start_date if None)
+    
+    Returns:
+        dict: Summary of created/updated records
+    """
+    from datetime import date, timedelta
+    from .models import TimeEntry, EmployeeSchedule, DailyTimeSummary
+    
+    if end_date is None:
+        end_date = start_date
+    
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+    
+    current_date = start_date
+    while current_date <= end_date:
+        try:
+            # Get time entries for this date (convert to Manila timezone for proper date filtering)
+            import pytz
+            manila_tz = pytz.timezone('Asia/Manila')
+            
+            # Get all time entries for the employee and filter by Manila timezone date
+            all_time_entries = TimeEntry.objects.filter(employee=employee).order_by('timestamp')
+            time_entries = []
+            
+            for entry in all_time_entries:
+                manila_timestamp = entry.timestamp.astimezone(manila_tz)
+                if manila_timestamp.date() == current_date:
+                    time_entries.append(entry)
+            
+            # Get schedule for this date
+            try:
+                schedule = EmployeeSchedule.objects.get(
+                    employee=employee,
+                    date=current_date
+                )
+            except EmployeeSchedule.DoesNotExist:
+                schedule = None
+            
+            # Get or create daily summary
+            summary, created = DailyTimeSummary.objects.get_or_create(
+                employee=employee,
+                date=current_date,
+                defaults={
+                    'status': 'absent',
+                    'is_weekend': current_date.weekday() >= 5,  # Saturday = 5, Sunday = 6
+                }
+            )
+            
+            # Extract time in/out from time entries
+            time_in_entry = None
+            time_out_entry = None
+            time_in = None
+            time_out = None
+            
+            # Convert to Manila timezone for proper time extraction
+            import pytz
+            manila_tz = pytz.timezone('Asia/Manila')
+            
+            for entry in time_entries:
+                # Convert timestamp to Manila timezone
+                manila_timestamp = entry.timestamp.astimezone(manila_tz)
+                
+                if entry.entry_type == 'time_in' and not time_in_entry:
+                    time_in_entry = entry
+                    time_in = manila_timestamp.time()
+                elif entry.entry_type == 'time_out' and not time_out_entry:
+                    time_out_entry = entry
+                    time_out = manila_timestamp.time()
+            
+            # Update summary with time entry data
+            summary.time_in = time_in
+            summary.time_out = time_out
+            summary.time_in_entry = time_in_entry
+            summary.time_out_entry = time_out_entry
+            
+            # Update with schedule data
+            if schedule:
+                summary.scheduled_time_in = schedule.scheduled_time_in
+                summary.scheduled_time_out = schedule.scheduled_time_out
+                summary.schedule_reference = schedule
+            else:
+                summary.scheduled_time_in = None
+                summary.scheduled_time_out = None
+                summary.schedule_reference = None
+            
+            # Determine status
+            from datetime import date
+            today = date.today()
+            
+            if time_in and time_out:
+                summary.status = 'present'
+                if schedule and time_in > schedule.scheduled_time_in:
+                    # Check if within grace period
+                    from datetime import timedelta
+                    grace_period_end = schedule.scheduled_time_in + timedelta(minutes=employee.grace_period_minutes)
+                    if time_in > grace_period_end:
+                        summary.status = 'late'
+            elif time_in and not time_out:
+                summary.status = 'half_day'
+            elif not time_in and not time_out:
+                if current_date > today:
+                    # Future date with no schedule (takes priority over weekend)
+                    summary.status = 'not_scheduled'
+                elif summary.is_weekend:
+                    summary.status = 'weekend'
+                else:
+                    summary.status = 'not_scheduled'
+            
+            # Detect breaks and set total_break_minutes before calculating metrics
+            if time_in and time_out and len(time_entries) > 2:
+                # If there are more than 2 entries (time in + time out + potential breaks), detect breaks
+                breaks = BreakDetector.detect_breaks(time_entries, employee.break_threshold_minutes)
+                total_break_minutes = sum(b['duration_minutes'] for b in breaks)
+                summary.total_break_minutes = total_break_minutes
+            elif time_in and time_out:
+                # For simple time in/out with no detected breaks, use the flexible break time
+                summary.total_break_minutes = int(employee.flexible_break_hours * 60)  # Convert hours to minutes
+            
+            # Calculate metrics
+            summary.calculate_metrics()
+            
+            # Save the summary
+            summary.save()
+            
+            if created:
+                created_count += 1
+            else:
+                updated_count += 1
+                
+        except Exception as e:
+            print(f"Error processing {current_date} for {employee.full_name}: {e}")
+            skipped_count += 1
+        
+        current_date += timedelta(days=1)
+    
+    return {
+        'created': created_count,
+        'updated': updated_count,
+        'skipped': skipped_count,
+        'total_processed': created_count + updated_count + skipped_count
+    }
+
+
+def generate_daily_summaries_for_period(start_date, end_date, employee=None):
+    """
+    Generate DailyTimeSummary records for all employees or a specific employee for a date range.
+    
+    Args:
+        start_date: Start date for summary generation
+        end_date: End date for summary generation
+        employee: Specific employee (optional, if None processes all employees)
+    
+    Returns:
+        dict: Summary of processing results
+    """
+    from .models import Employee
+    
+    if employee:
+        employees = [employee]
+    else:
+        employees = Employee.objects.filter(employment_status='active')
+    
+    total_created = 0
+    total_updated = 0
+    total_skipped = 0
+    
+    for emp in employees:
+        result = generate_daily_time_summary_from_entries(emp, start_date, end_date)
+        total_created += result['created']
+        total_updated += result['updated']
+        total_skipped += result['skipped']
+    
+    return {
+        'employees_processed': len(employees),
+        'total_created': total_created,
+        'total_updated': total_updated,
+        'total_skipped': total_skipped,
+        'total_processed': total_created + total_updated + total_skipped
+    }
+
+
+def get_employee_time_attendance_report(employee, start_date, end_date):
+    """
+    Get a complete TIME ATTENDANCE report for an employee.
+    This matches the format shown in the image.
+    
+    Args:
+        employee: Employee instance
+        start_date: Start date for report
+        end_date: End date for report
+    
+    Returns:
+        dict: Complete report data
+    """
+    from .models import DailyTimeSummary
+    from datetime import date, timedelta
+    
+    # Get all daily summaries for the period
+    summaries = DailyTimeSummary.objects.filter(
+        employee=employee,
+        date__gte=start_date,
+        date__lte=end_date
+    ).order_by('date')
+    
+    # Convert to report format
+    report_data = []
+    total_billed_hours = 0
+    total_late_minutes = 0
+    total_undertime_minutes = 0
+    total_night_differential = 0
+    days_worked = 0
+    
+    current_date = start_date
+    while current_date <= end_date:
+        try:
+            summary = summaries.get(date=current_date)
+        except DailyTimeSummary.DoesNotExist:
+            summary = None
+        
+        if summary and summary.status in ['present', 'late', 'half_day']:
+            days_worked += 1
+            total_billed_hours += float(summary.billed_hours or 0)
+            total_late_minutes += summary.late_minutes or 0
+            total_undertime_minutes += summary.undertime_minutes or 0
+            total_night_differential += float(summary.night_differential_hours or 0)
+        
+        report_data.append({
+            'date': current_date,
+            'day': current_date.strftime('%a'),
+            'status': summary.status if summary else 'absent',
+            'time_in': summary.formatted_time_in if summary else '-',
+            'time_out': summary.formatted_time_out if summary else '-',
+            'scheduled_in': summary.formatted_scheduled_in if summary else '-',
+            'scheduled_out': summary.formatted_scheduled_out if summary else '-',
+            'billed_hours': summary.formatted_billed_hours if summary else '-',
+            'late_minutes': summary.formatted_late_minutes if summary else '-',
+            'undertime_minutes': summary.formatted_undertime_minutes if summary else '-',
+            'night_differential': summary.formatted_night_differential if summary else '-',
+        })
+        
+        current_date += timedelta(days=1)
+    
+    return {
+        'employee': {
+            'id': employee.id,
+            'name': employee.full_name,
+            'employee_id': employee.employee_id,
+            'department': employee.department.name,
+        },
+        'period': {
+            'start_date': start_date,
+            'end_date': end_date,
+        },
+        'summary': {
+            'days_worked': days_worked,
+            'total_billed_hours': round(total_billed_hours, 2),
+            'total_late_minutes': total_late_minutes,
+            'total_undertime_minutes': total_undertime_minutes,
+            'total_night_differential': round(total_night_differential, 2),
+        },
+        'daily_records': report_data
+    } 
