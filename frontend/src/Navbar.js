@@ -12,6 +12,9 @@ const ReportsIcon = () => (
 const RequestIcon = () => (
   <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 );
+const ScheduleIcon = () => (
+  <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+);
 const ProfileIcon = () => (
   <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A13.937 13.937 0 0112 15c2.5 0 4.847.655 6.879 1.804M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
 );
@@ -172,6 +175,18 @@ const Navbar = ({ user, employee, onLogout }) => {
                   <ProfileIcon /> For Approval
                 </NavLink>
               )}
+              <NavLink to="/schedule" className={({ isActive }) =>
+                `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
+                  ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
+              } style={{ pointerEvents: 'auto' }} onClick={(e) => handleNavLinkClick(e, '/schedule')}>
+                <ScheduleIcon /> Schedule
+              </NavLink>
+              <NavLink to="/schedule-report" className={({ isActive }) =>
+                `flex items-center px-2 lg:px-3 py-1 rounded transition font-semibold text-white transform-gpu duration-200 ease-in-out text-sm lg:text-base cursor-pointer
+                  ${isActive ? 'bg-white/20 shadow-lg text-white scale-105 backdrop-blur-sm' : 'hover:bg-white/20 hover:shadow-xl hover:scale-105 hover:backdrop-blur-sm'}`
+              } style={{ pointerEvents: 'auto' }} onClick={(e) => handleNavLinkClick(e, '/schedule-report')}>
+                <ReportsIcon /> Schedule Report
+              </NavLink>
             </nav>
           </div>
           {/* Mobile NavLinks */}
@@ -209,6 +224,16 @@ const Navbar = ({ user, employee, onLogout }) => {
                   <ProfileIcon /> <span className="hidden sm:inline ml-1">Approval</span>
                 </NavLink>
               )}
+              <NavLink to="/schedule" className={({ isActive }) =>
+                `flex items-center px-2 sm:px-3 py-2 rounded transition font-medium text-xs sm:text-sm whitespace-nowrap ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+              } onClick={(e) => handleNavLinkClick(e, '/schedule')}>
+                <ScheduleIcon /> <span className="hidden sm:inline ml-1">Schedule</span>
+              </NavLink>
+              <NavLink to="/schedule-report" className={({ isActive }) =>
+                `flex items-center px-2 sm:px-3 py-2 rounded transition font-medium text-xs sm:text-sm whitespace-nowrap ${isActive ? 'bg-white/20 text-white font-bold' : 'text-white hover:bg-white/10'}`
+              } onClick={(e) => handleNavLinkClick(e, '/schedule-report')}>
+                <ReportsIcon /> <span className="hidden sm:inline ml-1">Report</span>
+              </NavLink>
             </nav>
           </div>
           {/* Right: Coordinates and User Info */}

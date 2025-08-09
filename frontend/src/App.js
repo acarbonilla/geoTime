@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import Login from './Login';
 import 'leaflet/dist/leaflet.css';
 import Reports from './Employee_Report/Reports';
@@ -12,6 +14,7 @@ import MobileDashboard from './dashboards/MobileDashboard/MobileDashboard';
 import TeamLeaderReports from './TeamLeader_Report/TeamLeaderReports';
 import EmployeeRequestPage from './EmployeeRequest/EmployeeRequestPage';
 import ApprovalPage from './TeamLeaderApproval/ApprovalPage';
+import { ScheduleManagement, ScheduleReport } from './Employee_Schedule';
 import { shouldShowMobileView, shouldShowFullView, shouldShowNavbar, getFeatureFlags } from './utils/deviceDetection';
 
 // Create a client
@@ -87,6 +90,19 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <div className="App w-full min-h-screen">
+          {/* Toast Container for notifications */}
+          <ToastContainer
+            position="top-right"
+            autoClose={5000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="light"
+          />
           {/* Navbar for authenticated users - only show in full view */}
           {isAuthenticated && shouldShowNavbar() && (
             <div style={{ position: 'relative', zIndex: 1000 }}>
@@ -186,6 +202,26 @@ function App() {
               element={
                 isAuthenticated && employee?.role === 'team_leader' ? (
                   <ApprovalPage user={user} employee={employee} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
+            <Route
+              path="/schedule"
+              element={
+                isAuthenticated ? (
+                  <ScheduleManagement />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
+            <Route
+              path="/schedule-report"
+              element={
+                isAuthenticated ? (
+                  <ScheduleReport />
                 ) : (
                   <Navigate to="/" replace />
                 )
