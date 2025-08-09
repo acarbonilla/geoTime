@@ -1495,6 +1495,31 @@ class TimeInOutAPIView(APIView):
                 custom_timestamp = request.data.get('timestamp')
                 if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
                     return Response({'error': 'Already clocked in. Please clock out first.'}, status=400)
+            
+            # Check for early time-in restriction (more than employee's early_login_restriction_hours before scheduled time)
+            try:
+                from datetime import datetime, timedelta
+                today = timezone.now().date()
+                schedule = EmployeeSchedule.objects.filter(employee=employee, date=today).first()
+                
+                if schedule and schedule.scheduled_time_in and employee.require_schedule_compliance:
+                    # Calculate the earliest allowed time using employee's early_login_restriction_hours
+                    restriction_hours = float(employee.early_login_restriction_hours or 1.0)
+                    earliest_allowed_time = datetime.combine(today, schedule.scheduled_time_in) - timedelta(hours=restriction_hours)
+                    current_time = timezone.now()
+                    
+                    # For team leaders with custom timestamp, we'll check after timestamp is parsed
+                    if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
+                        if current_time < earliest_allowed_time:
+                            return Response({
+                                'error': f'Cannot clock in more than {restriction_hours} hour{"s" if restriction_hours != 1 else ""} before scheduled time. Earliest allowed time: {earliest_allowed_time.strftime("%I:%M %p")}',
+                                'scheduled_time': schedule.scheduled_time_in.strftime("%I:%M %p"),
+                                'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p")
+                            }, status=400)
+            except Exception as e:
+                # If there's any error in validation, log it but don't block the time-in
+                print(f"Error in early time-in validation: {e}")
+            
             # Allow time-in (even if last session was today or yesterday)
             # ... create new time-in entry ...
 
@@ -1530,6 +1555,29 @@ class TimeInOutAPIView(APIView):
                 # If the parsed datetime is naive, assume UTC
                 if entry_timestamp.tzinfo is None:
                     entry_timestamp = pytz.UTC.localize(entry_timestamp)
+                
+                # Check for early time-in restriction for team leaders with custom timestamp
+                if action == 'time-in':
+                    try:
+                        from datetime import datetime, timedelta
+                        today = entry_timestamp.date()
+                        schedule = EmployeeSchedule.objects.filter(employee=employee, date=today).first()
+                        
+                        if schedule and schedule.scheduled_time_in and employee.require_schedule_compliance:
+                            # Calculate the earliest allowed time using employee's early_login_restriction_hours
+                            restriction_hours = float(employee.early_login_restriction_hours or 1.0)
+                            earliest_allowed_time = datetime.combine(today, schedule.scheduled_time_in) - timedelta(hours=restriction_hours)
+                            earliest_allowed_time = pytz.UTC.localize(earliest_allowed_time)
+                            
+                            if entry_timestamp < earliest_allowed_time:
+                                return Response({
+                                    'error': f'Cannot clock in more than {restriction_hours} hour{"s" if restriction_hours != 1 else ""} before scheduled time. Earliest allowed time: {earliest_allowed_time.strftime("%I:%M %p")}',
+                                    'scheduled_time': schedule.scheduled_time_in.strftime("%I:%M %p"),
+                                    'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p")
+                                }, status=400)
+                    except Exception as e:
+                        print(f"Error in early time-in validation for team leader: {e}")
+                        
             except Exception as e:
                 print(f"Failed to parse timestamp: {custom_timestamp} ({e})")
                 return Response({'error': 'Invalid timestamp format.', 'details': str(e), 'raw': custom_timestamp}, status=400)

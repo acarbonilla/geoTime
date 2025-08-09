@@ -756,22 +756,29 @@ def generate_daily_time_summary_from_entries(employee, start_date, end_date=None
             
             if time_in and time_out:
                 summary.status = 'present'
-                if schedule and time_in > schedule.scheduled_time_in:
+                if schedule and time_in > schedule.scheduled_time_in and employee.require_schedule_compliance:
                     # Check if within grace period
                     from datetime import timedelta
                     grace_period_end = schedule.scheduled_time_in + timedelta(minutes=employee.grace_period_minutes)
                     if time_in > grace_period_end:
                         summary.status = 'late'
             elif time_in and not time_out:
-                summary.status = 'half_day'
+                summary.status = 'present'  # Still working - not half_day
             elif not time_in and not time_out:
                 if current_date > today:
-                    # Future date with no schedule (takes priority over weekend)
-                    summary.status = 'not_scheduled'
+                    # Future date - check if there's a schedule
+                    if summary.scheduled_time_in and summary.scheduled_time_out:
+                        summary.status = 'not_scheduled'  # Future date with schedule - scheduled but not yet worked
+                    else:
+                        summary.status = 'not_scheduled'  # Future date with no schedule
                 elif summary.is_weekend:
                     summary.status = 'weekend'
                 else:
-                    summary.status = 'not_scheduled'
+                    # Current or past date - check if there's a schedule
+                    if summary.scheduled_time_in and summary.scheduled_time_out:
+                        summary.status = 'absent'  # Past date with schedule but didn't show up
+                    else:
+                        summary.status = 'not_scheduled'  # No schedule at all
             
             # Detect breaks and set total_break_minutes before calculating metrics
             if time_in and time_out and len(time_entries) > 2:
@@ -915,7 +922,7 @@ def get_employee_time_attendance_report(employee, start_date, end_date):
                     'time_out': summary.formatted_time_out if summary else '-',
                     'scheduled_in': summary.formatted_scheduled_in if summary else '-',
                     'scheduled_out': summary.formatted_scheduled_out if summary else '-',
-                    'billed_hours': summary.formatted_billed_hours if summary else '-',
+                    'billed_hours': summary.formatted_billed_minutes if summary else '-',
                     'late_minutes': summary.formatted_late_minutes if summary else '-',
                     'undertime_minutes': summary.formatted_undertime_minutes if summary else '-',
                     'night_differential': summary.formatted_night_differential if summary else '-',
@@ -954,7 +961,7 @@ def get_employee_time_attendance_report(employee, start_date, end_date):
             },
             'summary': {
                 'days_worked': days_worked,
-                'total_billed_hours': round(total_billed_hours, 2),
+                'total_billed_hours': int(total_billed_hours * 60),  # Convert to minutes
                 'total_late_minutes': total_late_minutes,
                 'total_undertime_minutes': total_undertime_minutes,
                 'total_night_differential': round(total_night_differential, 2),

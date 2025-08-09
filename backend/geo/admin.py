@@ -73,7 +73,7 @@ class EmployeeAdmin(admin.ModelAdmin):
             'fields': ('hire_date', 'employment_status', 'phone', 'emergency_contact')
         }),
         ('Overtime Configuration', {
-            'fields': ('daily_work_hours', 'overtime_threshold_hours', 'total_schedule_hours', 'flexible_break_hours', 'lunch_break_minutes', 'break_threshold_minutes', 'grace_period_minutes'),
+            'fields': ('daily_work_hours', 'overtime_threshold_hours', 'total_schedule_hours', 'flexible_break_hours', 'lunch_break_minutes', 'break_threshold_minutes', 'grace_period_minutes', 'early_login_restriction_hours', 'require_schedule_compliance'),
             'classes': ('collapse',)
         }),
         ('Timestamps', {
