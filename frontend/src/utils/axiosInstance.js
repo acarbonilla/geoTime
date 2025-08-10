@@ -1,12 +1,34 @@
 import axios from 'axios';
 
+// Determine the correct API URL based on environment
+const getApiUrl = () => {
+  // Check if we're in production
+  if (window.location.hostname === 'iais.online' || window.location.hostname === 'www.iais.online') {
+    return 'https://iais.online/api';
+  }
+  
+  // Check environment variable (using the exact name from production .env)
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  // Fallback to localhost for development
+  return 'http://localhost:8000/api';
+};
+
 const axiosInstance = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api',
+  baseURL: getApiUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
   withCredentials: true
 });
+
+// Log the API URL being used
+console.log('Axios instance configured with baseURL:', getApiUrl());
+console.log('Current hostname:', window.location.hostname);
+console.log('Environment:', process.env.REACT_APP_ENVIRONMENT || process.env.REACT_APP_ENV || 'development');
+console.log('Domain:', process.env.REACT_APP_DOMAIN || 'localhost');
 
 // Add a request interceptor to include the auth token
 axiosInstance.interceptors.request.use(
@@ -44,7 +66,7 @@ axiosInstance.interceptors.response.use(
         }
         
         const response = await axios.post(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/token/refresh/`,
+          `${getApiUrl()}/token/refresh/`,
           { refresh: refreshToken }
         );
         

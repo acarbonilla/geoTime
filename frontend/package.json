@@ -31,6 +31,7 @@
   "scripts": {
     "start": "set NODE_OPTIONS=--openssl-legacy-provider && craco start",
     "build": "set NODE_OPTIONS=--openssl-legacy-provider && craco build",
+    "build:prod": "set NODE_OPTIONS=--openssl-legacy-provider && craco build --env production",
     "test": "craco test",
     "eject": "react-scripts eject"
   },
