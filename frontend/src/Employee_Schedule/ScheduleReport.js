@@ -137,18 +137,22 @@ const ScheduleReport = () => {
         ...filters,
         employeeId: currentEmployeeId
       };
-                const data = await getTimeAttendanceReport(reportFilters);
-          console.log('Report data loaded:', data);
-          console.log('Data structure:', {
-            hasEmployee: !!data.employee,
-            hasSummary: !!data.summary,
-            hasDailyRecords: !!data.daily_records,
-            dailyRecordsLength: data.daily_records?.length || 0,
-            summaryKeys: data.summary ? Object.keys(data.summary) : [],
-            firstRecord: data.daily_records?.[0]
-          });
-          setReport(data);
-          toast.success('Report loaded successfully');
+      console.log('loadReport called with filters:', reportFilters);
+      const data = await getTimeAttendanceReport(reportFilters);
+      console.log('Report data loaded:', data);
+      console.log('Data structure:', {
+        hasEmployee: !!data.employee,
+        hasSummary: !!data.summary,
+        hasDailyRecords: !!data.daily_records,
+        dailyRecordsLength: data.daily_records?.length || 0,
+        summaryKeys: data.summary ? Object.keys(data.summary) : [],
+        firstRecord: data.daily_records?.[0]
+      });
+      console.log('Raw daily_records:', data.daily_records);
+      console.log('Raw summary:', data.summary);
+      setReport(data);
+      console.log('Report state set, current report state:', data);
+      toast.success('Report loaded successfully');
     } catch (error) {
       console.error('Error loading report:', error);
       toast.error('Failed to load report');
@@ -232,7 +236,10 @@ const ScheduleReport = () => {
             summaryKeys: data.summary ? Object.keys(data.summary) : [],
             firstRecord: data.daily_records?.[0]
           });
+          console.log('Raw daily_records from cut-off change:', data.daily_records);
+          console.log('Raw summary from cut-off change:', data.summary);
           setReport(data);
+          console.log('Report state set from cut-off change, current report state:', data);
           toast.success('Report generated automatically');
         } catch (error) {
           console.error('Error loading report:', error);
@@ -586,6 +593,13 @@ const ScheduleReport = () => {
 
             {/* Daily Records Table */}
             <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-lg">
+              {console.log('About to check daily_records:', {
+                hasDailyRecords: !!report.daily_records,
+                dailyRecordsType: typeof report.daily_records,
+                dailyRecordsLength: report.daily_records?.length || 0,
+                dailyRecordsIsArray: Array.isArray(report.daily_records),
+                dailyRecordsContent: report.daily_records
+              })}
               {!report.daily_records || report.daily_records.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
                   <div className="text-lg font-medium mb-2">No Daily Records Found</div>
