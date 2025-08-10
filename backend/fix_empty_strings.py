@@ -93,9 +93,22 @@ def regenerate_daily_summaries():
     
     print(f"📅 Regenerating summaries from {start_date} to {end_date}")
     
+    # Specifically target August 12-16 period
+    august_start = date(2025, 8, 12)
+    august_end = date(2025, 8, 16)
+    
+    print(f"🎯 Specifically targeting August 12-16 period: {august_start} to {august_end}")
+    
     try:
+        # First, regenerate the general period
         generate_daily_summaries_for_period(start_date, end_date)
-        print("✅ Daily summaries regenerated successfully!")
+        print("✅ General period summaries regenerated successfully!")
+        
+        # Then, specifically regenerate August 12-16 to ensure new schedules are processed
+        print(f"🔄 Regenerating August 12-16 summaries specifically...")
+        generate_daily_summaries_for_period(august_start, august_end)
+        print("✅ August 12-16 summaries regenerated successfully!")
+        
         return True
     except Exception as e:
         print(f"❌ Error regenerating summaries: {e}")
@@ -122,6 +135,33 @@ def verify_fix():
             scheduled_time_in__isnull=True
         ).count()
         print(f"✅ Query test successful: {test_query} records found")
+        
+        # Check August 12-16 specifically
+        print("\n🎯 Checking August 12-16 specifically...")
+        from geo.models import EmployeeSchedule
+        
+        august_start = date(2025, 8, 12)
+        august_end = date(2025, 8, 16)
+        
+        # Check what schedules exist
+        schedules = EmployeeSchedule.objects.filter(
+            date__gte=august_start,
+            date__lte=august_end
+        ).order_by('date')
+        
+        print(f"📅 EmployeeSchedule records for August 12-16: {schedules.count()}")
+        for schedule in schedules:
+            print(f"   - {schedule.date}: {schedule.scheduled_time_in} - {schedule.scheduled_time_out} (Employee: {schedule.employee.employee_id})")
+        
+        # Check what summaries were generated
+        summaries = DailyTimeSummary.objects.filter(
+            date__gte=august_start,
+            date__lte=august_end
+        ).order_by('date')
+        
+        print(f"📊 DailyTimeSummary records for August 12-16: {summaries.count()}")
+        for summary in summaries:
+            print(f"   - {summary.date}: scheduled_in={summary.scheduled_time_in}, scheduled_out={summary.scheduled_time_out}, status={summary.status}")
         
         return True
         
