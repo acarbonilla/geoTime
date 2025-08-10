@@ -137,9 +137,18 @@ const ScheduleReport = () => {
         ...filters,
         employeeId: currentEmployeeId
       };
-      const data = await getTimeAttendanceReport(reportFilters);
-      setReport(data);
-      toast.success('Report loaded successfully');
+                const data = await getTimeAttendanceReport(reportFilters);
+          console.log('Report data loaded:', data);
+          console.log('Data structure:', {
+            hasEmployee: !!data.employee,
+            hasSummary: !!data.summary,
+            hasDailyRecords: !!data.daily_records,
+            dailyRecordsLength: data.daily_records?.length || 0,
+            summaryKeys: data.summary ? Object.keys(data.summary) : [],
+            firstRecord: data.daily_records?.[0]
+          });
+          setReport(data);
+          toast.success('Report loaded successfully');
     } catch (error) {
       console.error('Error loading report:', error);
       toast.error('Failed to load report');
@@ -214,6 +223,15 @@ const ScheduleReport = () => {
           };
           console.log('Generating report with filters:', reportFilters);
           const data = await getTimeAttendanceReport(reportFilters);
+          console.log('Report data received:', data);
+          console.log('Data structure:', {
+            hasEmployee: !!data.employee,
+            hasSummary: !!data.summary,
+            hasDailyRecords: !!data.daily_records,
+            dailyRecordsLength: data.daily_records?.length || 0,
+            summaryKeys: data.summary ? Object.keys(data.summary) : [],
+            firstRecord: data.daily_records?.[0]
+          });
           setReport(data);
           toast.success('Report generated automatically');
         } catch (error) {
@@ -483,6 +501,13 @@ const ScheduleReport = () => {
         {/* Report Display */}
         {report && (
           <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
+            {console.log('Rendering report:', report)}
+            {console.log('Report structure:', {
+              hasEmployee: !!report.employee,
+              hasSummary: !!report.summary,
+              hasDailyRecords: !!report.daily_records,
+              dailyRecordsLength: report.daily_records?.length || 0
+            })}
             {/* Report Header */}
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
@@ -561,6 +586,19 @@ const ScheduleReport = () => {
 
             {/* Daily Records Table */}
             <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-lg">
+              {!report.daily_records || report.daily_records.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  <div className="text-lg font-medium mb-2">No Daily Records Found</div>
+                  <div className="text-sm">The report was generated but no daily records are available.</div>
+                  <div className="text-xs mt-2 text-gray-400">
+                    Debug: {JSON.stringify({
+                      hasDailyRecords: !!report.daily_records,
+                      dailyRecordsLength: report.daily_records?.length || 0,
+                      reportKeys: Object.keys(report || {})
+                    })}
+                  </div>
+                </div>
+              ) : (
               <table className="min-w-full bg-white">
                 <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                   <tr>
@@ -675,6 +713,7 @@ const ScheduleReport = () => {
                   ))}
                 </tbody>
               </table>
+              )}
             </div>
           </div>
         )}
