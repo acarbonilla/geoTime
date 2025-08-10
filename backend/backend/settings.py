@@ -15,17 +15,29 @@ env = environ.Env(
     DEBUG=(bool, False)
 )
 
+# Check if we're in development or production
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+
 # Take environment variables from .env file
-environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+if ENVIRONMENT == 'development':
+    environ.Env.read_env(os.path.join(BASE_DIR, 'dev.env'))
+else:
+    environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 # Now use env() to get your variables
-DEBUG = env('DEBUG')
-SECRET_KEY = env('SECRET_KEY')
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
+DEBUG = env('DEBUG', default=True if ENVIRONMENT == 'development' else False)
+SECRET_KEY = env('SECRET_KEY', default='dev-secret-key-change-in-production')
 
-# ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
-ALLOWED_HOSTS = ['*']
+# Development vs Production settings
+if ENVIRONMENT == 'development':
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']
+    CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ])
+else:
+    ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
+    CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
 
 # Application definition
 
@@ -57,6 +69,7 @@ MIDDLEWARE = [
 
 # CORS settings
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = ENVIRONMENT == 'development'  # Only allow all origins in development
 
 ROOT_URLCONF = 'backend.urls'
 
@@ -154,35 +167,8 @@ SIMPLE_JWT = {
     # ... other settings ...
 }
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # for development
-    "http://127.0.0.1:3000",  # for development
-    "https://iais.online",    # for production
-    "http://iais.online",     # for production (if needed)
-]
+# CORS settings are now handled by environment-specific configuration above
 from corsheaders.defaults import default_headers
-
-# Additional CORS settings for production
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
-]
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-]
 
 import os
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
