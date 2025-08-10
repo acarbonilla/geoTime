@@ -4,43 +4,24 @@ import os
 from pathlib import Path
 from datetime import timedelta
 
-
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Initialize environment variables
 env = environ.Env(
-    # set casting, default value
     DEBUG=(bool, False)
 )
 
-# Check if we're in development or production
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+# Load environment variables from .env file
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
-# Take environment variables from .env file
-if ENVIRONMENT == 'development':
-    environ.Env.read_env(os.path.join(BASE_DIR, 'dev.env'))
-else:
-    environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+# Basic Django settings
+DEBUG = env('DEBUG', default=False)
+SECRET_KEY = env('SECRET_KEY', default='your-secret-key-here')
 
-# Now use env() to get your variables
-DEBUG = env('DEBUG', default=True if ENVIRONMENT == 'development' else False)
-SECRET_KEY = env('SECRET_KEY', default='dev-secret-key-change-in-production')
-
-# Development vs Production settings
-if ENVIRONMENT == 'development':
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']
-    CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
-    ])
-else:
-    ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
-    CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
 
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -53,7 +34,6 @@ INSTALLED_APPS = [
     'corsheaders',
     'geo',
     'django_extensions',
-
 ]
 
 MIDDLEWARE = [
@@ -66,10 +46,6 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
-# CORS settings
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = ENVIRONMENT == 'development'  # Only allow all origins in development
 
 ROOT_URLCONF = 'backend.urls'
 
@@ -91,17 +67,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
-
 # Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-
 DATABASES = {
-    'default': env.db(),  # This reads DATABASE_URL
+    'default': env.db('DATABASE_URL', default='sqlite:///db.sqlite3'),
 }
 
 # Password validation
-# https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -117,27 +88,17 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
-# https://docs.djangoproject.com/en/4.2/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'Asia/Manila'
-
 USE_I18N = True
-
 USE_TZ = True
 
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/4.2/howto/static-files/
-
+# Static files
 STATIC_URL = env('STATIC_URL', default='/static/')
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Default primary key field type
-# https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Django REST Framework Configuration
@@ -161,17 +122,18 @@ REST_FRAMEWORK = {
     ],
 }
 
+# JWT Settings
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),  # 1 hour for dev
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    # ... other settings ...
 }
 
-# CORS settings are now handled by environment-specific configuration above
-from corsheaders.defaults import default_headers
-
-import os
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# CORS Settings
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+])
 
 # Security Settings for Production
 if not DEBUG:

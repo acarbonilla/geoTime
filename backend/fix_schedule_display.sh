@@ -12,20 +12,24 @@ if [ ! -f "manage.py" ]; then
     exit 1
 fi
 
-# Check if virtual environment exists
-if [ ! -d ".venv" ]; then
-    echo "❌ Error: Virtual environment not found. Please ensure .venv exists."
+# Check if virtual environment exists in current or parent directory
+if [ -d ".venv" ]; then
+    VENV_PATH=".venv"
+elif [ -d "../.venv" ]; then
+    VENV_PATH="../.venv"
+else
+    echo "❌ Error: Virtual environment not found. Please ensure .venv exists in current or parent directory."
     exit 1
 fi
 
 echo "📁 Current directory: $(pwd)"
-echo "🐍 Virtual environment: .venv"
+echo "🐍 Virtual environment: $VENV_PATH"
 
 # Activate virtual environment and run the fix
 echo "🚀 Activating virtual environment and running fix..."
 
 # Activate virtual environment
-source .venv/bin/activate
+source $VENV_PATH/bin/activate
 
 if [ $? -ne 0 ]; then
     echo "❌ Failed to activate virtual environment"
@@ -36,7 +40,7 @@ echo "✅ Virtual environment activated successfully"
 
 # Run the fix script
 echo "🔧 Running schedule display fix..."
-python fix_schedule_display.py
+python3 fix_schedule_display.py
 
 if [ $? -eq 0 ]; then
     echo "✅ Schedule display fix completed successfully!"
