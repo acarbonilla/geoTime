@@ -1488,6 +1488,25 @@ class TimeInOutAPIView(APIView):
         
         entry_type = 'time_in' if action == 'time-in' else 'time_out'
         
+        # NEW: ENFORCE SCHEDULE COMPLIANCE - Block if no schedule exists
+        from datetime import date
+        today = date.today()
+        schedule = EmployeeSchedule.objects.filter(employee=employee, date=today).first()
+        
+        if not schedule:
+            return Response({
+                'error': 'Schedule required',
+                'details': 'No schedule found for today. Please contact your supervisor to set up your schedule before clocking in/out.',
+                'date': today.isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not schedule.scheduled_time_in or not schedule.scheduled_time_out:
+            return Response({
+                'error': 'Incomplete schedule',
+                'details': 'Your schedule for today is incomplete. Please contact your supervisor to complete your schedule before clocking in/out.',
+                'date': today.isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         # Get the last time entry for this employee
         last_entry = TimeEntry.objects.filter(employee=employee).order_by('-timestamp').first()
 
@@ -1501,23 +1520,18 @@ class TimeInOutAPIView(APIView):
             # Check for early time-in restriction (more than employee's early_login_restriction_hours before scheduled time)
             try:
                 from datetime import datetime, timedelta
-                today = timezone.now().date()
-                schedule = EmployeeSchedule.objects.filter(employee=employee, date=today).first()
+                restriction_hours = float(employee.early_login_restriction_hours or 1.0)
+                earliest_allowed_time = datetime.combine(today, schedule.scheduled_time_in) - timedelta(hours=restriction_hours)
+                current_time = timezone.now()
                 
-                if schedule and schedule.scheduled_time_in and employee.require_schedule_compliance:
-                    # Calculate the earliest allowed time using employee's early_login_restriction_hours
-                    restriction_hours = float(employee.early_login_restriction_hours or 1.0)
-                    earliest_allowed_time = datetime.combine(today, schedule.scheduled_time_in) - timedelta(hours=restriction_hours)
-                    current_time = timezone.now()
-                    
-                    # For team leaders with custom timestamp, we'll check after timestamp is parsed
-                    if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
-                        if current_time < earliest_allowed_time:
-                            return Response({
-                                'error': f'Cannot clock in more than {restriction_hours} hour{"s" if restriction_hours != 1 else ""} before scheduled time. Earliest allowed time: {earliest_allowed_time.strftime("%I:%M %p")}',
-                                'scheduled_time': schedule.scheduled_time_in.strftime("%I:%M %p"),
-                                'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p")
-                            }, status=400)
+                # For team leaders with custom timestamp, we'll check after timestamp is parsed
+                if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
+                    if current_time < earliest_allowed_time:
+                        return Response({
+                            'error': f'Cannot clock in more than {restriction_hours} hour{"s" if restriction_hours != 1 else ""} before scheduled time. Earliest allowed time: {earliest_allowed_time.strftime("%I:%M %p")}',
+                            'scheduled_time': schedule.scheduled_time_in.strftime("%I:%M %p"),
+                            'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p")
+                        }, status=400)
             except Exception as e:
                 # If there's any error in validation, log it but don't block the time-in
                 print(f"Error in early time-in validation: {e}")
@@ -1562,21 +1576,17 @@ class TimeInOutAPIView(APIView):
                 if action == 'time-in':
                     try:
                         from datetime import datetime, timedelta
-                        today = entry_timestamp.date()
-                        schedule = EmployeeSchedule.objects.filter(employee=employee, date=today).first()
+                        # Use the already-fetched schedule instead of querying again
+                        restriction_hours = float(employee.early_login_restriction_hours or 1.0)
+                        earliest_allowed_time = datetime.combine(today, schedule.scheduled_time_in) - timedelta(hours=restriction_hours)
+                        earliest_allowed_time = pytz.UTC.localize(earliest_allowed_time)
                         
-                        if schedule and schedule.scheduled_time_in and employee.require_schedule_compliance:
-                            # Calculate the earliest allowed time using employee's early_login_restriction_hours
-                            restriction_hours = float(employee.early_login_restriction_hours or 1.0)
-                            earliest_allowed_time = datetime.combine(today, schedule.scheduled_time_in) - timedelta(hours=restriction_hours)
-                            earliest_allowed_time = pytz.UTC.localize(earliest_allowed_time)
-                            
-                            if entry_timestamp < earliest_allowed_time:
-                                return Response({
-                                    'error': f'Cannot clock in more than {restriction_hours} hour{"s" if restriction_hours != 1 else ""} before scheduled time. Earliest allowed time: {earliest_allowed_time.strftime("%I:%M %p")}',
-                                    'scheduled_time': schedule.scheduled_time_in.strftime("%I:%M %p"),
-                                    'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p")
-                                }, status=400)
+                        if entry_timestamp < earliest_allowed_time:
+                            return Response({
+                                'error': f'Cannot clock in more than {restriction_hours} hour{"s" if restriction_hours != 1 else ""} before scheduled time. Earliest allowed time: {earliest_allowed_time.strftime("%I:%M %p")}',
+                                'scheduled_time': schedule.scheduled_time_in.strftime("%I:%M %p"),
+                                'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p")
+                            }, status=400)
                     except Exception as e:
                         print(f"Error in early time-in validation for team leader: {e}")
                         
@@ -2882,40 +2892,70 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def copy_previous_month(self, request):
         """Copy schedules from previous month"""
-        serializer = CopyPreviousMonthSerializer(data=request.data)
-        if serializer.is_valid():
-            try:
-                # Check if user is employee and trying to copy to past months
-                if not request.user.is_staff:
-                    from datetime import date
-                    target_month = serializer.validated_data['target_month']
-                    target_year = serializer.validated_data['target_year']
-                    
-                    # Check if target month is in the past
-                    current_date = date.today()
-                    if target_year < current_date.year or (target_year == current_date.year and target_month < current_date.month):
-                        return Response(
-                            {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
-                            status=status.HTTP_403_FORBIDDEN
-                        )
-                
-                result = copy_schedule_from_previous_month(
-                    employee=request.user.employee_profile,
-                    target_month=serializer.validated_data['target_month'],
-                    target_year=serializer.validated_data['target_year'],
-                    flip_am_pm=serializer.validated_data['flip_am_pm']
-                )
-                
+        try:
+            from datetime import datetime, timedelta
+            from dateutil.relativedelta import relativedelta
+            
+            # Get the target month from request data or use current month
+            target_month = request.data.get('target_month')
+            if target_month:
+                try:
+                    target_date = datetime.strptime(target_month, '%Y-%m').date()
+                except ValueError:
+                    return Response(
+                        {'error': 'Invalid target_month format. Use YYYY-MM format.'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                target_date = datetime.now().date()
+            
+            # Calculate previous month
+            previous_month = target_date - relativedelta(months=1)
+            
+            result = copy_schedule_from_previous_month(
+                employee=request.user.employee_profile,
+                target_month=target_date,
+                previous_month=previous_month
+            )
+            
+            return Response({
+                'message': f'Successfully copied {result} schedules from {previous_month.strftime("%B %Y")} to {target_date.strftime("%B %Y")}',
+                'schedules_copied': result
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'])
+    def today(self, request):
+        """Get today's schedule for the current employee"""
+        try:
+            from datetime import date
+            today = date.today()
+            
+            # Get today's schedule for the current employee
+            schedule = EmployeeSchedule.objects.filter(
+                employee=request.user.employee_profile,
+                date=today
+            ).first()
+            
+            if not schedule:
                 return Response({
-                    'message': f'Successfully copied {result} schedules',
-                    'schedules_copied': result
-                })
-            except Exception as e:
-                return Response(
-                    {'error': str(e)}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    'error': 'No schedule found for today',
+                    'date': today.isoformat()
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            serializer = self.get_serializer(schedule)
+            return Response(serializer.data)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=False, methods=['get'])
     def report(self, request):

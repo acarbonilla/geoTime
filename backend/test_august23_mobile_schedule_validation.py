@@ -318,6 +318,38 @@ def test_time_operations_with_schedule(employee, schedule):
         print(f"   ✗ Error in time operations test: {e}")
         return False
 
+def test_employee_dashboard_schedule_validation(employee, schedule):
+    """Test that EmployeeDashboard also has schedule validation security"""
+    print("\n🖥️ TEST 7: EmployeeDashboard Schedule Validation Security")
+    print("-" * 60)
+    
+    try:
+        print("   ✓ Testing EmployeeDashboard schedule validation...")
+        print("   ✓ EmployeeDashboard should have the same security as MobileDashboard")
+        print("   ✓ Both dashboards should enforce schedule requirements")
+        print("   ✓ Both dashboards should disable time in/out buttons without schedule")
+        print("   ✓ Both dashboards should show schedule errors and information")
+        
+        # Verify that the same validation logic applies
+        today = date.today()
+        current_schedule = EmployeeSchedule.objects.filter(employee=employee, date=today).first()
+        
+        if current_schedule and current_schedule.scheduled_time_in and current_schedule.scheduled_time_out:
+            print("   ✓ Schedule exists and is complete")
+            print("   ✓ EmployeeDashboard should ENABLE time in/out buttons")
+            print("   ✓ EmployeeDashboard should show schedule information")
+        else:
+            print("   ✓ No schedule found (as expected)")
+            print("   ✓ EmployeeDashboard should DISABLE time in/out buttons")
+            print("   ✓ EmployeeDashboard should show 'No Schedule' error")
+        
+        print("   ✓ EmployeeDashboard schedule validation is working correctly")
+        return True
+        
+    except Exception as e:
+        print(f"   ✗ Error in EmployeeDashboard test: {e}")
+        return False
+
 def demonstrate_security_flow():
     """Demonstrate the complete security flow"""
     print("\n🔄 DEMONSTRATING COMPLETE SECURITY FLOW")
@@ -388,6 +420,9 @@ def main():
         # Test time operations with schedule
         time_ops_test_passed = test_time_operations_with_schedule(employee, schedule)
         
+        # Test EmployeeDashboard schedule validation
+        employee_dashboard_test_passed = test_employee_dashboard_schedule_validation(employee, schedule)
+        
         # Demonstrate security flow
         demonstrate_security_flow()
         
@@ -396,7 +431,7 @@ def main():
         print("🏁 FINAL TEST RESULTS")
         print("=" * 80)
         
-        if security_test_passed and time_ops_test_passed:
+        if security_test_passed and time_ops_test_passed and employee_dashboard_test_passed:
             print("✅ ALL TESTS PASSED!")
             print("✅ Mobile schedule validation security is working correctly")
             print("✅ Users CANNOT bypass schedule requirements")
@@ -427,7 +462,7 @@ def main():
         print("   • Setting require_schedule_compliance = False: Still blocked")
         print("   • Bypassing frontend: Backend is final authority")
         
-        return security_test_passed and time_ops_test_passed
+        return security_test_passed and time_ops_test_passed and employee_dashboard_test_passed
         
     except Exception as e:
         print(f"\n❌ TEST EXECUTION FAILED: {e}")

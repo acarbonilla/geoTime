@@ -24,6 +24,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   const [geolocationStatus, setGeolocationStatus] = useState('idle');
   const [currentCoords, setCurrentCoords] = useState({ latitude: null, longitude: null });
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [scheduleError, setScheduleError] = useState(null);
   
   // Overtime-related state
   const [overtimeAnalysis, setOvertimeAnalysis] = useState(null);
@@ -85,6 +86,20 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     enabled: !!employee?.id && !sessionData?.today_analysis,
   });
 
+  // NEW: Get today's schedule
+  const { data: todaySchedule, error: scheduleQueryError, refetch: refetchSchedule } = useQuery({
+    queryKey: ['today-schedule', employee?.id],
+    queryFn: () => timeAPI.getTodaySchedule(),
+    enabled: !!employee?.id,
+    refetchInterval: 60000, // Refresh every minute
+    retry: 3,
+    retryDelay: 1000,
+    onError: (error) => {
+      console.error('Schedule query error:', error);
+      setScheduleError('Failed to load schedule. Please contact your supervisor.');
+    }
+  });
+
   // Process session data
   useEffect(() => {
     if (sessionData) {
@@ -101,95 +116,62 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         } else {
           setCurrentStatus('not_started');
         }
-        
-        // Check for overtime alerts
-        const alerts = [];
-        if (sessionData.today_analysis.is_overtime) {
-          alerts.push({
-            type: 'overtime',
-            message: `You have worked ${sessionData.today_analysis.overtime_hours} hours of overtime today!`,
-            severity: 'warning'
-          });
-        }
-        
-        if (sessionData.active_session && sessionData.active_session.is_overtime) {
-          alerts.push({
-            type: 'active_overtime',
-            message: 'You are currently in overtime!',
-            severity: 'warning'
-          });
-        }
-        
-        if (sessionData.active_session && sessionData.active_session.hours_until_overtime < 1) {
-          alerts.push({
-            type: 'approaching_overtime',
-            message: `You are ${(sessionData.active_session.hours_until_overtime * 60).toFixed(0)} minutes away from overtime!`,
-            severity: 'info'
-          });
-        }
-        
-        setOvertimeAlerts(alerts);
-        setTotalHoursToday(sessionData.today_analysis.total_hours);
+      } else {
+        setOvertimeAnalysis(null);
+        setCurrentStatus('not_started');
       }
     }
   }, [sessionData]);
 
-  // Process entries data (fallback when no overtime analysis)
+  // Process time entries data
   useEffect(() => {
-    if (entriesData && !sessionData?.today_analysis) {
-      
-      // Filter for today's entries
-      const today = new Date().toDateString();
-      const todayEntries = (entriesData.results || entriesData || []).filter(entry => {
-        const entryDate = new Date(entry.timestamp).toDateString();
-        return entryDate === today;
-      });
-      
-      setTodayEntries(todayEntries);
-      
-      // Calculate total hours from today's entries
-      let totalHours = 0;
-      if (todayEntries.length > 0) {
-        
-        // Sort entries by timestamp
-        const sortedEntries = todayEntries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        const timeInEntries = sortedEntries.filter(e => e.entry_type === 'time_in');
-        const timeOutEntries = sortedEntries.filter(e => e.entry_type === 'time_out');
-        
-
-        
-                 // Calculate actual hours worked
-         for (let i = 0; i < Math.min(timeInEntries.length, timeOutEntries.length); i++) {
-           const timeIn = new Date(timeInEntries[i].timestamp);
-           const timeOut = new Date(timeOutEntries[i].timestamp);
-           const duration = (timeOut - timeIn) / (1000 * 60 * 60); // Convert to hours
-           totalHours += duration;
-         }
-      }
+    if (entriesData && entriesData.length > 0) {
+      setTodayEntries(entriesData);
+      const totalHours = testTotalHoursCalculation(entriesData);
       setTotalHoursToday(totalHours);
-    }
-  }, [entriesData, sessionData?.today_analysis]);
-
-  // Set loading state based on React Query loading states
-  useEffect(() => {
-    setLoading(sessionLoading || entriesLoading);
-  }, [sessionLoading, entriesLoading]);
-
-  // Handle errors
-  useEffect(() => {
-    if (sessionError || entriesError) {
-      console.error('Error loading dashboard data:', sessionError || entriesError);
-      // Set default values on error
-      setCurrentStatus('not_started');
+    } else {
       setTodayEntries([]);
       setTotalHoursToday(0);
-      setOvertimeAnalysis(null);
-      setSessionResponse(null);
     }
-  }, [sessionError, entriesError]);
+  }, [entriesData]);
+
+  // Update loading state
+  useEffect(() => {
+    if (!sessionLoading && !entriesLoading) {
+      setLoading(false);
+    }
+  }, [sessionLoading, entriesLoading]);
+
+  // NEW: Validate schedule before allowing time operations
+  const validateSchedule = (action) => {
+    if (!todaySchedule) {
+      setScheduleError(`No schedule found for today. Please contact your supervisor to set up your schedule before ${action === 'in' ? 'clocking in' : 'clocking out'}.`);
+      return false;
+    }
+    
+    if (!todaySchedule.scheduled_time_in || !todaySchedule.scheduled_time_out) {
+      setScheduleError(`Your schedule for today is incomplete. Please contact your supervisor to complete your schedule before ${action === 'in' ? 'clocking in' : 'clocking out'}.`);
+      return false;
+    }
+    
+    // Clear any previous schedule errors
+    setScheduleError(null);
+    return true;
+  };
+
+  // Check if time operations should be disabled
+  const isTimeOperationsDisabled = () => {
+    return !!scheduleError || !todaySchedule;
+  };
 
   const handleTimeIn = async () => {
     if (isTimeInSubmitting.current) return;
+    
+    // NEW: Validate schedule before allowing time in
+    if (!validateSchedule('in')) {
+      return;
+    }
+    
     isTimeInSubmitting.current = true;
     try {
       setIsClockingIn(true);
@@ -249,6 +231,12 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
 
   const handleTimeOut = async () => {
     if (isTimeOutSubmitting.current) return;
+    
+    // NEW: Validate schedule before allowing time out
+    if (!validateSchedule('out')) {
+      return;
+    }
+    
     isTimeOutSubmitting.current = true;
     try {
       setIsClockingOut(true);
@@ -565,9 +553,9 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
               <div className="space-y-4">
                 <button
                   onClick={handleTimeIn}
-                  disabled={isClockingIn || (sessionResponse && sessionResponse.active_session)}
+                  disabled={isClockingIn || (sessionResponse && sessionResponse.active_session) || isTimeOperationsDisabled()}
                   className={`w-full py-2 sm:py-3 px-3 sm:px-4 rounded-lg text-sm sm:text-base font-semibold transition-colors ${
-                    isClockingIn || (sessionResponse && sessionResponse.active_session)
+                    isClockingIn || (sessionResponse && sessionResponse.active_session) || isTimeOperationsDisabled()
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-green-600 text-white hover:bg-green-700'
                   }`}
@@ -576,9 +564,9 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 </button>
                                  <button
                    onClick={handleTimeOut}
-                  disabled={isClockingOut || !(sessionResponse && sessionResponse.active_session)}
+                  disabled={isClockingOut || !(sessionResponse && sessionResponse.active_session) || isTimeOperationsDisabled()}
                   className={`w-full py-2 sm:py-3 px-3 sm:px-4 rounded-lg text-sm sm:text-base font-semibold transition-colors ${
-                    isClockingOut || !(sessionResponse && sessionResponse.active_session)
+                    isClockingOut || !(sessionResponse && sessionResponse.active_session) || isTimeOperationsDisabled()
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-red-600 text-white hover:bg-red-700'
                   }`}
@@ -594,6 +582,42 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
                 </div>
               </div>
             </div>
+            
+            {/* NEW: Schedule Error Display */}
+            {scheduleError && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 sm:p-6">
+                <div className="flex items-center space-x-2">
+                  <div className="text-orange-600">📅</div>
+                  <div>
+                    <p className="text-orange-800 font-medium">Schedule Required</p>
+                    <p className="text-orange-600 text-sm">{scheduleError}</p>
+                    <button
+                      onClick={() => refetchSchedule()}
+                      className="mt-2 text-orange-700 underline text-sm hover:text-orange-800"
+                    >
+                      Refresh Schedule
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* NEW: Schedule Information Display */}
+            {todaySchedule && !scheduleError && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-6">
+                <div className="flex items-center space-x-2">
+                  <div className="text-blue-600">📋</div>
+                  <div>
+                    <p className="text-blue-800 font-medium">Today's Schedule</p>
+                    <p className="text-blue-600 text-sm">
+                      {todaySchedule.scheduled_time_in} - {todaySchedule.scheduled_time_out}
+                      {todaySchedule.is_night_shift && ' (Night Shift)'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
           </div>
           {/* Right Column - Main Content */}
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">
