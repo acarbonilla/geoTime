@@ -13,6 +13,12 @@ const timeAPI = {
     return response.data;
   },
 
+  // Get today's schedule
+  getTodaySchedule: async () => {
+    const response = await axios.get('schedules/today/');
+    return response.data;
+  },
+
   // Clock in
   clockIn: async (data) => {
     const response = await axios.post('time-in/', data);

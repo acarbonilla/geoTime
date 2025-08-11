@@ -24,6 +24,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
   const [currentCoords, setCurrentCoords] = useState({ latitude: null, longitude: null });
   const [showMenu, setShowMenu] = useState(false);
   const [showMap, setShowMap] = useState(true);
+  const [scheduleError, setScheduleError] = useState(null);
   
   const isTimeInSubmitting = useRef(false);
   const isTimeOutSubmitting = useRef(false);
@@ -54,6 +55,20 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
     onError: (error) => {
       console.error('Today entries query error:', error);
       console.error('Today entries error response:', error.response);
+    }
+  });
+
+  // NEW: Get today's schedule
+  const { data: todaySchedule, error: scheduleQueryError, refetch: refetchSchedule } = useQuery({
+    queryKey: ['today-schedule', employee?.id],
+    queryFn: () => timeAPI.getTodaySchedule(),
+    enabled: !!employee?.id,
+    refetchInterval: 60000, // Refresh every minute
+    retry: 3,
+    retryDelay: 1000,
+    onError: (error) => {
+      console.error('Schedule query error:', error);
+      setScheduleError('Failed to load schedule. Please contact your supervisor.');
     }
   });
 
@@ -138,8 +153,31 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
     };
   }, [showMenu]);
 
+  // NEW: Validate schedule before allowing time operations
+  const validateSchedule = (action) => {
+    if (!todaySchedule) {
+      setScheduleError(`No schedule found for today. Please contact your supervisor to set up your schedule before ${action === 'in' ? 'clocking in' : 'clocking out'}.`);
+      return false;
+    }
+    
+    if (!todaySchedule.scheduled_time_in || !todaySchedule.scheduled_time_out) {
+      setScheduleError(`Your schedule for today is incomplete. Please contact your supervisor to complete your schedule before ${action === 'in' ? 'clocking in' : 'clocking out'}.`);
+      return false;
+    }
+    
+    // Clear any previous schedule errors
+    setScheduleError(null);
+    return true;
+  };
+
   const handleTimeIn = async () => {
     if (isTimeInSubmitting.current) return;
+    
+    // NEW: Validate schedule before allowing time in
+    if (!validateSchedule('in')) {
+      return;
+    }
+    
     isTimeInSubmitting.current = true;
     
     try {
@@ -164,31 +202,31 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       
       await clockInMutation.mutateAsync(clockInData);
       
-            } catch (error) {
-          console.error('Clock in error:', error);
-          console.error('Error response:', error.response);
-          console.error('Error response data:', error.response?.data);
-          setGeolocationStatus('error');
-          
-          // Show detailed error message to user
-          let errorMessage = 'Clock in failed';
-          if (error.response?.data?.error) {
-            errorMessage += `: ${error.response.data.error}`;
-            if (error.response.data.details) {
-              errorMessage += `\n\nDetails: ${error.response.data.details}`;
-            }
-            if (error.response.data.distance && error.response.data.allowed_radius) {
-              errorMessage += `\n\nDistance: ${error.response.data.distance}m (Allowed: ${error.response.data.allowed_radius}m)`;
-            }
-          } else if (error.response?.data) {
-            // Handle case where error data is directly in response.data
-            errorMessage += `: ${JSON.stringify(error.response.data)}`;
-          } else if (error.message) {
-            errorMessage += `: ${error.message}`;
-          }
-          
-          alert(errorMessage);
-        } finally {
+    } catch (error) {
+      console.error('Clock in error:', error);
+      console.error('Error response:', error.response);
+      console.error('Error response data:', error.response?.data);
+      setGeolocationStatus('error');
+      
+      // Show detailed error message to user
+      let errorMessage = 'Clock in failed';
+      if (error.response?.data?.error) {
+        errorMessage += `: ${error.response.data.error}`;
+        if (error.response.data.details) {
+          errorMessage += `\n\nDetails: ${error.response.data.details}`;
+        }
+        if (error.response.data.distance && error.response.data.allowed_radius) {
+          errorMessage += `\n\nDistance: ${error.response.data.distance}m (Allowed: ${error.response.data.allowed_radius}m)`;
+        }
+      } else if (error.response?.data) {
+        // Handle case where error data is directly in response.data
+        errorMessage += `: ${JSON.stringify(error.response.data)}`;
+      } else if (error.message) {
+        errorMessage += `: ${error.message}`;
+      }
+      
+      alert(errorMessage);
+    } finally {
       setIsClockingIn(false);
       isTimeInSubmitting.current = false;
     }
@@ -200,6 +238,11 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
     // Check if there's an active session before allowing clock out
     if (!sessionResponse?.active_session) {
       alert('No active session to clock out from. Please clock in first.');
+      return;
+    }
+    
+    // NEW: Validate schedule before allowing time out
+    if (!validateSchedule('out')) {
       return;
     }
     
@@ -227,52 +270,55 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       
       await clockOutMutation.mutateAsync(clockOutData);
       
-            } catch (error) {
-          console.error('Clock out error:', error);
-          console.error('Error response:', error.response);
-          console.error('Error response data:', error.response?.data);
-          setGeolocationStatus('error');
-          
-          // Show detailed error message to user
-          let errorMessage = 'Clock out failed';
-          if (error.response?.data?.error) {
-            errorMessage += `: ${error.response.data.error}`;
-            if (error.response.data.details) {
-              errorMessage += `\n\nDetails: ${error.response.data.details}`;
-            }
-            if (error.response.data.distance && error.response.data.allowed_radius) {
-              errorMessage += `\n\nDistance: ${error.response.data.distance}m (Allowed: ${error.response.data.allowed_radius}m)`;
-            }
-          } else if (error.response?.data) {
-            // Handle case where error data is directly in response.data
-            errorMessage += `: ${JSON.stringify(error.response.data)}`;
-          } else if (error.message) {
-            errorMessage += `: ${error.message}`;
-          }
-          
-          alert(errorMessage);
-        } finally {
+    } catch (error) {
+      console.error('Clock out error:', error);
+      console.error('Error response:', error.response);
+      console.error('Error response data:', error.response?.data);
+      setGeolocationStatus('error');
+      
+      // Show detailed error message to user
+      let errorMessage = 'Clock out failed';
+      if (error.response?.data?.error) {
+        errorMessage += `: ${error.response.data.error}`;
+        if (error.response.data.details) {
+          errorMessage += `\n\nDetails: ${error.response.data.details}`;
+        }
+        if (error.response.data.distance && error.response.data.allowed_radius) {
+          errorMessage += `\n\nDistance: ${error.response.data.distance}m (Allowed: ${error.response.data.allowed_radius}m)`;
+        }
+      } else if (error.response?.data) {
+        // Handle case where error data is directly in response.data
+        errorMessage += `: ${JSON.stringify(error.response.data)}`;
+      } else if (error.message) {
+        errorMessage += `: ${error.message}`;
+      }
+      
+      alert(errorMessage);
+    } finally {
       setIsClockingOut(false);
       isTimeOutSubmitting.current = false;
     }
   };
 
+  // Get status color based on current status and schedule availability
   const getStatusColor = () => {
-    switch (currentStatus) {
-      case 'clocked_in': return 'text-green-600';
-      case 'clocked_out': return 'text-red-600';
-      case 'on_break': return 'text-yellow-600';
-      default: return 'text-gray-600';
-    }
+    if (scheduleError) return 'bg-red-500';
+    if (currentStatus === 'clocked_in') return 'bg-green-500';
+    if (currentStatus === 'clocked_out') return 'bg-blue-500';
+    return 'bg-gray-500';
   };
 
+  // Get status text based on current status and schedule availability
   const getStatusText = () => {
-    switch (currentStatus) {
-      case 'clocked_in': return 'Clocked In';
-      case 'clocked_out': return 'Clocked Out';
-      case 'on_break': return 'On Break';
-      default: return 'Not Started';
-    }
+    if (scheduleError) return 'No Schedule';
+    if (currentStatus === 'clocked_in') return 'Clocked In';
+    if (currentStatus === 'clocked_out') return 'Clocked Out';
+    return 'Not Started';
+  };
+
+  // Check if time operations should be disabled
+  const isTimeOperationsDisabled = () => {
+    return !!scheduleError || !todaySchedule;
   };
 
   const getTotalHoursToday = () => {
@@ -384,6 +430,41 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
           </div>
         )}
 
+        {/* NEW: Schedule Error Display */}
+        {scheduleError && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2">
+              <div className="text-orange-600">📅</div>
+              <div>
+                <p className="text-orange-800 font-medium">Schedule Required</p>
+                <p className="text-orange-600 text-sm">{scheduleError}</p>
+                <button
+                  onClick={() => refetchSchedule()}
+                  className="mt-2 text-orange-700 underline text-sm hover:text-orange-800"
+                >
+                  Refresh Schedule
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Schedule Information Display */}
+        {todaySchedule && !scheduleError && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2">
+              <div className="text-blue-600">📋</div>
+              <div>
+                <p className="text-blue-800 font-medium">Today's Schedule</p>
+                <p className="text-blue-600 text-sm">
+                  {todaySchedule.scheduled_time_in} - {todaySchedule.scheduled_time_out}
+                  {todaySchedule.is_night_shift && ' (Night Shift)'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Status Card */}
         <div className="bg-white rounded-lg shadow-sm p-6">
           <div className="text-center">
@@ -398,7 +479,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
         <div className="grid grid-cols-2 gap-4">
           <button
             onClick={handleTimeIn}
-            disabled={isClockingIn || sessionResponse?.active_session}
+            disabled={isClockingIn || sessionResponse?.active_session || isTimeOperationsDisabled()}
             className={`p-4 rounded-lg font-semibold text-white transition-colors ${
               sessionResponse?.active_session 
                 ? 'bg-gray-400 cursor-not-allowed' 
@@ -420,7 +501,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
 
           <button
             onClick={handleTimeOut}
-            disabled={isClockingOut || !sessionResponse?.active_session}
+            disabled={isClockingOut || !sessionResponse?.active_session || isTimeOperationsDisabled()}
             className={`p-4 rounded-lg font-semibold text-white transition-colors ${
               !sessionResponse?.active_session 
                 ? 'bg-gray-400 cursor-not-allowed' 
