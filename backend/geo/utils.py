@@ -285,6 +285,8 @@ def calculate_daily_summary(employee, date):
     """
     Calculate daily time summary for an employee on a specific date.
     Returns a DailyTimeSummary object.
+    
+    FIXED VERSION: Properly handles event_time vs timestamp and cross-day time entries
     """
     from .models import DailyTimeSummary, TimeEntry, EmployeeSchedule
     from datetime import datetime, timedelta
@@ -299,25 +301,33 @@ def calculate_daily_summary(employee, date):
         }
     )
     
-    # Get time entries for this date
-    start_of_day = datetime.combine(date, datetime.min.time())
-    end_of_day = start_of_day + timedelta(days=1)
-    
-    time_entries = TimeEntry.objects.filter(
+    # Get time entries for this date using event_time (actual working time)
+    time_in_entry = TimeEntry.objects.filter(
         employee=employee,
-        timestamp__gte=start_of_day,
-        timestamp__lt=end_of_day
-    ).order_by('timestamp')
+        entry_type='time_in',
+        event_time__date=date
+    ).first()
     
-    time_in_entry = None
-    time_out_entry = None
+    time_out_entry = TimeEntry.objects.filter(
+        employee=employee,
+        entry_type='time_out',
+        event_time__date=date
+    ).first()
     
-    # Find time in and time out entries
-    for entry in time_entries:
-        if entry.entry_type == 'time_in' and not time_in_entry:
-            time_in_entry = entry
-        elif entry.entry_type == 'time_out' and not time_out_entry:
-            time_out_entry = entry
+    # FIXED: Handle cross-day time entries (e.g., night shifts)
+    # If no time out found for this date, check if there's one on the next day
+    if not time_out_entry:
+        next_day = date + timedelta(days=1)
+        next_day_time_out = TimeEntry.objects.filter(
+            employee=employee,
+            entry_type='time_out',
+            event_time__date=next_day
+        ).first()
+        
+        if next_day_time_out:
+            # Check if this time out should actually be for the current date
+            # This handles cases where time out is stored on the wrong date
+            time_out_entry = next_day_time_out
     
     # Get scheduled times for this date
     try:
@@ -330,13 +340,31 @@ def calculate_daily_summary(employee, date):
         summary.scheduled_time_out = None
         summary.schedule_reference = None
     
-    # Update summary with time entries
+    # FIXED: Always use event_time if available, regardless of date
     if time_in_entry:
-        summary.time_in = time_in_entry.timestamp.time()
+        # Prioritize event_time over timestamp for actual time values
+        if time_in_entry.event_time:
+            # Convert to local timezone before extracting time
+            if time_in_entry.event_time.tzinfo:
+                local_time = time_in_entry.event_time.astimezone(timezone.get_current_timezone())
+                summary.time_in = local_time.time()
+            else:
+                summary.time_in = time_in_entry.event_time.time()
+        else:
+            summary.time_in = time_in_entry.timestamp.time()
         summary.time_in_entry = time_in_entry
     
     if time_out_entry:
-        summary.time_out = time_out_entry.timestamp.time()
+        # Prioritize event_time over timestamp for actual time values
+        if time_out_entry.event_time:
+            # Convert to local timezone before extracting time
+            if time_out_entry.event_time.tzinfo:
+                local_time = time_out_entry.event_time.astimezone(timezone.get_current_timezone())
+                summary.time_out = local_time.time()
+            else:
+                summary.time_out = time_out_entry.event_time.time()
+        else:
+            summary.time_out = time_out_entry.timestamp.time()
         summary.time_out_entry = time_out_entry
     
     # Determine status
@@ -970,4 +998,89 @@ def get_employee_time_attendance_report(employee, start_date, end_date):
         }
     except Exception as e:
         logger.error(f"Error in get_employee_time_attendance_report: {str(e)}", exc_info=True)
+        raise 
+
+
+def get_employee_schedule_report(employee, start_date, end_date):
+    """
+    Get a schedule report for an employee for a date range.
+    Returns data formatted for the frontend schedule report table.
+    
+    Args:
+        employee: Employee instance
+        start_date: Start date for report
+        end_date: End date for report
+    
+    Returns:
+        list: List of schedule report objects
+    """
+    from .models import EmployeeSchedule, DailyTimeSummary
+    from datetime import date, timedelta
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        logger.info(f"Starting schedule report generation for employee {employee.employee_id} from {start_date} to {end_date}")
+        
+        # Get all schedules for the period
+        schedules = EmployeeSchedule.objects.filter(
+            employee=employee,
+            date__gte=start_date,
+            date__lte=end_date
+        ).order_by('date')
+        
+        logger.info(f"Found {schedules.count()} schedules for the period")
+        
+        # Convert to report format
+        report_data = []
+        
+        for schedule in schedules:
+            try:
+                # Get corresponding daily summary if available
+                try:
+                    summary = DailyTimeSummary.objects.get(employee=employee, date=schedule.date)
+                    actual_start = summary.time_in
+                    actual_end = summary.time_out
+                    status = summary.status
+                except DailyTimeSummary.DoesNotExist:
+                    actual_start = None
+                    actual_end = None
+                    status = 'scheduled'
+                
+                report_data.append({
+                    'id': schedule.id,
+                    'date': schedule.date,
+                    'employee_id': employee.id,
+                    'employee_name': employee.full_name,
+                    'start_time': schedule.scheduled_time_in.strftime('%H:%M') if schedule.scheduled_time_in else None,
+                    'end_time': schedule.scheduled_time_out.strftime('%H:%M') if schedule.scheduled_time_out else None,
+                    'actual_start_time': actual_start.strftime('%H:%M') if actual_start else None,
+                    'actual_end_time': actual_end.strftime('%H:%M') if actual_end else None,
+                    'status': status,
+                    'is_night_shift': schedule.is_night_shift,
+                    'notes': schedule.notes or ''
+                })
+            except Exception as e:
+                logger.warning(f"Error processing schedule for {schedule.date}: {str(e)}")
+                # Create a fallback record
+                report_data.append({
+                    'id': schedule.id,
+                    'date': schedule.date,
+                    'employee_id': employee.id,
+                    'employee_name': employee.full_name,
+                    'start_time': schedule.scheduled_time_in.strftime('%H:%M') if schedule.scheduled_time_in else None,
+                    'end_time': schedule.scheduled_time_out.strftime('%H:%M') if schedule.scheduled_time_out else None,
+                    'actual_start_time': None,
+                    'actual_end_time': None,
+                    'status': 'scheduled',
+                    'is_night_shift': schedule.is_night_shift,
+                    'notes': schedule.notes or ''
+                })
+        
+        logger.info(f"Generated schedule report with {len(report_data)} records")
+        return report_data
+        
+    except Exception as e:
+        logger.error(f"Error in get_employee_schedule_report: {str(e)}", exc_info=True)
         raise 

@@ -355,16 +355,31 @@ class EmployeeScheduleSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at', 'employee']
 
     def validate(self, data):
-        # Ensure employee can only create/edit their own schedules
+        # Get the request and user
         request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            if not request.user.is_staff and data.get('employee') != request.user.employee_profile:
-                raise serializers.ValidationError("You can only manage your own schedules.")
+        if not request or not hasattr(request, 'user'):
+            raise serializers.ValidationError("Request context not available.")
         
-        # For non-staff users, ensure they can only manage their own schedules
-        if request and hasattr(request, 'user') and not request.user.is_staff:
-            data['employee'] = request.user.employee_profile
+        user = request.user
         
+        # Staff users can manage any schedules
+        if user.is_staff:
+            return data
+        
+        # Check if user has employee profile
+        if not hasattr(user, 'employee_profile'):
+            raise serializers.ValidationError("Employee profile not found.")
+        
+        employee = user.employee_profile
+        
+        # Team leaders can manage their own schedules and team members' schedules
+        if employee.role == 'team_leader':
+            # For team leaders, we don't need to validate employee field changes
+            # since it's read-only and they can manage team member schedules
+            return data
+        
+        # Regular employees can only manage their own schedules
+        # Since employee field is read-only, we don't need to modify it
         return data
 
 

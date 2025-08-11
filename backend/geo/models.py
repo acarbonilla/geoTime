@@ -202,9 +202,9 @@ class TimeEntry(models.Model):
     
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='time_entries')
     entry_type = models.CharField(max_length=10, choices=ENTRY_TYPE_CHOICES)
-    timestamp = models.DateTimeField(auto_now_add=True)
+    timestamp = models.DateTimeField(auto_now_add=True, help_text='When this record was created in the system')
     updated_on = models.DateTimeField(auto_now=True)
-    event_time = models.DateTimeField(null=True, blank=True, help_text='The actual/corrected time of the event (if different from timestamp)')
+    event_time = models.DateTimeField(help_text='The actual/corrected time of the event (this is the time used for calculations)')
     location = models.ForeignKey(Location, on_delete=models.CASCADE, null=True, blank=True)
     latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True, help_text='Latitude at time entry')
     longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True, help_text='Longitude at time entry')
@@ -240,6 +240,19 @@ class TimeEntry(models.Model):
     def is_time_out(self):
         """Check if this is a time out entry"""
         return self.entry_type == 'time_out'
+    
+    def save(self, *args, **kwargs):
+        """Override save to ensure event_time is set"""
+        if not self.event_time:
+            # If no event_time is provided, use the current timestamp
+            from django.utils import timezone
+            self.event_time = timezone.now()
+        super().save(*args, **kwargs)
+    
+    @property
+    def working_date(self):
+        """Get the working date based on event_time (not timestamp)"""
+        return self.event_time.date() if self.event_time else self.timestamp.date()
 
 
 class WorkSession(models.Model):
@@ -808,70 +821,70 @@ class DailyTimeSummary(models.Model):
         if not self.time_in or not self.time_out:
             return
         
-        # Calculate billed hours using the same logic as formatted_billed_minutes
         from datetime import datetime, timedelta
+        from decimal import Decimal
         
-        # Use scheduled time in if available, otherwise use actual time in
-        if self.scheduled_time_in:
-            # BH = Time Out - Scheduled Time In
-            scheduled_start_dt = datetime.combine(self.date, self.scheduled_time_in)
-            time_out_dt = datetime.combine(self.date, self.time_out)
+        # Get scheduled times for abuse prevention logic
+        scheduled_start = None
+        scheduled_end = None
+        
+        if self.scheduled_time_in and self.scheduled_time_out:
+            scheduled_start = datetime.combine(self.date, self.scheduled_time_in)
+            scheduled_end = datetime.combine(self.date, self.scheduled_time_out)
             
-            if time_out_dt < scheduled_start_dt:
-                time_out_dt += timedelta(days=1)  # Handle overnight shifts
-            
-            # Calculate BH as Time Out - Scheduled Time In
-            bh_minutes = int((time_out_dt - scheduled_start_dt).total_seconds() / 60)
-            
-            # Ensure BH is not negative (if time out is before scheduled time in)
-            bh_minutes = max(0, bh_minutes)
-            
-            # For flexible break system: only apply break deductions for sessions longer than 4 hours
-            if bh_minutes < 240:  # Less than 4 hours
-                # All time counts as work time for short sessions
-                work_minutes = bh_minutes
-            else:
-                # For longer sessions, apply flexible break deduction
-                flexible_break_minutes = int(self.employee.flexible_break_hours * 60)
-                work_minutes = bh_minutes - min(flexible_break_minutes, bh_minutes)
-            
-            self.billed_hours = max(0, work_minutes) / 60
+            # Handle overnight shifts
+            if scheduled_end < scheduled_start:
+                scheduled_end += timedelta(days=1)
+        
+        # Apply abuse prevention logic: Round early arrivals and late departures
+        effective_start_dt = datetime.combine(self.date, self.time_in)
+        effective_end_dt = datetime.combine(self.date, self.time_out)
+        
+        # Handle overnight shifts
+        if effective_end_dt < effective_start_dt:
+            effective_end_dt += timedelta(days=1)
+        
+        # ABUSE PREVENTION: Round early arrivals to scheduled start time
+        if scheduled_start and effective_start_dt < scheduled_start:
+            # Employee arrived early - round up to scheduled start time to prevent abuse
+            effective_start_dt = scheduled_start
+        
+        # ABUSE PREVENTION: Round late departures to scheduled end time
+        if scheduled_end and effective_end_dt > scheduled_end:
+            # Employee left late - round down to scheduled end time to prevent OT abuse
+            effective_end_dt = scheduled_end
+        
+        # Calculate BH using effective times (after abuse prevention)
+        bh_minutes = int((effective_end_dt - effective_start_dt).total_seconds() / 60)
+        
+        # For flexible break system: only apply break deductions for sessions longer than 4 hours
+        if bh_minutes < 240:  # Less than 4 hours
+            # All time counts as work time for short sessions
+            work_minutes = bh_minutes
         else:
-            # Fallback to original calculation if no scheduled time in
-            start_dt = datetime.combine(self.date, self.time_in)
-            end_dt = datetime.combine(self.date, self.time_out)
-            
-            if end_dt < start_dt:
-                end_dt += timedelta(days=1)  # Handle overnight shifts
-            
-            total_minutes = int((end_dt - start_dt).total_seconds() / 60)
-            
-            # For flexible break system: all time counts as work time for short sessions
-            if total_minutes < 240:  # Less than 4 hours
-                work_minutes = total_minutes
-            else:
-                flexible_break_minutes = int(self.employee.flexible_break_hours * 60)
-                work_minutes = total_minutes - min(flexible_break_minutes, total_minutes)
-            
-            self.billed_hours = max(0, work_minutes) / 60
+            # For longer sessions, apply flexible break deduction
+            flexible_break_minutes = int(self.employee.flexible_break_hours * 60)
+            work_minutes = bh_minutes - min(flexible_break_minutes, bh_minutes)
+        
+        # Store BH in hours (for backward compatibility) but calculate everything in minutes first
+        self.billed_hours = max(0, work_minutes) / 60
         
         # Calculate late minutes if scheduled time is available
         if self.scheduled_time_in:
             scheduled_start = datetime.combine(self.date, self.scheduled_time_in)
-            grace_period_end = scheduled_start + timedelta(minutes=self.employee.grace_period_minutes)
-            
             start_dt = datetime.combine(self.date, self.time_in)
-            if start_dt > grace_period_end:
-                # Only count late minutes after grace period
-                self.late_minutes = int((start_dt - scheduled_start).total_seconds() / 60)
+            
+            # Late = Time In - Scheduled Time In (negative means early, positive means late)
+            late_minutes = int((start_dt - scheduled_start).total_seconds() / 60)
+            
+            # Apply grace period: if within grace period, not late
+            if late_minutes <= self.employee.grace_period_minutes:
+                self.late_minutes = 0  # Within grace period
             else:
-                # Within grace period, not late
-                self.late_minutes = 0
+                self.late_minutes = late_minutes - self.employee.grace_period_minutes  # Late after grace period
         
-        # Calculate undertime using hybrid approach:
-        # 1. If scheduled times are available: UT = Scheduled Work Duration - BH
-        # 2. If no schedule: UT = 480 - BH (8-hour standard)
-        bh_minutes = int(self.billed_hours * 60) if self.billed_hours else 0
+        # Calculate undertime using effective BH (after abuse prevention)
+        effective_bh_minutes = int(self.billed_hours * 60)
         
         if self.scheduled_time_in and self.scheduled_time_out:
             # Calculate scheduled work duration in minutes (excluding breaks)
@@ -892,39 +905,78 @@ class DailyTimeSummary(models.Model):
                 # For short schedules, all time counts as work time
                 scheduled_work_minutes = scheduled_duration_minutes
             
-            # UT = Scheduled Work Duration - BH
+            # UT = Scheduled Work Duration - BH (using effective BH after abuse prevention)
             # If BH > Scheduled Work Duration (overtime), UT should be 0, not negative
-            self.undertime_minutes = max(0, scheduled_work_minutes - bh_minutes)
+            self.undertime_minutes = max(0, scheduled_work_minutes - effective_bh_minutes)
         else:
             # Fallback to 8-hour standard: UT = 480 - BH
             # If BH > 480 (overtime), UT should be 0, not negative
-            self.undertime_minutes = max(0, 480 - bh_minutes)
+            self.undertime_minutes = max(0, 480 - effective_bh_minutes)
         
         # Calculate overtime
         if self.billed_hours > self.employee.overtime_threshold_hours:
-            from decimal import Decimal
             self.overtime_hours = Decimal(str(self.billed_hours)) - self.employee.overtime_threshold_hours
+        else:
+            self.overtime_hours = Decimal('0.00')
         
-        # Calculate night differential (hours worked between 10 PM and 6 AM)
+        # Calculate night differential using ORIGINAL actual times with ND period rounding
         # According to HR rules: Calculate full night hours, then subtract 1 hour
-        night_start = datetime.combine(self.date, datetime.strptime('22:00', '%H:%M').time())
-        night_end = datetime.combine(self.date, datetime.strptime('06:00', '%H:%M').time())
+        # ND should reflect actual hours worked during night periods, with proper rounding to ND boundaries
         
-        start_dt = datetime.combine(self.date, self.time_in)
-        end_dt = datetime.combine(self.date, self.time_out)
+        # Define ND period: 10:00 PM (22:00) to 6:00 AM (06:00)
+        nd_start_time = datetime.strptime('22:00', '%H:%M').time()  # 10:00 PM
+        nd_end_time = datetime.strptime('06:00', '%H:%M').time()    # 6:00 AM
         
-        if start_dt < night_end:
-            night_end += timedelta(days=1)
+        # Create datetime objects for ND boundaries
+        nd_start_dt = datetime.combine(self.date, nd_start_time)      # 10:00 PM same day
+        nd_end_dt = datetime.combine(self.date, nd_end_time)          # 6:00 AM same day
         
-        night_work_start = max(start_dt, night_start)
-        night_work_end = min(end_dt, night_end)
+        # Handle cross-day scenario: if ND end is before ND start, add 1 day
+        if nd_end_dt < nd_start_dt:
+            nd_end_dt += timedelta(days=1)
         
-        if night_work_end > night_work_start:
-            # Calculate total night hours worked (10 PM to 6 AM)
-            total_night_hours = (night_work_end - night_work_start).total_seconds() / 3600
+        # Use ORIGINAL actual times for ND calculation (not abuse-prevented times)
+        original_start_dt = datetime.combine(self.date, self.time_in)
+        original_end_dt = datetime.combine(self.date, self.time_out)
+        
+        # Handle overnight shifts in actual times
+        if original_end_dt < original_start_dt:
+            original_end_dt += timedelta(days=1)
+        
+        # ND ROUNDING LOGIC: Round to ND period boundaries for accurate calculation
+        # Round down early arrivals to ND start (10:00 PM) if before ND period
+        if original_start_dt < nd_start_dt:
+            nd_work_start = nd_start_dt  # Round down to 10:00 PM
+        else:
+            nd_work_start = original_start_dt  # Use actual time if during ND period
+        
+        # ND ABUSE PREVENTION: Round down time out to scheduled end time to prevent ND abuse
+        # If employee has a schedule, use scheduled end time instead of actual time out
+        if self.scheduled_time_out:
+            scheduled_end_dt = datetime.combine(self.date, self.scheduled_time_out)
+            # Handle overnight shifts in schedule
+            if scheduled_end_dt < datetime.combine(self.date, self.scheduled_time_in):
+                scheduled_end_dt += timedelta(days=1)
+            
+            # Use the earlier of: actual time out OR scheduled end time
+            nd_work_end = min(original_end_dt, scheduled_end_dt)
+        else:
+            # No schedule available, use actual time out with ND boundary rounding
+            if original_end_dt > nd_end_dt:
+                nd_work_end = nd_end_dt  # Round down to 6:00 AM
+            else:
+                nd_work_end = original_end_dt  # Use actual time if during ND period
+        
+        # Calculate ND hours worked
+        if nd_work_end > nd_work_start:
+            # Calculate total night minutes worked
+            total_night_minutes = int((nd_work_end - nd_work_start).total_seconds() / 60)
+            total_night_hours = total_night_minutes / 60
             
             # Apply 1-hour break deduction to night differential (HR rule)
             # For 7:00 PM - 4:00 AM shift: 6 hours night - 1 hour break = 5 hours night differential
             self.night_differential_hours = max(0, total_night_hours - 1.0)
+        else:
+            self.night_differential_hours = Decimal('0.00')
         
         self.save()

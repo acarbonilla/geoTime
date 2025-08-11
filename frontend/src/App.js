@@ -15,6 +15,7 @@ import TeamLeaderReports from './TeamLeader_Report/TeamLeaderReports';
 import EmployeeRequestPage from './EmployeeRequest/EmployeeRequestPage';
 import ApprovalPage from './TeamLeaderApproval/ApprovalPage';
 import { ScheduleManagement, ScheduleReport } from './Employee_Schedule';
+import { TeamLeaderScheduleManagement, TeamLeaderScheduleReport } from './TeamLeader_Report';
 import { shouldShowMobileView, shouldShowFullView, shouldShowNavbar, getFeatureFlags } from './utils/deviceDetection';
 
 // Create a client
@@ -211,7 +212,11 @@ function App() {
               path="/schedule"
               element={
                 isAuthenticated ? (
-                  <ScheduleManagement />
+                  employee?.role === 'team_leader' ? (
+                    <TeamLeaderScheduleManagement />
+                  ) : (
+                    <ScheduleManagement />
+                  )
                 ) : (
                   <Navigate to="/" replace />
                 )
@@ -221,7 +226,11 @@ function App() {
               path="/schedule-report"
               element={
                 isAuthenticated ? (
-                  <ScheduleReport />
+                  employee?.role === 'team_leader' ? (
+                    <TeamLeaderScheduleReport />
+                  ) : (
+                    <ScheduleReport />
+                  )
                 ) : (
                   <Navigate to="/" replace />
                 )

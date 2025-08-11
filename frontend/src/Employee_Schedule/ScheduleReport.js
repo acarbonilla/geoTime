@@ -274,6 +274,154 @@ const ScheduleReport = () => {
     return momentTime.isValid() ? momentTime.format('hh:mm A') : time;
   };
 
+  const getDisplayTimeOut = (record, allRecords, currentIndex) => {
+    // CRITICAL FIX: If this record has "Not Yet Scheduled" status, NEVER show any time out
+    // This prevents confusion where days like August 11th show time out from previous night shifts
+    if (record.status === 'not_yet_scheduled' || record.status === 'Not Yet Scheduled') {
+      console.log(`Record ${record.date} has "Not Yet Scheduled" status - hiding time out to avoid confusion`);
+      return '-';
+    }
+    
+    // If this record has no time in, it should not show any time out
+    // This prevents showing time out from previous shifts on days with no work
+    if (!record.time_in || record.time_in === '-') {
+      console.log(`Record ${record.date} has no time in - hiding time out to avoid confusion`);
+      return '-';
+    }
+    
+    // If this record has a time out, show it normally
+    if (record.time_out && record.time_out !== '-') {
+      return formatTime(record.time_out);
+    }
+    
+    // For night shifts spanning midnight, look ahead for time out data
+    // BUT only show it on the day when the shift started (has time in)
+    if (record.time_in && record.time_in !== '-') {
+      const timeInMoment = moment(record.time_in, 'HH:mm:ss');
+      
+      // If time in is 6 PM or later, it's likely a night shift
+      if (timeInMoment.hour() >= 18) {
+        // Look ahead to next record for time out data
+        if (currentIndex < allRecords.length - 1) {
+          const nextRecord = allRecords[currentIndex + 1];
+          if (nextRecord && nextRecord.time_out && nextRecord.time_out !== '-') {
+            const nextTimeOutMoment = moment(nextRecord.time_out, 'HH:mm:ss');
+            
+            // If next day time out is before 6 AM, it belongs to this night shift
+            if (nextTimeOutMoment.hour() < 6) {
+              console.log(`Night shift: ${record.date} showing next day time out ${nextRecord.time_out} on current day`);
+              return formatTime(nextRecord.time_out);
+            }
+          }
+        }
+      }
+    }
+    
+    // Default: no time out to display
+    return '-';
+  };
+
+  const calculateNightDifferential = (timeIn, timeOut, recordDate) => {
+    console.log('calculateNightDifferential called with:', { timeIn, timeOut, recordDate });
+    console.log('Input types:', { timeInType: typeof timeIn, timeOutType: typeof timeOut, recordDateType: typeof recordDate });
+    console.log('Raw recordDate value:', recordDate);
+    
+    if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
+      console.log('Invalid input, returning 0');
+      return 0;
+    }
+    
+    // Parse the record date to get the base date for time parsing
+    const baseDate = moment(recordDate, 'YYYY-MM-DD');
+    console.log('Parsed baseDate:', {
+      original: recordDate,
+      parsed: baseDate.format('YYYY-MM-DD'),
+      isValid: baseDate.isValid(),
+      momentObject: baseDate
+    });
+    
+    if (!baseDate.isValid()) {
+      console.log('Invalid record date, returning 0');
+      return 0;
+    }
+    
+    // Parse time strings using the record's date as context
+    const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
+    const timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
+    
+    console.log('Parsed moments with record date context:', { 
+      baseDate: baseDate.format('YYYY-MM-DD'),
+      timeInMoment: timeInMoment.format('YYYY-MM-DD HH:mm:ss'), 
+      timeOutMoment: timeOutMoment.format('YYYY-MM-DD HH:mm:ss'),
+      timeInMomentValid: timeInMoment.isValid(),
+      timeOutMomentValid: timeOutMoment.isValid()
+    });
+    
+    if (!timeInMoment.isValid() || !timeOutMoment.isValid()) {
+      console.log('Invalid moments, returning 0');
+      return 0;
+    }
+    
+    // If time out is before time in, it means the shift spans midnight
+    if (timeOutMoment.isBefore(timeInMoment)) {
+      timeOutMoment.add(1, 'day');
+      console.log('Shift spans midnight, adjusted timeOutMoment:', timeOutMoment.format('YYYY-MM-DD HH:mm:ss'));
+    }
+    
+    let ndHours = 0;
+    
+    // ND period: 10:00 PM (22:00) to 6:00 AM (06:00) of the next day
+    // Start with the date of time in
+    const ndStart = moment(timeInMoment).set({ hour: 22, minute: 0, second: 0 });
+    
+    // Only add 1 day to ND end if the shift actually spans midnight
+    let ndEnd;
+    if (timeOutMoment.isBefore(timeInMoment)) {
+      // Shift spans midnight, so ND end is 6 AM of the next day
+      ndEnd = moment(timeInMoment).add(1, 'day').set({ hour: 6, minute: 0, second: 0 });
+    } else {
+      // Same day shift, so ND end is 6 AM of the same day
+      ndEnd = moment(timeInMoment).set({ hour: 6, minute: 0, second: 0 });
+    }
+    
+    console.log('Initial ND period:', { 
+      ndStart: ndStart.format('YYYY-MM-DD HH:mm:ss'), 
+      ndEnd: ndEnd.format('YYYY-MM-DD HH:mm:ss'),
+      shiftSpansMidnight: timeOutMoment.isBefore(timeInMoment)
+    });
+    
+    // If time in is after ND start, adjust ND start to time in
+    if (timeInMoment.isAfter(ndStart)) {
+      ndStart.set({ hour: timeInMoment.hour(), minute: timeInMoment.minute(), second: timeInMoment.second() });
+      console.log('Adjusted ND start to time in:', ndStart.format('YYYY-MM-DD HH:mm:ss'));
+    }
+    
+    // If time out is before ND end, adjust ND end to time out
+    if (timeOutMoment.isBefore(ndEnd)) {
+      ndEnd.set({ hour: timeOutMoment.hour(), minute: timeOutMoment.minute(), second: timeOutMoment.second() });
+      console.log('Adjusted ND end to time out:', ndEnd.format('YYYY-MM-DD HH:mm:ss'));
+    }
+    
+    // Calculate ND hours only if there's overlap with ND period
+    if (ndStart.isBefore(ndEnd)) {
+      const duration = moment.duration(ndEnd.diff(ndStart));
+      ndHours = duration.asHours();
+      console.log('Calculated ND hours before break deduction:', ndHours);
+    } else {
+      console.log('No overlap with ND period');
+    }
+    
+    // Subtract 1 hour for break
+    ndHours = Math.max(0, ndHours - 1);
+    console.log('ND hours after break deduction:', ndHours);
+    
+    // Round to 2 decimal places
+    const finalND = Math.round(ndHours * 100) / 100;
+    console.log('Final ND hours (rounded):', finalND);
+    
+    return finalND;
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'present': return 'text-green-700 bg-green-100 border-green-200';
@@ -703,7 +851,7 @@ const ScheduleReport = () => {
                         {formatTime(record.time_in)}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                        {formatTime(record.time_out)}
+                        {getDisplayTimeOut(record, report.daily_records, index)}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                         {formatTime(record.scheduled_in)}
@@ -721,7 +869,92 @@ const ScheduleReport = () => {
                         {record.undertime_minutes}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                        {record.night_differential}
+                        {(() => {
+                          console.log(`ND calculation for ${record.date}:`, {
+                            time_in: record.time_in,
+                            time_out: record.time_out,
+                            index: index,
+                            record_date: record.date,
+                            full_record: record,
+                            record_date_type: typeof record.date,
+                            record_date_value: record.date
+                          });
+                          
+                          // Only calculate ND if we have both time in and time out on the same day
+                          if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+                            console.log(`Same day calculation for ${record.date}:`, { 
+                              time_in: record.time_in, 
+                              time_out: record.time_out,
+                              time_in_type: typeof record.time_in,
+                              time_out_type: typeof record.time_out,
+                              record_date: record.date
+                            });
+                            const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.date);
+                            console.log(`Direct calculation for ${record.date}:`, { time_in: record.time_in, time_out: record.time_out, ndHours });
+                            return ndHours > 0 ? `${ndHours}h` : '-';
+                          }
+                          
+                          // For night shifts spanning midnight, look ahead for time out
+                          if (record.time_in && record.time_in !== '-' && (!record.time_out || record.time_out === '-')) {
+                            const timeInMoment = moment(record.time_in, 'HH:mm:ss');
+                            console.log(`Night shift check for ${record.date}:`, { timeIn: record.time_in, timeInHour: timeInMoment.hour() });
+                            
+                            // Check if this is a night shift (started at 6 PM or later)
+                            if (timeInMoment.hour() >= 18) {
+                              // Look ahead for time out on next day
+                              if (index < report.daily_records.length - 1) {
+                                const nextRecord = report.daily_records[index + 1];
+                                console.log(`Next record for ${record.date}:`, { 
+                                  nextRecord: nextRecord ? { 
+                                    date: nextRecord.date, 
+                                    time_out: nextRecord.time_out,
+                                    time_in: nextRecord.time_in 
+                                  } : null 
+                                });
+                                
+                                if (nextRecord && nextRecord.time_out && nextRecord.time_out !== '-') {
+                                  const nextTimeOutMoment = moment(nextRecord.time_out, 'HH:mm:ss');
+                                  console.log(`Next time out check:`, { nextTimeOut: nextRecord.time_out, nextTimeOutHour: nextTimeOutMoment.hour() });
+                                  
+                                  // Next day time out is before 6 AM (night differential period)
+                                  if (nextTimeOutMoment.hour() < 6) {
+                                    // Calculate ND for this night shift spanning midnight
+                                    const ndHours = calculateNightDifferential(record.time_in, nextRecord.time_out, record.date);
+                                    console.log(`Night shift ND calculation for ${record.date}:`, { time_in: record.time_in, nextTimeOut: nextRecord.time_out, ndHours });
+                                    return ndHours > 0 ? `${ndHours}h` : '-';
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          
+                          // Check if this record has a time out that belongs to a previous day's night shift
+                          // BUT only if this day actually has a schedule (not "Not Yet Scheduled")
+                          if (record.time_out && record.time_out !== '-') {
+                            const timeOutMoment = moment(record.time_out, 'HH:mm:ss');
+                            console.log(`Checking if ${record.date} time out belongs to previous night shift:`, { timeOut: record.time_out, timeOutHour: timeOutMoment.hour() });
+                            
+                            // If time out is before 6 AM, it might belong to a previous night shift
+                            if (timeOutMoment.hour() < 6 && index > 0) {
+                              const prevRecord = report.daily_records[index - 1];
+                              if (prevRecord && prevRecord.time_in && prevRecord.time_in !== '-') {
+                                const prevTimeInMoment = moment(prevRecord.time_in, 'HH:mm:ss');
+                                console.log(`Previous record check:`, { prevRecord: { date: prevRecord.date, time_in: prevRecord.time_in }, prevTimeInHour: prevTimeInMoment.hour() });
+                                
+                                // If previous day started at 6 PM or later, this time out belongs to that night shift
+                                // BUT only calculate ND if this day has a schedule (not "Not Yet Scheduled")
+                                if (prevTimeInMoment.hour() >= 18 && record.scheduled_in && record.scheduled_in !== '-') {
+                                  const ndHours = calculateNightDifferential(prevRecord.time_in, record.time_out, record.date);
+                                  console.log(`Previous night shift ND calculation for ${record.date}:`, { prevTimeIn: prevRecord.time_in, timeOut: record.time_out, ndHours });
+                                  return ndHours > 0 ? `${ndHours}h` : '-';
+                                }
+                              }
+                            }
+                          }
+                          
+                          console.log(`No ND for ${record.date}`);
+                          return '-';
+                        })()}
                       </td>
                     </tr>
                   ))}

@@ -8,6 +8,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, login, logout
 from django.http import HttpResponse, JsonResponse
@@ -38,7 +39,8 @@ from .utils import (
     OvertimeCalculator, BreakDetector,
     calculate_daily_summary, generate_daily_summaries_for_period, 
     apply_template_to_schedule, copy_schedule_from_previous_month,
-    get_available_templates, get_employee_time_attendance_report
+    get_available_templates, get_employee_time_attendance_report,
+    get_employee_schedule_report
 )
 
 
@@ -2419,15 +2421,49 @@ class ChangeScheduleRequestViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if instance.status != 'pending':
-            return Response({'detail': 'Only pending requests can be updated.'}, status=status.HTTP_400_BAD_REQUEST)
+        """Update a schedule with restrictions for employees"""
+        # Check if user is employee and trying to modify past schedule
+        if not request.user.is_staff and not (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
+            from datetime import date
+            instance = self.get_object()
+            
+            # Check if schedule is for past date
+            if instance.date < date.today():
+                return Response(
+                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if trying to modify today's schedule (employees cannot modify daily schedules)
+            if instance.date == date.today():
+                return Response(
+                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
         return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if instance.status != 'pending':
-            return Response({'detail': 'Only pending requests can be updated.'}, status=status.HTTP_400_BAD_REQUEST)
+        """Partial update a schedule with restrictions for employees"""
+        # Check if user is employee and trying to modify past schedule
+        if not request.user.is_staff and not (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
+            from datetime import date
+            instance = self.get_object()
+            
+            # Check if schedule is for past date
+            if instance.date < date.today():
+                return Response(
+                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if trying to modify today's schedule (employees cannot modify daily schedules)
+            if instance.date == date.today():
+                return Response(
+                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
         return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
@@ -2463,6 +2499,34 @@ class ChangeScheduleRequestViewSet(viewsets.ModelViewSet):
         change_request.comments = request.data.get('comments', '')
         change_request.save()
         return Response(self.get_serializer(change_request).data)
+
+    def check_object_permissions(self, request, obj):
+        """Check if user has permission to access/modify this specific schedule"""
+        user = request.user
+        
+        # Staff can access any schedule
+        if user.is_staff:
+            return
+        
+        # Check if user has employee profile
+        if not hasattr(user, 'employee_profile'):
+            raise PermissionDenied("Employee profile not found.")
+        
+        employee = user.employee_profile
+        
+        # Team leaders can access schedules for their team members
+        if employee.role == 'team_leader':
+            # Check if the schedule belongs to a team member
+            if obj.employee.department == employee.department:
+                return
+            else:
+                raise PermissionDenied("You can only access schedules for employees in your department.")
+        
+        # Regular employees can only access their own schedules
+        if obj.employee != employee:
+            raise PermissionDenied("You can only access your own schedules.")
+        
+        return super().check_object_permissions(request, obj)
 
 
 @api_view(['GET'])
@@ -2532,20 +2596,26 @@ class ScheduleTemplateViewSet(viewsets.ModelViewSet):
 class EmployeeScheduleViewSet(viewsets.ModelViewSet):
     serializer_class = EmployeeScheduleSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None  # Disable pagination to show all results
 
     def get_queryset(self):
         user = self.request.user
         if user.is_staff:
             # Staff can see all schedules
             return EmployeeSchedule.objects.all()
+        elif hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader':
+            # Team Leaders can see their own schedules and their team members' schedules
+            from .models import Employee
+            team_members = Employee.objects.filter(department=user.employee_profile.department)
+            return EmployeeSchedule.objects.filter(employee__in=team_members)
         else:
-            # Employees can only see their own schedules
+            # Regular employees can only see their own schedules
             return EmployeeSchedule.objects.filter(employee=user.employee_profile)
 
     def create(self, request, *args, **kwargs):
         """Create a new schedule, automatically setting the employee"""
         # Check if user is employee and trying to create schedule for past date
-        if not request.user.is_staff:
+        if not request.user.is_staff and not (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
             from datetime import date
             schedule_date = request.data.get('date')
             if schedule_date:
@@ -2560,14 +2630,14 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
                     pass
         
         # Check if schedule already exists for this date
-        from .models import EmployeeSchedule
+        from .models import EmployeeSchedule, Employee
         schedule_date = request.data.get('date')
-        employee_id = request.user.employee_profile.id
+        target_employee_id = request.data.get('employee')
         
-        if schedule_date and employee_id:
+        if schedule_date and target_employee_id:
             try:
                 existing_schedule = EmployeeSchedule.objects.filter(
-                    employee_id=employee_id,
+                    employee_id=target_employee_id,
                     date=schedule_date
                 ).first()
                 
@@ -2579,14 +2649,36 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError):
                 pass
         
-        # Add the employee to the request data
-        request.data['employee'] = request.user.employee_profile.id
+        # For team leaders, validate they can only create schedules for team members
+        if hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader':
+            if target_employee_id:
+                try:
+                    target_employee = Employee.objects.get(id=target_employee_id)
+                    # Check if target employee is in the same department as team leader
+                    if target_employee.department != request.user.employee_profile.department:
+                        return Response(
+                            {'error': 'You can only create schedules for employees in your department.'}, 
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                except Employee.DoesNotExist:
+                    return Response(
+                        {'error': 'Target employee not found.'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                # No employee specified, default to team leader's own schedule
+                request.data['employee'] = request.user.employee_profile.id
+        
+        # For regular employees, ensure they can only create their own schedules
+        elif not request.user.is_staff:
+            request.data['employee'] = request.user.employee_profile.id
+        
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
         """Update a schedule with restrictions for employees"""
         # Check if user is employee and trying to modify past schedule
-        if not request.user.is_staff:
+        if not request.user.is_staff and not (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
             from datetime import date
             instance = self.get_object()
             
@@ -2609,7 +2701,7 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         """Partial update a schedule with restrictions for employees"""
         # Check if user is employee and trying to modify past schedule
-        if not request.user.is_staff:
+        if not request.user.is_staff and not (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
             from datetime import date
             instance = self.get_object()
             
@@ -2631,10 +2723,10 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         """Delete a schedule with restrictions for employees"""
-        # Employees cannot delete any schedules - only Team Leaders can
-        if not request.user.is_staff:
+        # Only staff and team leaders can delete schedules
+        if not request.user.is_staff and not (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
             return Response(
-                {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                {'error': 'You are not allowed to delete schedules. Contact your TeamLeader.'}, 
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -2644,8 +2736,18 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
         # Filter by date range if provided
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        employee_id = request.query_params.get('employee')
         
         queryset = self.get_queryset()
+        
+        # Filter by specific employee if provided and user has access
+        if employee_id:
+            if request.user.is_staff or (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
+                # Staff and Team Leaders can filter by specific employee
+                queryset = queryset.filter(employee__employee_id=employee_id)
+            else:
+                # Regular employees can only see their own schedules
+                queryset = queryset.filter(employee=request.user.employee_profile)
         
         if start_date:
             queryset = queryset.filter(date__gte=start_date)
@@ -2821,8 +2923,37 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
         serializer = ScheduleReportSerializer(data=request.query_params)
         if serializer.is_valid():
             try:
+                # Check if a specific employee is requested
+                employee_id = request.query_params.get('employee_id')
+                
+                if employee_id and employee_id != 'all':
+                    # Get the requested employee
+                    try:
+                        from .models import Employee
+                        target_employee = Employee.objects.get(id=employee_id)
+                        
+                        # For team leaders, verify they can access this employee's data
+                        if request.user.employee_profile.role == 'team_leader':
+                            # Check if the target employee is a subordinate
+                            subordinates = request.user.employee_profile.get_subordinates()
+                            if not subordinates.filter(id=employee_id).exists():
+                                return Response(
+                                    {'error': 'Access denied. You can only view reports for your team members.'}, 
+                                    status=status.HTTP_403_FORBIDDEN
+                                )
+                        
+                        employee = target_employee
+                    except Employee.DoesNotExist:
+                        return Response(
+                            {'error': 'Employee not found'}, 
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                else:
+                    # Use the logged-in user's employee profile
+                    employee = request.user.employee_profile
+                
                 report_data = get_employee_schedule_report(
-                    employee=request.user.employee_profile,
+                    employee=employee,
                     start_date=serializer.validated_data['start_date'],
                     end_date=serializer.validated_data['end_date']
                 )
