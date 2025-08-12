@@ -8,26 +8,29 @@ export const isMobileDevice = () => {
   // Check for touch capability
   const hasTouch = 'ontouchstart' in window;
   
-  // Check screen size
-  const isSmallScreen = window.innerWidth <= 768;
+  // More aggressive screen size detection - anything 1024px and below is considered mobile
+  const isSmallScreen = window.innerWidth <= 1024;
   
   // Check if device is in portrait mode (common for phones)
   const isPortrait = window.innerHeight > window.innerWidth;
   
-  return isMobileUA || (hasTouch && isSmallScreen) || (isSmallScreen && isPortrait);
+  // Prioritize mobile view for smaller screens and touch devices
+  return isMobileUA || (hasTouch && isSmallScreen) || (isSmallScreen && isPortrait) || isSmallScreen;
 };
 
 export const isTabletDevice = () => {
   const tabletRegex = /iPad|Android(?=.*\bMobile\b)(?=.*\bSafari\b)/i;
   const isTabletUA = tabletRegex.test(navigator.userAgent);
   
-  const isMediumScreen = window.innerWidth > 768 && window.innerWidth <= 1024;
+  // Adjust tablet breakpoint to be more mobile-focused
+  const isMediumScreen = window.innerWidth > 1024 && window.innerWidth <= 1280;
   
   return isTabletUA || isMediumScreen;
 };
 
 export const isDesktopDevice = () => {
-  return !isMobileDevice() && !isTabletDevice();
+  // Only consider truly large screens as desktop
+  return window.innerWidth > 1280 && !isMobileDevice();
 };
 
 export const getDeviceType = () => {
@@ -38,7 +41,7 @@ export const getDeviceType = () => {
 
 export const shouldShowMobileInterface = () => {
   const deviceType = getDeviceType();
-  return deviceType === 'mobile';
+  return deviceType === 'mobile' || deviceType === 'tablet'; // Include tablets in mobile interface
 };
 
 export const shouldShowTabletInterface = () => {
@@ -51,11 +54,11 @@ export const shouldShowDesktopInterface = () => {
   return deviceType === 'desktop';
 };
 
-// Screen size breakpoints
+// Updated screen size breakpoints - more mobile-focused
 export const SCREEN_SIZES = {
-  MOBILE: 768,
-  TABLET: 1024,
-  DESKTOP: 1025
+  MOBILE: 1024,    // Increased from 768 to 1024
+  TABLET: 1280,    // Increased from 1024 to 1280
+  DESKTOP: 1281    // Increased from 1025 to 1281
 };
 
 // User preference management
@@ -80,22 +83,22 @@ export const clearUserViewPreference = () => {
 export const getEffectiveViewMode = () => {
   const userPreference = getUserViewPreference();
   
-  // For desktop/laptop screens, always use full view regardless of preference
-  if (shouldShowDesktopInterface()) {
+  // For truly large desktop screens only, use full view
+  if (shouldShowDesktopInterface() && window.innerWidth > 1280) {
     return VIEW_MODES.FULL;
   }
   
-  // For mobile/tablet screens, respect user preference
-  if (userPreference) {
-    return userPreference;
-  }
-  
-  // Otherwise, use device detection
+  // For mobile/tablet screens, prioritize mobile view
   if (shouldShowMobileInterface()) {
+    // If user explicitly wants full view, allow it but default to mobile
+    if (userPreference === VIEW_MODES.FULL) {
+      return VIEW_MODES.FULL;
+    }
     return VIEW_MODES.MOBILE;
   }
   
-  return VIEW_MODES.FULL;
+  // Default to mobile view for most cases
+  return VIEW_MODES.MOBILE;
 };
 
 export const shouldShowMobileView = () => {
@@ -123,13 +126,13 @@ export const getFeatureFlags = () => {
   const isMobileDevice = shouldShowMobileInterface();
   
   return {
-    // Mobile view features
+    // Mobile view features - prioritized
     showSimplifiedDashboard: isMobileView,
     showQuickClockInOut: isMobileView,
     showMapView: isMobileView,
     showGeofenceValidation: isMobileView,
     
-    // Full view features
+    // Full view features - only for large screens
     showFullDashboard: isFullView,
     showDetailedReports: isFullView,
     showAdvancedAnalytics: isFullView,

@@ -25,6 +25,170 @@ const TeamLeaderScheduleManagement = () => {
   const [showTeamView, setShowTeamView] = useState(false);
   const [currentEmployeeId, setCurrentEmployeeId] = useState('');
 
+  // Date validation functions
+  const isPastDate = (date) => {
+    const today = moment().startOf('day');
+    const checkDate = moment(date).startOf('day');
+    const result = checkDate.isBefore(today);
+    console.log(`isPastDate: ${moment(date).format('YYYY-MM-DD')} vs ${today.format('YYYY-MM-DD')} = ${result}`);
+    return result;
+  };
+
+  const isToday = (date) => {
+    const today = moment().startOf('day');
+    const checkDate = moment(date).startOf('day');
+    const result = checkDate.isSame(today);
+    console.log(`isToday: ${moment(date).format('YYYY-MM-DD')} vs ${today.format('YYYY-MM-DD')} = ${result}`);
+    console.log(`isToday details: checkDate=${checkDate.format()}, today=${today.format()}`);
+    return result;
+  };
+
+  const isFutureDate = (date) => {
+    const today = moment().startOf('day');
+    const checkDate = moment(date).startOf('day');
+    const result = checkDate.isAfter(today);
+    console.log(`isFutureDate: ${moment(date).format('YYYY-MM-DD')} vs ${today.format('YYYY-MM-DD')} = ${result}`);
+    return result;
+  };
+
+  const canModifySchedule = (date) => {
+    const result = isFutureDate(date) || isToday(date);
+    console.log(`canModifySchedule: ${moment(date).format('YYYY-MM-DD')} = ${result}`);
+    return result;
+  };
+
+  // Alternative date validation using string comparison (more reliable)
+  const isPastDateString = (date) => {
+    const todayStr = moment().format('YYYY-MM-DD');
+    const checkDateStr = moment(date).format('YYYY-MM-DD');
+    const result = checkDateStr < todayStr;
+    console.log(`isPastDateString: ${checkDateStr} vs ${todayStr} = ${result}`);
+    return result;
+  };
+
+  const isTodayString = (date) => {
+    const todayStr = moment().format('YYYY-MM-DD');
+    const checkDateStr = moment(date).format('YYYY-MM-DD');
+    const result = checkDateStr === todayStr;
+    console.log(`isTodayString: ${checkDateStr} vs ${todayStr} = ${result}`);
+    return result;
+  };
+
+  const isFutureDateString = (date) => {
+    const todayStr = moment().format('YYYY-MM-DD');
+    const checkDateStr = moment(date).format('YYYY-MM-DD');
+    const result = checkDateStr > todayStr;
+    console.log(`isFutureDateString: ${checkDateStr} vs ${todayStr} = ${result}`);
+    return result;
+  };
+
+  const getDateStatusMessage = (date) => {
+    if (isPastDate(date)) {
+      return 'Past date - cannot be modified';
+    } else if (isToday(date)) {
+      return 'Today - can be modified';
+    } else {
+      return 'Future date - can be modified';
+    }
+  };
+
+  // Debug function to test date validation
+  const testDateValidation = () => {
+    const today = moment();
+    const yesterday = moment().subtract(1, 'day');
+    const tomorrow = moment().add(1, 'day');
+    
+    console.log('=== Date Validation Test ===');
+    console.log('Today:', today.format('YYYY-MM-DD'));
+    console.log('Yesterday:', yesterday.format('YYYY-MM-DD'));
+    console.log('Tomorrow:', tomorrow.format('YYYY-MM-DD'));
+    
+    console.log('--- Moment-based validation ---');
+    console.log('Yesterday isPastDate:', isPastDate(yesterday));
+    console.log('Today isToday:', isToday(today));
+    console.log('Tomorrow isFutureDate:', isFutureDate(today));
+    
+    console.log('Yesterday canModify:', canModifySchedule(yesterday));
+    console.log('Today canModify:', canModifySchedule(today));
+    console.log('Tomorrow canModify:', canModifySchedule(tomorrow));
+    
+    console.log('--- String-based validation ---');
+    console.log('Yesterday isPastDateString:', isPastDateString(yesterday));
+    console.log('Today isTodayString:', isTodayString(today));
+    console.log('Tomorrow isFutureDateString:', isFutureDateString(tomorrow));
+  };
+
+  // Debug function to test dashboard data
+  const testDashboardData = async () => {
+    try {
+      console.log('=== Testing Dashboard Data ===');
+      const currentEmployeeRes = await axiosInstance.get('dashboard/');
+      console.log('Dashboard response:', currentEmployeeRes.data);
+      console.log('Employee data:', currentEmployeeRes.data.employee);
+      
+      if (currentEmployeeRes.data.employee) {
+        const emp = currentEmployeeRes.data.employee;
+        console.log('Employee ID:', emp.id);
+        console.log('Employee ID string:', emp.employee_id);
+        console.log('Employee name:', emp.first_name, emp.last_name);
+        console.log('Employee role:', emp.role);
+      }
+    } catch (error) {
+      console.error('Error testing dashboard data:', error);
+    }
+  };
+
+  // Debug function to test team member access
+  const testTeamMemberAccess = async () => {
+    try {
+      console.log('=== Testing Team Member Access ===');
+      
+      // Test team members endpoint
+      const teamMembersRes = await axiosInstance.get('schedules/team_members/');
+      console.log('Team members response:', teamMembersRes.data);
+      
+      // Test team schedules endpoint
+      const teamSchedulesRes = await axiosInstance.get('schedules/team_schedules/', {
+        params: {
+          start_date: moment().startOf('month').format('YYYY-MM-DD'),
+          end_date: moment().endOf('month').format('YYYY-MM-DD')
+        }
+      });
+      console.log('Team schedules response:', teamSchedulesRes.data);
+      
+    } catch (error) {
+      console.error('Error testing team member access:', error);
+    }
+  };
+
+  // Debug function to test individual team member schedule loading
+  const testTeamMemberScheduleLoading = async () => {
+    try {
+      console.log('=== Testing Team Member Schedule Loading ===');
+      
+      if (!teamMembers.length) {
+        console.log('No team members available');
+        return;
+      }
+      
+      // Test with first team member
+      const firstMember = teamMembers[0];
+      console.log('Testing with team member:', firstMember);
+      
+      const startDate = moment().startOf('month').format('YYYY-MM-DD');
+      const endDate = moment().endOf('month').format('YYYY-MM-DD');
+      
+      console.log('Loading schedules for:', firstMember.employee_id, 'DB ID:', firstMember.id);
+      console.log('Date range:', startDate, 'to', endDate);
+      
+      const data = await getEmployeeSchedules(startDate, endDate, firstMember.id);
+      console.log('Schedules loaded:', data);
+      
+    } catch (error) {
+      console.error('Error testing team member schedule loading:', error);
+    }
+  };
+
   useEffect(() => {
     checkUserRole().catch(error => {
       console.error('Error in checkUserRole:', error);
@@ -128,6 +292,7 @@ const TeamLeaderScheduleManagement = () => {
       
       console.log('=== loadSchedules called ===');
       console.log('selectedTeamMember:', selectedTeamMember);
+      console.log('teamMembers state:', teamMembers);
       console.log('Date range:', startDate, 'to', endDate);
       
       // Determine which employee's schedules to load
@@ -135,19 +300,28 @@ const TeamLeaderScheduleManagement = () => {
       
       if (selectedTeamMember) {
         // Load schedules for selected team member
-        employeeId = selectedTeamMember;
-        console.log('Loading schedules for selected team member:', employeeId);
+        // Find the team member by employee_id to get their database ID
+        const teamMember = teamMembers.find(m => m.employee_id === selectedTeamMember);
+        if (teamMember) {
+          employeeId = teamMember.id; // Use database ID, not employee_id string
+          console.log('Loading schedules for selected team member:', teamMember.employee_id, 'DB ID:', teamMember.id);
+        } else {
+          console.error('Team member not found for employee_id:', selectedTeamMember);
+          toast.error('Selected team member not found');
+          setLoading(false);
+          return;
+        }
       } else {
         // Load schedules for current user (team leader)
-        // We need to get the employee_id from the dashboard data
+        // We need to get the database ID from the dashboard data
         const currentEmployeeRes = await axiosInstance.get('dashboard/');
         const currentEmployee = currentEmployeeRes.data.employee;
-        employeeId = currentEmployee.employee_id;
-        console.log('Loading schedules for team leader:', employeeId);
+        employeeId = currentEmployee.id; // Use database ID, not employee_id string
+        console.log('Loading schedules for team leader:', currentEmployee.employee_id, 'DB ID:', currentEmployee.id);
       }
       
       console.log('Final employeeId to load schedules for:', employeeId);
-      console.log('Selected team member details:', teamMembers.find(m => m.employee_id === employeeId));
+      console.log('Selected team member details:', teamMembers.find(m => m.employee_id === selectedTeamMember));
       
       if (!employeeId) {
         toast.error('Employee information not available');
@@ -156,11 +330,23 @@ const TeamLeaderScheduleManagement = () => {
       }
       
       console.log('Calling getEmployeeSchedules with:', { startDate, endDate, employeeId });
+      console.log('API URL will be: /schedules/?start_date=' + startDate + '&end_date=' + endDate + '&employee=' + employeeId);
+      
       const data = await getEmployeeSchedules(startDate, endDate, employeeId);
       console.log('Schedules data received:', data);
+      console.log('Schedules data type:', typeof data);
+      console.log('Schedules data length:', Array.isArray(data) ? data.length : 'Not an array');
       console.log('Setting schedules state with:', data);
       
       setSchedules(data);
+      console.log('Schedules state set to:', data);
+      console.log('Current schedules state after setState:', schedules);
+      
+      // Force a re-render check
+      setTimeout(() => {
+        console.log('Schedules state after 100ms delay:', schedules);
+        console.log('Schedules state length after delay:', Array.isArray(schedules) ? schedules.length : 'Not an array');
+      }, 100);
       
       if (selectedTeamMember) {
         const teamMember = teamMembers.find(m => m.employee_id === selectedTeamMember);
@@ -192,12 +378,40 @@ const TeamLeaderScheduleManagement = () => {
   };
 
   const handleSelectSlot = ({ start }) => {
+    console.log('handleSelectSlot called with date:', moment(start).format('YYYY-MM-DD'));
+    console.log('isPastDate result:', isPastDate(start));
+    console.log('isToday result:', isToday(start));
+    console.log('canModifySchedule result:', canModifySchedule(start));
+    console.log('String-based validation:');
+    console.log('isPastDateString result:', isPastDateString(start));
+    console.log('isTodayString result:', isTodayString(start));
+    
+    if (isPastDateString(start)) {
+      const dateStr = moment(start).format('MMMM D, YYYY');
+      toast.warning(`Cannot create schedule on ${dateStr} (past date). Only today and future dates can be modified.`);
+      return;
+    }
+    
     setSelectedDate(start);
     setSelectedSchedule(null);
     setIsModalOpen(true);
   };
 
   const handleSelectEvent = (event) => {
+    console.log('handleSelectEvent called with date:', moment(event.start).format('YYYY-MM-DD'));
+    console.log('isPastDate result:', isPastDate(event.start));
+    console.log('isToday result:', isToday(event.start));
+    console.log('canModifySchedule result:', canModifySchedule(event.start));
+    console.log('String-based validation:');
+    console.log('isPastDateString result:', isPastDateString(event.start));
+    console.log('isTodayString result:', isTodayString(event.start));
+    
+    if (isPastDateString(event.start)) {
+      const dateStr = moment(event.start).format('YYYY-MM-DD');
+      toast.warning(`Cannot edit schedule on ${dateStr} (past date). Only today and future dates can be modified.`);
+      return;
+    }
+    
     setSelectedSchedule(event);
     setSelectedDate(event.start);
     setIsModalOpen(true);
@@ -205,26 +419,45 @@ const TeamLeaderScheduleManagement = () => {
 
   const handleSaveSchedule = async (scheduleData) => {
     try {
-      // Add employee field to schedule data (backend expects employee database ID, not employee_id string)
+      // Validate that the schedule date is not in the past
+      console.log('handleSaveSchedule - date validation for:', scheduleData.date);
+      console.log('isPastDate result:', isPastDate(scheduleData.date));
+      console.log('isToday result:', isToday(scheduleData.date));
+      console.log('canModifySchedule result:', canModifySchedule(scheduleData.date));
+      console.log('String-based validation:');
+      console.log('isPastDateString result:', isPastDateString(scheduleData.date));
+      console.log('isTodayString result:', isTodayString(scheduleData.date));
+      
+      if (isPastDateString(scheduleData.date)) {
+        const dateStr = moment(scheduleData.date).format('MMMM D, YYYY');
+        toast.error(`Cannot save schedule on ${dateStr} (past date). Only today and future dates can be modified.`);
+        return;
+      }
+      
+      // Set the employee field based on selection
       if (selectedTeamMember) {
-        // Schedule for selected team member
         // Find the team member by employee_id to get their database ID
         const teamMember = teamMembers.find(m => m.employee_id === selectedTeamMember);
-        if (!teamMember) {
-          toast.error('Team member not found');
+        if (teamMember) {
+          scheduleData.employee = teamMember.id; // Use database ID, not employee_id string
+          console.log('Creating schedule for selected team member:', teamMember.employee_id, 'DB ID:', teamMember.id);
+          console.log('Set employee field to:', teamMember.id);
+        } else {
+          console.error('Team member not found for employee_id:', selectedTeamMember);
+          toast.error('Selected team member not found');
           return;
         }
-        scheduleData.employee = teamMember.id; // Use database ID, not employee_id string
-        console.log('Adding employee database ID for selected team member:', teamMember.id);
       } else {
-        // Schedule for team leader (current user)
-        const currentEmployeeRes = await axiosInstance.get('dashboard/');
-        const currentEmployee = currentEmployeeRes.data.employee;
-        scheduleData.employee = currentEmployee.id; // Use database ID, not employee_id string
-        console.log('Adding employee database ID for team leader:', currentEmployee.id);
+        // Schedule for team leader (current user) - backend will set this automatically
+        console.log('Creating schedule for team leader (current user)');
       }
       
       console.log('Sending schedule data:', JSON.stringify(scheduleData, null, 2));
+      console.log('Date being sent:', scheduleData.date);
+      console.log('Date type:', typeof scheduleData.date);
+      console.log('Date value:', scheduleData.date);
+      console.log('Employee field value:', scheduleData.employee);
+      console.log('Employee field type:', typeof scheduleData.employee);
       
       if (selectedSchedule) {
         await updateSchedule(selectedSchedule.id, scheduleData);
@@ -234,6 +467,9 @@ const TeamLeaderScheduleManagement = () => {
         toast.success('Schedule created successfully');
       }
       setIsModalOpen(false);
+      console.log('Schedule saved successfully, calling loadSchedules immediately...');
+      console.log('Current selectedTeamMember:', selectedTeamMember);
+      console.log('Current teamMembers:', teamMembers);
       loadSchedules();
     } catch (error) {
       console.error('Full error object:', error);
@@ -262,19 +498,37 @@ const TeamLeaderScheduleManagement = () => {
   const handleDeleteSchedule = async (scheduleId) => {
     // Get the schedule details to show in confirmation
     const scheduleToDelete = schedules.find(s => s.id === scheduleId);
-    let confirmMessage = 'Are you sure you want to delete this schedule?';
     
-    if (scheduleToDelete) {
-      const scheduleDate = new Date(scheduleToDelete.date).toLocaleDateString();
-      const scheduleTime = `${scheduleToDelete.scheduled_time_in} - ${scheduleToDelete.scheduled_time_out}`;
-      
-      if (selectedTeamMember) {
-        const teamMemberName = teamMembers.find(m => m.employee_id === selectedTeamMember);
-        const memberName = teamMemberName ? `${teamMemberName.first_name} ${teamMemberName.last_name}` : 'team member';
-        confirmMessage = `Are you sure you want to delete ${memberName}'s schedule for ${scheduleDate} (${scheduleTime})?`;
-      } else {
-        confirmMessage = `Are you sure you want to delete your schedule for ${scheduleDate} (${scheduleTime})?`;
-      }
+    if (!scheduleToDelete) {
+      toast.error('Schedule not found');
+      return;
+    }
+    
+    // Check if the schedule date is in the past
+    console.log('handleDeleteSchedule - date validation for:', scheduleToDelete.date);
+    console.log('isPastDate result:', isPastDate(scheduleToDelete.date));
+    console.log('isToday result:', isToday(scheduleToDelete.date));
+    console.log('canModifySchedule result:', canModifySchedule(scheduleToDelete.date));
+    console.log('String-based validation:');
+    console.log('isPastDateString result:', isPastDateString(scheduleToDelete.date));
+    console.log('isTodayString result:', isTodayString(scheduleToDelete.date));
+    
+    if (isPastDateString(scheduleToDelete.date)) {
+      const dateStr = moment(scheduleToDelete.date).format('MMMM D, YYYY');
+      toast.warning(`Cannot delete schedule on ${dateStr} (past date). Only today and future dates can be modified.`);
+      return;
+    }
+    
+    let confirmMessage = 'Are you sure you want to delete this schedule?';
+    const scheduleDate = new Date(scheduleToDelete.date).toLocaleDateString();
+    const scheduleTime = `${scheduleToDelete.scheduled_time_in} - ${scheduleToDelete.scheduled_time_out}`;
+    
+    if (selectedTeamMember) {
+      const teamMemberName = teamMembers.find(m => m.employee_id === selectedTeamMember);
+      const memberName = teamMemberName ? `${teamMemberName.first_name} ${teamMemberName.last_name}` : 'team member';
+      confirmMessage = `Are you sure you want to delete ${memberName}'s schedule for ${scheduleDate} (${scheduleTime})?`;
+    } else {
+      confirmMessage = `Are you sure you want to delete your schedule for ${scheduleDate} (${scheduleTime})?`;
     }
     
     if (window.confirm(confirmMessage)) {
@@ -325,7 +579,8 @@ const TeamLeaderScheduleManagement = () => {
         const dayOfWeek = date.day(); // 0 = Sunday, 1 = Monday, etc.
         
         // Only create schedules for weekdays (Monday = 1, Tuesday = 2, ..., Friday = 5)
-        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        // AND only for today or future dates (not past)
+        if (dayOfWeek >= 1 && dayOfWeek <= 5 && (isTodayString(date) || isFutureDateString(date))) {
           testSchedules.push({
             employee: targetEmployeeId, // Use employee database ID, not employee_id string
             date: date.format('YYYY-MM-DD'),
@@ -358,15 +613,32 @@ const TeamLeaderScheduleManagement = () => {
 
   const handleBulkSchedule = async (bulkData) => {
     try {
-      // Add employee_id to bulk data (this is correct for bulk operations)
+      // Validate that bulk schedule dates are not in the past
+      if (bulkData.start_date && isPastDateString(bulkData.start_date)) {
+        const dateStr = moment(bulkData.start_date).format('MMMM D, YYYY');
+        toast.error(`Cannot create bulk schedule starting on ${dateStr} (past date). Only today and future dates can be modified.`);
+        return;
+      }
+      
+      // Add employee field to bulk data (backend expects database ID, not employee_id string)
       if (selectedTeamMember) {
         // Bulk schedule for selected team member
-        bulkData.employee_id = selectedTeamMember;
+        // Find the team member by employee_id to get their database ID
+        const teamMember = teamMembers.find(m => m.employee_id === selectedTeamMember);
+        if (teamMember) {
+          bulkData.employee = teamMember.id; // Use database ID, not employee_id string
+          console.log('Creating bulk schedule for selected team member:', teamMember.employee_id, 'DB ID:', teamMember.id);
+        } else {
+          console.error('Team member not found for employee_id:', selectedTeamMember);
+          toast.error('Selected team member not found');
+          return;
+        }
       } else {
         // Bulk schedule for team leader (current user)
         const currentEmployeeRes = await axiosInstance.get('dashboard/');
         const currentEmployee = currentEmployeeRes.data.employee;
-        bulkData.employee_id = currentEmployee.employee_id;
+        bulkData.employee = currentEmployee.id; // Use database ID, not employee_id string
+        console.log('Creating bulk schedule for team leader (current user)');
       }
       
       // Call the API to apply template to schedule
@@ -416,21 +688,16 @@ const TeamLeaderScheduleManagement = () => {
       style.backgroundColor = '#d32f2f';
     }
 
-    // Check if this is a past date
-    const eventDate = new Date(event.start);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    if (eventDate < today) {
+    // Use the new date validation functions
+    if (isPastDate(event.start)) {
       // Past date - show with reduced opacity and different color
       style.backgroundColor = '#6c757d';
       style.opacity = 0.5;
       style.cursor = 'not-allowed';
-    } else if (eventDate.getTime() === today.getTime()) {
-      // Today's date - show with warning color
-      style.backgroundColor = '#ffc107';
-      style.color = '#000';
-      style.cursor = 'not-allowed';
+    } else if (isToday(event.start)) {
+      // Today's date - show with blue color to indicate it can be edited/deleted
+      style.backgroundColor = '#007bff';
+      style.cursor = 'pointer';
     } else {
       // Future date - show with green color for team leader to indicate it can be edited/deleted
       style.backgroundColor = '#28a745';
@@ -455,6 +722,18 @@ const TeamLeaderScheduleManagement = () => {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
+      <style>
+        {`
+          .calendar-day-disabled {
+            pointer-events: none;
+            opacity: 0.6;
+          }
+          .calendar-day-disabled:hover {
+            background-color: #f8f9fa !important;
+            cursor: not-allowed !important;
+          }
+        `}
+      </style>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
@@ -480,6 +759,15 @@ const TeamLeaderScheduleManagement = () => {
               : 'Manage your own schedules or select a team member to manage their schedules'
             }
           </p>
+          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-2 text-blue-800">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-medium">Date Permissions:</span>
+              <span className="text-sm">Today and future dates can be added, edited, or deleted. Only past dates are read-only.</span>
+            </div>
+          </div>
         </div>
 
         {/* Team Leader Controls */}
@@ -495,7 +783,11 @@ const TeamLeaderScheduleManagement = () => {
               </label>
               <select
                 value={selectedTeamMember}
-                onChange={(e) => setSelectedTeamMember(e.target.value)}
+                onChange={(e) => {
+                  console.log('Team member selection changed:', e.target.value);
+                  console.log('Available team members:', teamMembers);
+                  setSelectedTeamMember(e.target.value);
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Manage My Own Schedules</option>
@@ -709,6 +1001,50 @@ const TeamLeaderScheduleManagement = () => {
             Create Test Schedules
           </button>
           
+          {/* Debug Date Validation Button */}
+          <button
+            onClick={testDateValidation}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Test Date Validation
+          </button>
+          
+          {/* Debug Dashboard Data Button */}
+          <button
+            onClick={testDashboardData}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 9 0 0118 0z" />
+            </svg>
+            Test Dashboard Data
+          </button>
+          
+          {/* Debug Team Member Access Button */}
+          <button
+            onClick={testTeamMemberAccess}
+            className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Test Team Access
+          </button>
+          
+          {/* Debug Team Member Schedule Loading Button */}
+          <button
+            onClick={testTeamMemberScheduleLoading}
+            className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Test Member Schedules
+          </button>
+          
           <button
             onClick={() => setIsTemplateModalOpen(true)}
             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
@@ -767,6 +1103,9 @@ const TeamLeaderScheduleManagement = () => {
                 <span> for you</span>
               )}
             </div>
+            <div className="mt-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+              ℹ️ Today and future dates can be modified. Only past dates are read-only.
+            </div>
             
             {/* Enhanced Team Member Schedule Info */}
             {selectedTeamMember && (
@@ -824,21 +1163,31 @@ const TeamLeaderScheduleManagement = () => {
               views={['month']}
               defaultView="month"
               tooltipAccessor={(event) => {
-                const eventDate = new Date(event.start);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                
                 let tooltip = `${event.scheduled_time_in} - ${event.scheduled_time_out}`;
                 
-                if (eventDate < today) {
+                if (isPastDate(event.start)) {
                   tooltip += ' (Past date - cannot be modified)';
-                } else if (eventDate.getTime() === today.getTime()) {
-                  tooltip += ' (Today - cannot be modified)';
+                } else if (isToday(event.start)) {
+                  tooltip += ' (Today - can be modified)';
                 } else {
                   tooltip += ' (Click to edit/delete)';
                 }
                 
                 return tooltip;
+              }}
+              dayPropGetter={(date) => {
+                // Disable only past dates for selection
+                if (isPastDate(date)) {
+                  return {
+                    className: 'calendar-day-disabled',
+                    style: {
+                      backgroundColor: '#f8f9fa',
+                      color: '#6c757d',
+                      cursor: 'not-allowed'
+                    }
+                  };
+                }
+                return {};
               }}
             />
           )}
@@ -859,8 +1208,8 @@ const TeamLeaderScheduleManagement = () => {
             <span>Past Date (Read-only)</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-yellow-500 rounded"></div>
-            <span>Today (Read-only)</span>
+            <div className="w-4 h-4 bg-blue-500 rounded"></div>
+            <span>Today (Editable)</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-green-600 rounded"></div>
@@ -890,6 +1239,7 @@ const TeamLeaderScheduleManagement = () => {
           currentMonth={currentMonth}
           isStaff={true}
           selectedTeamMember={selectedTeamMember}
+          selectedTeamMemberId={selectedTeamMember ? teamMembers.find(m => m.employee_id === selectedTeamMember)?.id : null}
         />
       )}
 

@@ -3,14 +3,21 @@ import axios from '../utils/axiosInstance';
 // Schedule Management API Functions
 
 // Get employee schedules for a date range
-export const getEmployeeSchedules = async (startDate, endDate) => {
+export const getEmployeeSchedules = async (startDate, endDate, employeeId = null) => {
   try {
-    const response = await axios.get('/schedules/', {
-      params: {
-        start_date: startDate,
-        end_date: endDate
-      }
-    });
+    const params = {
+      start_date: startDate,
+      end_date: endDate
+    };
+    
+    // Add employee filter if provided
+    if (employeeId) {
+      params.employee = employeeId;
+    }
+    
+    console.log('getEmployeeSchedules params:', params);
+    
+    const response = await axios.get('/schedules/', { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching schedules:', error);

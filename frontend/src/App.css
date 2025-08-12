@@ -60,6 +60,88 @@
   left: 0;
   right: 0;
   z-index: 1000;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+}
+
+/* Profile section and user menu specific styles */
+.user-profile-section {
+  position: relative;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.user-menu-dropdown {
+  position: fixed !important;
+  top: 80px !important;
+  right: 16px !important;
+  z-index: 9999 !important;
+  max-width: 280px !important;
+  min-width: 200px !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+  background: white !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+/* Ensure user menu is visible on all screen sizes */
+@media (min-width: 1024px) {
+  .user-menu-dropdown {
+    right: 16px !important;
+    top: 80px !important;
+  }
+  
+  .user-profile-section {
+    margin-right: 8px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .user-menu-dropdown {
+    right: 24px !important;
+    top: 80px !important;
+  }
+  
+  .user-profile-section {
+    margin-right: 16px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .user-menu-dropdown {
+    right: 32px !important;
+    top: 80px !important;
+  }
+  
+  .user-profile-section {
+    margin-right: 24px;
+  }
+}
+
+/* Profile button hover and focus states */
+.profile-button {
+  position: relative;
+  z-index: 1001;
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.profile-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.profile-button:focus {
+  outline: none;
+  ring: 2px;
+  ring-color: rgba(59, 130, 246, 0.5);
 }
 
 /* Dropdown specific styles */
@@ -302,5 +384,57 @@ html, body, #root {
 @supports not (backdrop-filter: blur(8px)) {
   .schedule-dropdown {
     background: rgba(255, 255, 255, 0.98);
+  }
+}
+
+/* Ensure navbar content is properly spaced */
+.navbar-fixed > div > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 0;
+}
+
+/* Main content area styling */
+.main-content {
+  position: relative;
+  z-index: 1;
+  min-height: calc(100vh - 80px);
+  width: 100%;
+}
+
+/* Ensure content doesn't overlap with navbar */
+.main-content > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Fix for very wide screens */
+@media (min-width: 1920px) {
+  .navbar-fixed > div {
+    max-width: 1400px;
+  }
+  
+  .user-menu-dropdown {
+    right: 48px !important;
+    top: 80px !important;
+  }
+  
+  .user-profile-section {
+    margin-right: 32px;
+  }
+}
+
+/* Ensure profile section doesn't get cut off */
+@media (max-width: 1279px) {
+  .user-profile-section {
+    margin-right: 4px;
+  }
+  
+  .user-menu-dropdown {
+    right: 8px !important;
+    top: 80px !important;
   }
 }

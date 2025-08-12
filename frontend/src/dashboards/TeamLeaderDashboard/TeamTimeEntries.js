@@ -556,13 +556,6 @@ const TeamTimeEntries = ({ isOpen, onClose }) => {
     page * pageSize
   );
 
-  // Debug logging
-  // console.log('filteredAndSortedEntries:', filteredAndSortedEntries); // Removed console.log
-  // console.log('paginatedEntries:', paginatedEntries); // Removed console.log
-  // console.log('totalPages:', totalPages); // Removed console.log
-  // console.log('page:', page); // Removed console.log
-  // console.log('pageSize:', pageSize); // Removed console.log
-
   if (!isOpen) return null;
 
   return (

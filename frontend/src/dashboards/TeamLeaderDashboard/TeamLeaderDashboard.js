@@ -67,6 +67,37 @@ const TeamLeaderDashboard = ({ employee }) => {
   const [absentTodayDrawerOpen, setAbsentTodayDrawerOpen] = useState(false);
   const [mapRefreshTrigger, setMapRefreshTrigger] = useState(0);
 
+  // NEW: Handle screen resize and automatically redirect to MobileDashboard when screen gets smaller
+  useEffect(() => {
+    let resizeTimeout;
+    
+    const handleResize = () => {
+      // Clear previous timeout
+      clearTimeout(resizeTimeout);
+      
+      // Debounce the resize event to prevent too many redirects
+      resizeTimeout = setTimeout(() => {
+        const currentWidth = window.innerWidth;
+        
+        // If we're in TeamLeaderDashboard but screen is now mobile size, redirect to MobileDashboard
+        if (currentWidth <= 1024) {
+          window.location.href = '/mobile-view';
+        }
+      }, 250); // Wait 250ms after resize stops before redirecting
+    };
+
+    // Add resize listener
+    window.addEventListener('resize', handleResize);
+    
+    // Initial check
+    handleResize();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(resizeTimeout);
+    };
+  }, []);
+
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     setError(null);

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FaClock, FaMapMarkerAlt, FaSignInAlt, FaSignOutAlt, FaUser, FaBars, FaDesktop, FaMobile } from 'react-icons/fa';
+import { FaClock, FaMapMarkerAlt, FaSignInAlt, FaSignOutAlt, FaUser, FaBars } from 'react-icons/fa';
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import timeAPI from '../../api/timeAPI';
 import { getCurrentPosition } from '../../utils/geolocation';
-import { setUserViewPreference, VIEW_MODES } from '../../utils/deviceDetection';
+import './MobileDashboard.css';
 
 // Fix for default markers in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -61,15 +61,18 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
   // NEW: Get today's schedule
   const { data: todaySchedule, error: scheduleQueryError, refetch: refetchSchedule } = useQuery({
     queryKey: ['today-schedule', employee?.id],
-    queryFn: () => timeAPI.getTodaySchedule(),
+    queryFn: async () => {
+      try {
+        const result = await timeAPI.getTodaySchedule();
+        return result;
+      } catch (error) {
+        throw error;
+      }
+    },
     enabled: !!employee?.id,
     refetchInterval: 60000, // Refresh every minute
     retry: 3,
-    retryDelay: 1000,
-    onError: (error) => {
-      console.error('Schedule query error:', error);
-      setScheduleError('Failed to load schedule. Please contact your supervisor.');
-    }
+    retryDelay: 1000
   });
 
   // Clock in mutation
@@ -136,45 +139,169 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
     }
   }, [sessionResponse, todayEntries]);
 
-  // Handle clicking outside menu to close it
+  // Click-away logic for mobile menu
   useEffect(() => {
+    if (!showMenu) return;
+    
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setShowMenu(false);
       }
-    };
-
-    if (showMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
     }
+
+    document.addEventListener('mousedown', handleClickOutside);
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showMenu]);
 
+  // NEW: Handle screen resize and automatically redirect to appropriate dashboard
+  useEffect(() => {
+    let resizeTimeout;
+    
+    const handleResize = () => {
+      // Clear previous timeout
+      clearTimeout(resizeTimeout);
+      
+      // Debounce the resize event to prevent too many redirects
+      resizeTimeout = setTimeout(() => {
+        const currentWidth = window.innerWidth;
+        
+        // If we're in MobileDashboard but screen is now desktop size, redirect to full dashboard
+        if (currentWidth > 1024) {
+          // Check if user is team leader or regular employee
+          if (employee?.role === 'team_leader') {
+            window.location.href = '/team-leader-dashboard';
+          } else {
+            window.location.href = '/employee-dashboard';
+          }
+        }
+      }, 250); // Wait 250ms after resize stops before redirecting
+    };
+
+    // Add resize listener
+    window.addEventListener('resize', handleResize);
+    
+    // Initial check
+    handleResize();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(resizeTimeout);
+    };
+  }, [employee?.role]);
+
   // NEW: Validate schedule before allowing time operations
-  const validateSchedule = (action) => {
-    if (!todaySchedule) {
-      setScheduleError(`No schedule found for today. Please contact your supervisor to set up your schedule before ${action === 'in' ? 'clocking in' : 'clocking out'}.`);
+  const validateSchedule = useCallback(() => {
+    
+    // Check if schedule query failed (error state)
+    if (scheduleQueryError) {
+      const errorMsg = 'Failed to load schedule. Please contact your supervisor.';
+      setScheduleError(errorMsg);
       return false;
     }
     
+    // Check if schedule data is still loading
+    if (todaySchedule === undefined) {
+      setScheduleError(null); // Clear any previous errors during loading
+      return false;
+    }
+    
+    // Check if no schedule exists (empty object response from API)
+    if (!todaySchedule || Object.keys(todaySchedule).length === 0) {
+      const today = new Date().toLocaleDateString('en-US', { 
+        month: '2-digit', 
+        day: '2-digit', 
+        year: 'numeric' 
+      });
+      const errorMsg = `No work schedule found for today (${today}). Please contact your supervisor to set up your schedule before clocking in/out.`;
+      setScheduleError(errorMsg);
+      return false;
+    }
+    
+    // Check if schedule is incomplete
     if (!todaySchedule.scheduled_time_in || !todaySchedule.scheduled_time_out) {
-      setScheduleError(`Your schedule for today is incomplete. Please contact your supervisor to complete your schedule before ${action === 'in' ? 'clocking in' : 'clocking out'}.`);
+      const errorMsg = 'Your schedule is incomplete. Please contact your supervisor to complete your schedule before clocking in/out.';
+      setScheduleError(errorMsg);
       return false;
     }
     
-    // Clear any previous schedule errors
+    // NEW: Check if current time is within 1 hour of scheduled time in
+    try {
+      const now = new Date();
+      const currentTime = now.getTime();
+      
+      // Parse scheduled time in (assuming format like "09:00" or "09:00:00")
+      const scheduledTimeStr = todaySchedule.scheduled_time_in;
+      const [hours, minutes] = scheduledTimeStr.split(':').map(Number);
+      
+      // Create scheduled time for today
+      const scheduledTime = new Date(now);
+      scheduledTime.setHours(hours, minutes, 0, 0);
+      const scheduledTimeMs = scheduledTime.getTime();
+      
+      // Calculate time difference in hours
+      const timeDiffHours = Math.abs(currentTime - scheduledTimeMs) / (1000 * 60 * 60);
+      
+      // If more than 1 hour early, prevent clock in
+      if (currentTime < scheduledTimeMs && timeDiffHours > 1) {
+        const earlyHours = timeDiffHours.toFixed(1);
+        const errorMsg = `You cannot clock in yet. Your scheduled time is ${scheduledTimeStr}, and you can only clock in up to 1 hour early. Current time: ${now.toLocaleTimeString()}`;
+        setScheduleError(errorMsg);
+        return false;
+      }
+      
+      // NEW: Check if current time is after scheduled end time
+      const scheduledEndTimeStr = todaySchedule.scheduled_time_out;
+      const [endHours, endMinutes] = scheduledEndTimeStr.split(':').map(Number);
+      
+      // Create scheduled end time for today
+      const scheduledEndTime = new Date(now);
+      scheduledEndTime.setHours(endHours, endMinutes, 0, 0);
+      const scheduledEndTimeMs = scheduledEndTime.getTime();
+      
+      // Handle overnight shifts
+      if (endHours < hours) {
+        scheduledEndTime.setDate(scheduledEndTime.getDate() + 1);
+      }
+      
+      // If more than 2 hours after scheduled end time, prevent clock in
+      const timeAfterEndHours = (currentTime - scheduledEndTimeMs) / (1000 * 60 * 60);
+      if (currentTime > scheduledEndTimeMs && timeAfterEndHours > 2) {
+        const errorMsg = `Cannot clock in after your shift has ended. Your scheduled time was ${scheduledTimeStr} - ${scheduledEndTimeStr}. Latest allowed clock-in: ${new Date(scheduledEndTimeMs + (2 * 60 * 60 * 1000)).toLocaleTimeString()}`;
+        setScheduleError(errorMsg);
+        return false;
+      }
+      
+      // If more than 1 hour late but within 2 hours of end time, allow but warn
+      if (currentTime > scheduledTimeMs && timeDiffHours > 1) {
+        const lateHours = timeDiffHours.toFixed(1);
+        // Don't set error, just log warning
+        console.log(`User clocking in ${lateHours} hours late, but within allowed window`);
+      }
+      
+    } catch (timeError) {
+      console.error('MobileDashboard Error parsing scheduled time:', timeError);
+      // If time parsing fails, allow the operation but log the error
+    }
+    
     setScheduleError(null);
     return true;
-  };
+  }, [todaySchedule, scheduleQueryError]);
+
+  // NEW: Auto-validate schedule when component loads or schedule changes
+  useEffect(() => {
+    if (todaySchedule !== undefined || scheduleQueryError) {
+      validateSchedule();
+    }
+  }, [todaySchedule, scheduleQueryError, validateSchedule]);
 
   const handleTimeIn = async () => {
     if (isTimeInSubmitting.current) return;
     
     // NEW: Validate schedule before allowing time in
-    if (!validateSchedule('in')) {
+    if (!validateSchedule()) {
       return;
     }
     
@@ -203,9 +330,6 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       await clockInMutation.mutateAsync(clockInData);
       
     } catch (error) {
-      console.error('Clock in error:', error);
-      console.error('Error response:', error.response);
-      console.error('Error response data:', error.response?.data);
       setGeolocationStatus('error');
       
       // Show detailed error message to user
@@ -242,7 +366,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
     }
     
     // NEW: Validate schedule before allowing time out
-    if (!validateSchedule('out')) {
+    if (!validateSchedule()) {
       return;
     }
     
@@ -271,9 +395,6 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       await clockOutMutation.mutateAsync(clockOutData);
       
     } catch (error) {
-      console.error('Clock out error:', error);
-      console.error('Error response:', error.response);
-      console.error('Error response data:', error.response?.data);
       setGeolocationStatus('error');
       
       // Show detailed error message to user
@@ -318,7 +439,14 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
 
   // Check if time operations should be disabled
   const isTimeOperationsDisabled = () => {
-    return !!scheduleError || !todaySchedule;
+    // Allow time operations even when schedule API fails as fallback
+    if (scheduleQueryError) {
+      return false;
+    }
+    
+    // Only disable if there's a schedule error OR if schedule is still loading
+    const disabled = !!scheduleError || todaySchedule === undefined;
+    return disabled;
   };
 
   const getTotalHoursToday = () => {
@@ -346,17 +474,17 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 mobile-dashboard">
       {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4 mobile-card">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <FaUser className="text-2xl" />
+            <FaUser className="text-2xl mobile-icon" />
             <div>
-              <h1 className="text-lg font-semibold">{user?.first_name} {user?.last_name}</h1>
-              <p className="text-sm opacity-90">{employee?.position}</p>
+              <h1 className="text-lg font-semibold mobile-text">{user?.first_name} {user?.last_name}</h1>
+              <p className="text-sm opacity-90 mobile-text-small">{employee?.position}</p>
               <div className="flex items-center space-x-1 mt-1">
-                <FaMobile className="text-xs" />
+                <FaMapMarkerAlt className="text-xs mobile-icon" />
                 <span className="text-xs opacity-75">Mobile View</span>
                 {employee?.role === 'team_leader' && (
                   <span className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full ml-2">
@@ -368,7 +496,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
           </div>
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+              className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors mobile-touch-target"
             >
               <FaBars className="text-xl" />
             </button>
@@ -377,34 +505,21 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
 
       {/* Mobile Menu */}
       {showMenu && (
-        <div ref={menuRef} className="absolute top-20 right-4 bg-white rounded-lg shadow-lg z-50 min-w-48">
+        <div ref={menuRef} className="fixed top-20 right-4 bg-white rounded-lg shadow-lg z-50 min-w-48 mobile-menu max-w-xs">
           <div className="p-4 border-b">
-            <p className="text-sm text-gray-600">Quick Actions</p>
+            <p className="text-sm text-gray-600 mobile-text-small">Quick Actions</p>
           </div>
           <div className="p-2">
             <button
               onClick={() => setShowMap(!showMap)}
-              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center space-x-2"
+              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center space-x-2 mobile-touch-target"
             >
               <FaMapMarkerAlt className="text-blue-600" />
               <span>{showMap ? 'Hide Map' : 'Show Map'}</span>
             </button>
             <button
-              onClick={() => {
-                setShowMenu(false);
-                // Set user preference to full view
-                setUserViewPreference(VIEW_MODES.FULL);
-                // Force page refresh to apply the new view mode
-                window.location.href = '/';
-              }}
-              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center space-x-2 text-blue-600"
-            >
-              <FaDesktop />
-              <span>Back to Full View</span>
-            </button>
-            <button
               onClick={onLogout}
-              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center space-x-2 text-red-600"
+              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center space-x-2 text-red-600 mobile-touch-target"
             >
               <FaSignOutAlt />
               <span>Logout</span>
@@ -414,15 +529,15 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       )}
 
       {/* Main Content */}
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-4 mobile-spacing">
         {/* Error Display */}
         {(sessionError || entriesError) && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mobile-card">
             <div className="flex items-center space-x-2">
               <div className="text-red-600">⚠️</div>
               <div>
-                <p className="text-red-800 font-medium">Connection Error</p>
-                <p className="text-red-600 text-sm">
+                <p className="text-red-800 font-medium mobile-text">Connection Error</p>
+                <p className="text-red-600 text-sm mobile-text-small">
                   {sessionError?.message || entriesError?.message || 'Unable to connect to server'}
                 </p>
               </div>
@@ -430,57 +545,164 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
           </div>
         )}
 
+        {/* NEW: Time Status Display */}
+        {todaySchedule && !scheduleError && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mobile-card">
+            <div className="flex items-start space-x-3">
+              <div className="text-blue-600 text-xl">⏰</div>
+              <div className="flex-1">
+                <p className="text-blue-800 font-semibold text-base mobile-text">Clock-in Status</p>
+                <div className="text-blue-700 text-sm mt-2 space-y-1 mobile-text-small">
+                  <p>Your schedule: {todaySchedule.scheduled_time_in} - {todaySchedule.scheduled_time_out}</p>
+                  {(() => {
+                    try {
+                      const now = new Date();
+                      const scheduledTimeStr = todaySchedule.scheduled_time_in;
+                      const [hours, minutes] = scheduledTimeStr.split(':').map(Number);
+                      const scheduledTime = new Date(now);
+                      scheduledTime.setHours(hours, minutes, 0, 0);
+                      const timeDiffHours = (scheduledTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+                      
+                      if (timeDiffHours > 1) {
+                        return <p className="text-orange-600">⏳ You can clock in starting at {(scheduledTime.getTime() - 60 * 60 * 1000).toLocaleTimeString()}</p>;
+                      } else if (timeDiffHours > 0) {
+                        return <p className="text-green-600">✅ You can clock in now (within 1 hour of schedule)</p>;
+                      } else {
+                        return <p className="text-green-600">✅ You can clock in now</p>;
+                      }
+                    } catch (error) {
+                      return <p>Time validation unavailable</p>;
+                    }
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* NEW: Schedule Error Display */}
         {scheduleError && (
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <div className="flex items-center space-x-2">
-              <div className="text-orange-600">📅</div>
-              <div>
-                <p className="text-orange-800 font-medium">Schedule Required</p>
-                <p className="text-orange-600 text-sm">{scheduleError}</p>
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mobile-card">
+            <div className="flex items-start space-x-3">
+              <div className="text-orange-600 text-xl">📅</div>
+              <div className="flex-1">
+                <p className="text-orange-800 font-semibold text-base mobile-text">Schedule Issue</p>
+                <p className="text-orange-700 text-sm mt-1 mobile-text-small">{scheduleError}</p>
+                
+                {/* Action Steps */}
+                <div className="mt-3 p-3 bg-orange-100 rounded-lg">
+                  <p className="text-orange-800 font-medium text-sm mb-2 mobile-text-small">What you need to do:</p>
+                  <ul className="text-orange-700 text-sm space-y-1 mobile-text-small">
+                    <li className="flex items-center space-x-2">
+                      <span className="text-orange-600">1.</span>
+                      <span>Contact your supervisor or team leader</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <span className="text-orange-600">2.</span>
+                      <span>Ask them to set up your work schedule</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <span className="text-orange-600">3.</span>
+                      <span>Include your start time and end time</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <span className="text-orange-600">4.</span>
+                      <span>Once scheduled, you can clock in/out</span>
+                    </li>
+                  </ul>
+                </div>
+                
+                {/* Contact Information */}
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-blue-800 font-medium text-sm mb-2 mobile-text-small">Need help?</p>
+                  <div className="text-blue-700 text-sm space-y-1 mobile-text-small">
+                    <p>• Contact your supervisor directly</p>
+                    <p>• Reach out to HR department</p>
+                    <p>• Check with your team leader</p>
+                  </div>
+                </div>
+                
                 <button
                   onClick={() => refetchSchedule()}
-                  className="mt-2 text-orange-700 underline text-sm hover:text-orange-800"
+                  className="mt-3 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors mobile-btn"
                 >
-                  Refresh Schedule
+                  🔄 Refresh Schedule
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Schedule Information Display */}
+        {/* NEW: Schedule Information Display */}
         {todaySchedule && !scheduleError && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-center space-x-2">
-              <div className="text-blue-600">📋</div>
-              <div>
-                <p className="text-blue-800 font-medium">Today's Schedule</p>
-                <p className="text-blue-600 text-sm">
-                  {todaySchedule.scheduled_time_in} - {todaySchedule.scheduled_time_out}
-                  {todaySchedule.is_night_shift && ' (Night Shift)'}
-                </p>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mobile-card">
+            <div className="flex items-start space-x-3">
+              <div className="text-green-600 text-xl">✅</div>
+              <div className="flex-1">
+                <p className="text-green-800 font-semibold text-base mobile-text">Schedule Ready!</p>
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-green-700 text-sm mobile-text-small">Start Time:</span>
+                    <span className="text-green-800 font-medium mobile-text">{todaySchedule.scheduled_time_in}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-green-700 text-sm mobile-text-small">End Time:</span>
+                    <span className="text-green-800 font-medium mobile-text">{todaySchedule.scheduled_time_out}</span>
+                  </div>
+                  {todaySchedule.is_night_shift && (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-purple-600">🌙</span>
+                      <span className="text-purple-700 text-sm font-medium mobile-text-small">Night Shift Schedule</span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Status Information */}
+                <div className="mt-3 p-3 bg-green-100 rounded-lg">
+                  <p className="text-green-800 font-medium text-sm mb-2 mobile-text-small">You can now:</p>
+                  <ul className="text-green-700 text-sm space-y-1 mobile-text-small">
+                    <li className="flex items-center space-x-2">
+                      <span className="text-green-600">✓</span>
+                      <span>Clock in when you arrive at work</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <span className="text-green-600">✓</span>
+                      <span>Clock out when you leave work</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <span className="text-green-600">✓</span>
+                      <span>Track your work hours accurately</span>
+                    </li>
+                  </ul>
+                </div>
+                
+                <button
+                  onClick={() => refetchSchedule()}
+                  className="mt-3 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors mobile-btn"
+                >
+                  🔄 Refresh Schedule
+                </button>
               </div>
             </div>
           </div>
         )}
 
         {/* Status Card */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="bg-white rounded-lg shadow-sm p-6 mobile-card">
           <div className="text-center">
-            <div className={`text-3xl font-bold ${getStatusColor()}`}>
+            <div className={`text-3xl font-bold ${getStatusColor()} mobile-status`}>
               {getStatusText()}
             </div>
-            <p className="text-gray-600 mt-2">Today's Total: {getTotalHoursToday()}</p>
+            <p className="text-gray-600 mt-2 mobile-text">Today's Total: {getTotalHoursToday()}</p>
           </div>
         </div>
 
         {/* Clock In/Out Buttons */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 mobile-grid">
           <button
             onClick={handleTimeIn}
             disabled={isClockingIn || sessionResponse?.active_session || isTimeOperationsDisabled()}
-            className={`p-4 rounded-lg font-semibold text-white transition-colors ${
+            className={`p-4 rounded-lg font-semibold text-white transition-colors mobile-btn ${
               sessionResponse?.active_session 
                 ? 'bg-gray-400 cursor-not-allowed' 
                 : 'bg-green-600 hover:bg-green-700'
@@ -502,7 +724,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
           <button
             onClick={handleTimeOut}
             disabled={isClockingOut || !sessionResponse?.active_session || isTimeOperationsDisabled()}
-            className={`p-4 rounded-lg font-semibold text-white transition-colors ${
+            className={`p-4 rounded-lg font-semibold text-white transition-colors mobile-btn ${
               !sessionResponse?.active_session 
                 ? 'bg-gray-400 cursor-not-allowed' 
                 : 'bg-red-600 hover:bg-red-700'
@@ -523,11 +745,11 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
         </div>
 
         {/* Location Status */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
+        <div className="bg-white rounded-lg shadow-sm p-4 mobile-card">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <FaMapMarkerAlt className="text-blue-600" />
-              <span className="font-medium">Location Status</span>
+              <span className="font-medium mobile-text">Location Status</span>
             </div>
             <div className={`px-2 py-1 rounded-full text-xs font-medium ${
               geolocationStatus === 'success' ? 'bg-green-100 text-green-800' :
@@ -539,14 +761,14 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
             </div>
           </div>
           {currentCoords.latitude && currentCoords.longitude && (
-            <p className="text-sm text-gray-600 mt-2">
+            <p className="text-sm text-gray-600 mt-2 mobile-text-small">
               Lat: {currentCoords.latitude.toFixed(6)}, 
               Lng: {currentCoords.longitude.toFixed(6)}
             </p>
           )}
           {employee?.role === 'team_leader' && (
             <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
-              <p className="text-xs text-yellow-800">
+              <p className="text-xs text-yellow-800 mobile-text-small">
                 <strong>Team Leader Privilege:</strong> You can clock in/out from any location
               </p>
             </div>
@@ -555,9 +777,9 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
 
         {/* Map View */}
         {showMap && currentCoords.latitude && currentCoords.longitude && (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden mobile-card mobile-map">
             <div className="p-4 border-b">
-              <h3 className="font-medium flex items-center space-x-2">
+              <h3 className="font-medium flex items-center space-x-2 mobile-text">
                 <FaMapMarkerAlt className="text-blue-600" />
                 <span>Your Location</span>
               </h3>
@@ -602,17 +824,17 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
         )}
 
         {/* Quick Info */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="font-medium mb-3">Today's Activity</h3>
+        <div className="bg-white rounded-lg shadow-sm p-4 mobile-card">
+          <h3 className="font-medium mb-3 mobile-text">Today's Activity</h3>
           <div className="space-y-2">
             {todayEntries?.length > 0 ? (
               todayEntries.slice(-3).map((entry, index) => (
                 <div key={index} className="flex items-center justify-between text-sm">
                   <div className="flex items-center space-x-2">
                     <FaClock className="text-gray-400" />
-                    <span className="capitalize">{entry.entry_type.replace('_', ' ')}</span>
+                    <span className="capitalize mobile-text-small">{entry.entry_type.replace('_', ' ')}</span>
                   </div>
-                  <span className="text-gray-600">
+                  <span className="text-gray-600 mobile-text-small">
                     {new Date(entry.timestamp).toLocaleTimeString([], { 
                       hour: '2-digit', 
                       minute: '2-digit' 
@@ -621,7 +843,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
                 </div>
               ))
             ) : (
-              <p className="text-gray-500 text-sm">No activity recorded today</p>
+              <p className="text-gray-500 text-sm mobile-text-small">No activity recorded today</p>
             )}
           </div>
         </div>

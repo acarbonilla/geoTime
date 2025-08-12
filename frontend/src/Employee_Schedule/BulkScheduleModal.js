@@ -3,7 +3,7 @@ import moment from 'moment';
 import { getAvailableTemplates, updateTemplate, deleteTemplate, checkExistingSchedules } from '../api/scheduleAPI';
 import { toast } from 'react-toastify';
 
-const BulkScheduleModal = ({ isOpen, onClose, onSave, currentMonth, isStaff = false }) => {
+const BulkScheduleModal = ({ isOpen, onClose, onSave, currentMonth, isStaff = false, selectedTeamMember = null, selectedTeamMemberId = null }) => {
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [bulkData, setBulkData] = useState({
@@ -81,12 +81,20 @@ const BulkScheduleModal = ({ isOpen, onClose, onSave, currentMonth, isStaff = fa
     // This will provide more accurate and detailed error messages
 
     try {
-      // Check for existing schedules first - only send date-related data
+      // Check for existing schedules first - include employee if team member is selected
       const checkData = {
         start_date: bulkData.start_date,
         end_date: bulkData.end_date,
         weekdays_only: bulkData.weekdays_only
       };
+      
+      // Add employee field if a team member is selected
+      if (selectedTeamMemberId) {
+        checkData.employee = parseInt(selectedTeamMemberId, 10); // Ensure it's an integer
+        console.log('Checking existing schedules for team member with ID:', selectedTeamMemberId, 'Type:', typeof checkData.employee);
+      }
+      
+      console.log('Sending checkExistingSchedules data:', checkData);
       const existingCheck = await checkExistingSchedules(checkData);
       
       let shouldProceed = true;

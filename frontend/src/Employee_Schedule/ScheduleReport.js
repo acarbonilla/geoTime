@@ -20,7 +20,8 @@ import {
   ExclamationTriangleIcon,
   InformationCircleIcon,
   PlayIcon,
-  StopIcon
+  StopIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { 
   FaCalendarAlt, 
@@ -31,6 +32,31 @@ import {
   FaHourglassHalf,
   FaRegClock
 } from 'react-icons/fa';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+
+// Try to import jspdf-autotable with error handling
+let autoTableAvailable = false;
+try {
+  // Try dynamic import for browser compatibility
+  if (typeof window !== 'undefined') {
+    // Browser environment - try to check if autoTable is available
+    autoTableAvailable = false; // Will be checked at runtime
+    console.log('Browser environment detected, will check autoTable availability at runtime');
+  } else {
+    // Node.js environment
+    require('jspdf-autotable');
+    autoTableAvailable = true;
+    console.log('jspdf-autotable imported successfully in Node.js');
+  }
+} catch (error) {
+  console.warn('jspdf-autotable import failed, will use text-only PDF:', error);
+  autoTableAvailable = false;
+}
+
+// Debug: Check if autoTable is available
+console.log('jsPDF version:', jsPDF.version);
+console.log('autoTable available:', autoTableAvailable);
 
 const ScheduleReport = () => {
   const [report, setReport] = useState(null);
@@ -497,6 +523,350 @@ const ScheduleReport = () => {
     }
   };
 
+  const handleDownloadCSV = () => {
+    if (!report) {
+      toast.error('No report data to download.');
+      return;
+    }
+
+    if (!report.daily_records || report.daily_records.length === 0) {
+      toast.error('No daily records available for download.');
+      return;
+    }
+
+    try {
+      // Prepare data for CSV export
+      const csvData = report.daily_records.map(record => ({
+        Date: moment(record.date).format('MMM DD, YYYY'),
+        Day: record.day,
+        Status: getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out),
+        'Time In': formatTime(record.time_in),
+        'Time Out': getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)),
+        'Scheduled In': formatTime(record.scheduled_in),
+        'Scheduled Out': formatTime(record.scheduled_out),
+        'BH (min)': record.billed_hours || '-',
+        'LT': record.late_minutes || '-',
+        'UT': record.undertime_minutes || '-',
+        'ND': (() => {
+          if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+            const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.date);
+            return ndHours > 0 ? `${ndHours}h` : '-';
+          }
+          return '-';
+        })()
+      }));
+
+      // Create summary data
+      const summaryData = [
+        { 'Employee Name': report.employee?.name || 'N/A' },
+        { 'Employee ID': report.employee?.employee_id || 'N/A' },
+        { 'Department': report.employee?.department || 'N/A' },
+        { 'Period': report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A' },
+        {},
+        { 'Summary Statistics': '' },
+        { 'Days Worked': report.summary?.days_worked || 0 },
+        { 'Total BH (min)': report.summary?.total_billed_hours || 0 },
+        { 'Total LT (min)': report.summary?.total_late_minutes || 0 },
+        { 'Total UT (min)': report.summary?.total_undertime_minutes || 0 },
+        { 'Total ND': report.summary?.total_night_differential || 0 },
+        {},
+        { 'Daily Records': '' }
+      ];
+      
+      // Combine summary and daily records
+      const allData = [...summaryData, ...csvData];
+      
+      const worksheet = XLSX.utils.json_to_sheet(allData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Time Attendance Report');
+
+      const filename = `time_attendance_report_${moment().format('YYYY-MM-DD_HH-mm-ss')}.csv`;
+      console.log('Downloading CSV with data:', { summaryData, csvData, allData });
+      XLSX.writeFile(workbook, filename);
+      toast.success(`CSV report downloaded successfully`);
+    } catch (error) {
+      console.error('Error downloading CSV:', error);
+      toast.error('Failed to download CSV file');
+    }
+  };
+
+  const handleDownloadExcel = () => {
+    if (!report) {
+      toast.error('No report data to download.');
+      return;
+    }
+
+    if (!report.daily_records || report.daily_records.length === 0) {
+      toast.error('No daily records available for download.');
+      return;
+    }
+
+    try {
+      // Prepare data for Excel export
+      const excelData = report.daily_records.map(record => ({
+        Date: moment(record.date).format('MMM DD, YYYY'),
+        Day: record.day,
+        Status: getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out),
+        'Time In': formatTime(record.time_in),
+        'Time Out': getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)),
+        'Scheduled In': formatTime(record.scheduled_in),
+        'Scheduled Out': formatTime(record.scheduled_out),
+        'BH (min)': record.billed_hours || '-',
+        'LT': record.late_minutes || '-',
+        'UT': record.undertime_minutes || '-',
+        'ND': (() => {
+          if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+            const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.date);
+            return ndHours > 0 ? `${ndHours}h` : '-';
+          }
+          return '-';
+        })()
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      
+      // Create summary sheet
+      const summaryData = [
+        { 'Employee Name': report.employee?.name || 'N/A' },
+        { 'Employee ID': report.employee?.employee_id || 'N/A' },
+        { 'Department': report.employee?.department || 'N/A' },
+        { 'Period': report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A' },
+        {},
+        { 'Summary Statistics': '' },
+        { 'Days Worked': report.summary?.days_worked || 0 },
+        { 'Total BH (min)': report.summary?.total_billed_hours || 0 },
+        { 'Total LT (min)': report.summary?.total_late_minutes || 0 },
+        { 'Total UT (min)': report.summary?.total_undertime_minutes || 0 },
+        { 'Total ND': report.summary?.total_night_differential || 0 }
+      ];
+      const summaryWorksheet = XLSX.utils.json_to_sheet(summaryData);
+      
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, summaryWorksheet, 'Summary');
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Daily Records');
+
+      const filename = `time_attendance_report_${moment().format('YYYY-MM-DD_HH-mm-ss')}.xlsx`;
+      XLSX.writeFile(workbook, filename);
+      toast.success(`Excel report downloaded successfully`);
+    } catch (error) {
+      console.error('Error downloading Excel:', error);
+      toast.error('Failed to download Excel file');
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!report) {
+      toast.error('No report data to download.');
+      return;
+    }
+
+    if (!report.daily_records || report.daily_records.length === 0) {
+      toast.error('No daily records available for download.');
+      return;
+    }
+
+    try {
+      // Try to dynamically import jspdf-autotable if not already available
+      let autoTableAvailableNow = autoTableAvailable;
+      if (!autoTableAvailableNow && typeof window !== 'undefined') {
+        try {
+          await import('jspdf-autotable');
+          autoTableAvailableNow = true;
+          console.log('jspdf-autotable dynamically imported successfully');
+        } catch (importError) {
+          console.warn('Dynamic import of jspdf-autotable failed:', importError);
+          autoTableAvailableNow = false;
+        }
+      }
+
+      // Try to create a PDF with autoTable first
+      if (autoTableAvailableNow) {
+        try {
+          // Use landscape orientation for better fit
+          const doc = new jsPDF('landscape');
+          
+          // Check if autoTable is available
+          if (typeof doc.autoTable === 'function') {
+            // Add title - even smaller font and closer to top
+            doc.setFontSize(14);
+            doc.text('TIME ATTENDANCE REPORT', 14, 18);
+            
+            // Add employee info - even smaller font and tighter spacing
+            doc.setFontSize(8);
+            doc.text(`Employee: ${report.employee?.name || 'N/A'} (${report.employee?.employee_id || 'N/A'})`, 14, 24);
+            doc.text(`Department: ${report.employee?.department || 'N/A'}`, 14, 28);
+            doc.text(`Period: ${report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A'}`, 14, 32);
+            
+            // Add summary stats - even smaller font and tighter spacing
+            doc.text(`Days: ${report.summary?.days_worked || 0} | BH: ${report.summary?.total_billed_hours || 0}min | LT: ${report.summary?.total_late_minutes || 0}min | UT: ${report.summary?.total_undertime_minutes || 0}min | ND: ${report.summary?.total_night_differential || 0}`, 14, 36);
+
+            // Prepare table data
+            const tableData = report.daily_records.map(record => {
+              try {
+                return [
+                  moment(record.date).format('MMM DD'),
+                  record.day || '-',
+                  getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out) || '-',
+                  formatTime(record.time_in) || '-',
+                  getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)) || '-',
+                  formatTime(record.scheduled_in) || '-',
+                  formatTime(record.scheduled_out) || '-',
+                  record.billed_hours || '-',
+                  record.late_minutes || '-',
+                  record.undertime_minutes || '-',
+                  (() => {
+                    try {
+                      if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+                        const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.date);
+                        return ndHours > 0 ? `${ndHours}h` : '-';
+                      }
+                      return '-';
+                    } catch (ndError) {
+                      return '-';
+                    }
+                  })()
+                ];
+              } catch (recordError) {
+                console.error('Error processing record:', recordError, record);
+                return ['Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error'];
+              }
+            });
+
+            // Create table - optimized for single page with smaller fonts
+            doc.autoTable({
+              head: [['Date', 'Day', 'Status', 'Time In', 'Time Out', 'Scheduled In', 'Scheduled Out', 'BH (min)', 'LT', 'UT', 'ND']],
+              body: tableData,
+              startY: 42,
+              styles: {
+                fontSize: 6,
+                cellPadding: 1
+              },
+              headStyles: {
+                fillColor: [59, 130, 246],
+                textColor: 255,
+                fontSize: 6
+              },
+              margin: { top: 42, right: 8, bottom: 8, left: 8 },
+              // Optimize column widths for landscape orientation
+              columnStyles: {
+                0: { cellWidth: 18 }, // Date
+                1: { cellWidth: 14 }, // Day
+                2: { cellWidth: 22 }, // Status
+                3: { cellWidth: 18 }, // Time In
+                4: { cellWidth: 18 }, // Time Out
+                5: { cellWidth: 22 }, // Scheduled In
+                6: { cellWidth: 22 }, // Scheduled Out
+                7: { cellWidth: 16 }, // BH
+                8: { cellWidth: 14 }, // LT
+                9: { cellWidth: 14 }, // UT
+                10: { cellWidth: 14 } // ND
+              },
+              // Force single page
+              pageBreak: 'avoid',
+              // Reduce row height even more
+              rowHeight: 6
+            });
+
+            const filename = `time_attendance_report_${moment().format('YYYY-MM-DD_HH-mm-ss')}.pdf`;
+            doc.save(filename);
+            toast.success(`PDF report downloaded successfully`);
+            return;
+          }
+        } catch (autoTableError) {
+          console.error('AutoTable failed, falling back to text-only PDF:', autoTableError);
+        }
+      }
+
+      // Fallback: Create text-only PDF
+      console.log('Creating text-only PDF as fallback');
+      // Use landscape orientation for better fit
+      const doc = new jsPDF('landscape');
+      
+      // Add title - even smaller font and closer to top
+      doc.setFontSize(14);
+      doc.text('TIME ATTENDANCE REPORT', 14, 18);
+      
+      // Add employee info - even smaller font and tighter spacing
+      doc.setFontSize(8);
+      doc.text(`Employee: ${report.employee?.name || 'N/A'} (${report.employee?.employee_id || 'N/A'})`, 14, 24);
+      doc.text(`Department: ${report.employee?.department || 'N/A'}`, 14, 28);
+      doc.text(`Period: ${report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A'}`, 14, 32);
+      
+      // Add summary stats - even smaller font and tighter spacing
+      doc.text(`Days: ${report.summary?.days_worked || 0} | BH: ${report.summary?.total_billed_hours || 0}min | LT: ${report.summary?.total_late_minutes || 0}min | UT: ${report.summary?.total_undertime_minutes || 0}min | ND: ${report.summary?.total_night_differential || 0}`, 14, 36);
+      
+      // Add daily records as text
+      doc.setFontSize(8);
+      doc.text('Daily Records:', 14, 42);
+      let yPosition = 50;
+      
+      // Add headers - optimized spacing for landscape
+      const headers = ['Date', 'Day', 'Status', 'Time In', 'Time Out', 'Scheduled In', 'Scheduled Out', 'BH', 'LT', 'UT', 'ND'];
+      doc.setFontSize(6);
+      let xPosition = 14;
+      const columnWidths = [18, 14, 22, 18, 18, 22, 22, 16, 14, 14, 14]; // Match autoTable column widths
+      headers.forEach((header, index) => {
+        doc.text(header, xPosition, yPosition);
+        xPosition += columnWidths[index];
+      });
+      yPosition += 10;
+      
+      // Add data rows - optimized for single page
+      doc.setFontSize(5);
+      report.daily_records.forEach((record, index) => {
+        // Check if we need a new page (landscape height is ~200)
+        if (yPosition > 190) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        
+        try {
+          const rowData = [
+            moment(record.date).format('MMM DD'),
+            record.day || '-',
+            getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out) || '-',
+            formatTime(record.time_in) || '-',
+            getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)) || '-',
+            formatTime(record.scheduled_in) || '-',
+            formatTime(record.scheduled_out) || '-',
+            record.billed_hours || '-',
+            record.late_minutes || '-',
+            record.undertime_minutes || '-',
+            (() => {
+              try {
+                if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+                  const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.date);
+                  return ndHours > 0 ? `${ndHours}h` : '-';
+                }
+                return '-';
+              } catch (ndError) {
+                return '-';
+              }
+            })()
+          ];
+          
+          xPosition = 14;
+          rowData.forEach((cell, cellIndex) => {
+            doc.text(cell.toString(), xPosition, yPosition);
+                                xPosition += columnWidths[cellIndex];
+                  });
+                  yPosition += 6; // Even more reduced row height for better fit
+        } catch (recordError) {
+          console.error('Error processing record in fallback:', recordError);
+          yPosition += 10;
+        }
+      });
+      
+      const filename = `time_attendance_report_${moment().format('YYYY-MM-DD_HH-mm-ss')}.pdf`;
+      doc.save(filename);
+      toast.success(`PDF report downloaded successfully (text-only format)`);
+      
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      toast.error(`Failed to download PDF file: ${error.message}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       <div className="max-w-7xl mx-auto p-6">
@@ -670,13 +1040,43 @@ const ScheduleReport = () => {
                   <DocumentChartBarIcon className="w-6 h-6 text-blue-600" />
                   <span>TIME ATTENDANCE REPORT</span>
                 </h2>
-                <button
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl"
-                >
-                  <PrinterIcon className="w-4 h-4" />
-                  <span>Print Report</span>
-                </button>
+                <div className="flex flex-col items-end space-y-2">
+                  <div className="text-sm text-gray-600 font-medium">Download Report</div>
+                  <div className="flex items-center space-x-2 flex-wrap gap-2">
+                    <button
+                      onClick={handleDownloadCSV}
+                      title="Download as CSV file"
+                      className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl text-sm"
+                    >
+                      <ArrowDownTrayIcon className="w-4 h-4" />
+                      <span className="hidden sm:inline">CSV</span>
+                    </button>
+                    <button
+                      onClick={handleDownloadExcel}
+                      title="Download as Excel file"
+                      className="px-4 py-2 bg-yellow-600 text-white rounded-xl hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl text-sm"
+                    >
+                      <ArrowDownTrayIcon className="w-4 h-4" />
+                      <span className="hidden sm:inline">Excel</span>
+                    </button>
+                    <button
+                      onClick={handleDownloadPDF}
+                      title="Download as PDF file"
+                      className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl text-sm"
+                    >
+                      <ArrowDownTrayIcon className="w-4 h-4" />
+                      <span className="hidden sm:inline">PDF</span>
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      title="Print report"
+                      className="px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl text-sm"
+                    >
+                      <PrinterIcon className="w-4 h-4" />
+                      <span className="hidden sm:inline">Print</span>
+                    </button>
+                  </div>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
                 <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg">
@@ -973,9 +1373,28 @@ const ScheduleReport = () => {
                 <DocumentChartBarIcon className="w-8 h-8 text-gray-400" />
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No Report Generated</h3>
-              <p className="text-gray-500 max-w-md mx-auto">
+              <p className="text-gray-500 max-w-md mx-auto mb-6">
                 Set your filters and click "Generate Report" to view your TIME ATTENDANCE report.
               </p>
+              
+              {/* Download Format Information */}
+              <div className="max-w-2xl mx-auto">
+                <h4 className="text-md font-medium text-gray-800 mb-3">Available Download Formats</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="font-medium text-green-800 mb-1">CSV Format</div>
+                    <div className="text-green-600">Compatible with Excel, Google Sheets, and other spreadsheet applications</div>
+                  </div>
+                  <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <div className="font-medium text-yellow-800 mb-1">Excel Format</div>
+                    <div className="text-yellow-600">Native Excel file with multiple sheets (Summary + Daily Records)</div>
+                  </div>
+                  <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+                    <div className="font-medium text-red-800 mb-1">PDF Format</div>
+                    <div className="text-red-600">Professional report layout with summary and detailed table</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

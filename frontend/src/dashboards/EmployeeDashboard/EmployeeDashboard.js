@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { timeAPI } from '../../api';
+import timeAPI from '../../api/timeAPI';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import GeoMap from './GeoMap';
@@ -25,6 +25,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   const [currentCoords, setCurrentCoords] = useState({ latitude: null, longitude: null });
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [scheduleError, setScheduleError] = useState(null);
+  const [validateTimeConstraints, setValidateTimeConstraints] = useState(true);
   
   // Overtime-related state
   const [overtimeAnalysis, setOvertimeAnalysis] = useState(null);
@@ -66,6 +67,37 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     };
   }, [showUserMenu]);
 
+  // NEW: Handle screen resize and automatically redirect to MobileDashboard when screen gets smaller
+  useEffect(() => {
+    let resizeTimeout;
+    
+    const handleResize = () => {
+      // Clear previous timeout
+      clearTimeout(resizeTimeout);
+      
+      // Debounce the resize event to prevent too many redirects
+      resizeTimeout = setTimeout(() => {
+        const currentWidth = window.innerWidth;
+        
+        // If we're in EmployeeDashboard but screen is now mobile size, redirect to MobileDashboard
+        if (currentWidth <= 1024) {
+          window.location.href = '/mobile-view';
+        }
+      }, 250); // Wait 250ms after resize stops before redirecting
+    };
+
+    // Add resize listener
+    window.addEventListener('resize', handleResize);
+    
+    // Initial check
+    handleResize();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(resizeTimeout);
+    };
+  }, []);
+
   // React Query hooks for data fetching with 30-second polling
   const { data: sessionData, isLoading: sessionLoading, error: sessionError } = useQuery({
     queryKey: ['currentSession', employee?.id],
@@ -89,15 +121,18 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   // NEW: Get today's schedule
   const { data: todaySchedule, error: scheduleQueryError, refetch: refetchSchedule } = useQuery({
     queryKey: ['today-schedule', employee?.id],
-    queryFn: () => timeAPI.getTodaySchedule(),
+    queryFn: async () => {
+      try {
+        const result = await timeAPI.getTodaySchedule();
+        return result;
+      } catch (error) {
+        throw error;
+      }
+    },
     enabled: !!employee?.id,
     refetchInterval: 60000, // Refresh every minute
     retry: 3,
-    retryDelay: 1000,
-    onError: (error) => {
-      console.error('Schedule query error:', error);
-      setScheduleError('Failed to load schedule. Please contact your supervisor.');
-    }
+    retryDelay: 1000
   });
 
   // Process session data
@@ -127,13 +162,32 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   useEffect(() => {
     if (entriesData && entriesData.length > 0) {
       setTodayEntries(entriesData);
-      const totalHours = testTotalHoursCalculation(entriesData);
+      const totalHours = calculateTotalHours(entriesData);
       setTotalHoursToday(totalHours);
     } else {
       setTodayEntries([]);
       setTotalHoursToday(0);
     }
   }, [entriesData]);
+
+  // Calculate total hours from time entries
+  const calculateTotalHours = (entries) => {
+    if (!entries || entries.length === 0) return 0;
+    
+    const sortedEntries = entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const timeInEntries = sortedEntries.filter(e => e.entry_type === 'time_in');
+    const timeOutEntries = sortedEntries.filter(e => e.entry_type === 'time_out');
+    
+    let totalHours = 0;
+    for (let i = 0; i < Math.min(timeInEntries.length, timeOutEntries.length); i++) {
+      const timeIn = new Date(timeInEntries[i].timestamp);
+      const timeOut = new Date(timeOutEntries[i].timestamp);
+      const duration = (timeOut - timeIn) / (1000 * 60 * 60);
+      totalHours += duration;
+    }
+    
+    return totalHours;
+  };
 
   // Update loading state
   useEffect(() => {
@@ -143,32 +197,121 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   }, [sessionLoading, entriesLoading]);
 
   // NEW: Validate schedule before allowing time operations
-  const validateSchedule = (action) => {
-    if (!todaySchedule) {
-      setScheduleError(`No schedule found for today. Please contact your supervisor to set up your schedule before ${action === 'in' ? 'clocking in' : 'clocking out'}.`);
+  const validateSchedule = useCallback(() => {
+    // Check if schedule query failed (error state)
+    if (scheduleQueryError) {
+      const errorMsg = 'Failed to load schedule. Please contact your supervisor.';
+      setScheduleError(errorMsg);
       return false;
     }
     
+    // Check if schedule data is still loading
+    if (todaySchedule === undefined) {
+      setScheduleError(null); // Clear any previous errors during loading
+      return false;
+    }
+    
+    // Check if schedule exists for today
+    if (!todaySchedule || Object.keys(todaySchedule).length === 0) {
+      const today = new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      const errorMsg = `No work schedule found for today (${today}). Please contact your supervisor to set up your schedule before clocking in/out.`;
+      setScheduleError(errorMsg);
+      return false;
+    }
+    
+    // Check if schedule has required fields
     if (!todaySchedule.scheduled_time_in || !todaySchedule.scheduled_time_out) {
-      setScheduleError(`Your schedule for today is incomplete. Please contact your supervisor to complete your schedule before ${action === 'in' ? 'clocking in' : 'clocking out'}.`);
+      const errorMsg = 'Your schedule is incomplete. Please contact your supervisor to complete your schedule before clocking in/out.';
+      setScheduleError(errorMsg);
       return false;
     }
     
-    // Clear any previous schedule errors
+    // Validate time constraints (optional - can be disabled if too restrictive)
+    if (validateTimeConstraints) {
+      const now = new Date();
+      const currentTime = now.getTime();
+      
+      // Parse scheduled time
+      const scheduledTime = new Date(todaySchedule.scheduled_time_in);
+      const scheduledTimeMs = scheduledTime.getTime();
+      const scheduledTimeStr = scheduledTime.toLocaleTimeString();
+      
+      // Extract start time hours for overnight shift comparison
+      const [startHours] = todaySchedule.scheduled_time_in.split(':').map(Number);
+      
+      // Calculate time difference in hours
+      const timeDiffHours = Math.abs(currentTime - scheduledTimeMs) / (1000 * 60 * 60);
+      
+      // If more than 1 hour early, prevent clock in
+      if (currentTime < scheduledTimeMs && timeDiffHours > 1) {
+        const earlyHours = timeDiffHours.toFixed(1);
+        const errorMsg = `You cannot clock in yet. Your scheduled time is ${scheduledTimeStr}, and you can only clock in up to 1 hour early. Current time: ${now.toLocaleTimeString()}`;
+        setScheduleError(errorMsg);
+        return false;
+      }
+      
+      // NEW: Check if current time is after scheduled end time
+      const scheduledEndTimeStr = todaySchedule.scheduled_time_out;
+      const [endHours, endMinutes] = scheduledEndTimeStr.split(':').map(Number);
+      
+      // Create scheduled end time for today
+      const scheduledEndTime = new Date(now);
+      scheduledEndTime.setHours(endHours, endMinutes, 0, 0);
+      const scheduledEndTimeMs = scheduledEndTime.getTime();
+      
+      // Handle overnight shifts
+      if (endHours < startHours) {
+        scheduledEndTime.setDate(scheduledEndTime.getDate() + 1);
+      }
+      
+      // If more than 2 hours after scheduled end time, prevent clock in
+      const timeAfterEndHours = (currentTime - scheduledEndTimeMs) / (1000 * 60 * 60);
+      if (currentTime > scheduledEndTimeMs && timeAfterEndHours > 2) {
+        const errorMsg = `Cannot clock in after your shift has ended. Your scheduled time was ${scheduledTimeStr} - ${scheduledEndTimeStr}. Latest allowed clock-in: ${new Date(scheduledEndTimeMs + (2 * 60 * 60 * 1000)).toLocaleTimeString()}`;
+        setScheduleError(errorMsg);
+        return false;
+      }
+      
+      // If more than 1 hour late but within 2 hours of end time, allow but warn
+      if (currentTime > scheduledTimeMs && timeDiffHours > 1) {
+        // Don't set error, just log warning
+        console.log(`User clocking in ${timeDiffHours.toFixed(1)} hours late, but within allowed window`);
+      }
+    }
+    
     setScheduleError(null);
     return true;
-  };
+  }, [todaySchedule, scheduleQueryError, validateTimeConstraints]);
 
-  // Check if time operations should be disabled
-  const isTimeOperationsDisabled = () => {
-    return !!scheduleError || !todaySchedule;
-  };
+  // NEW: Auto-validate schedule when component loads or schedule changes
+  useEffect(() => {
+    if (todaySchedule !== undefined || scheduleQueryError) {
+      validateSchedule();
+    }
+  }, [todaySchedule, scheduleQueryError, validateSchedule]);
+
+  // NEW: Check if time operations should be disabled
+  const isTimeOperationsDisabled = useCallback(() => {
+    // This prevents users from being completely blocked while we debug the schedule API issue
+    if (scheduleQueryError) {
+      return false;
+    }
+    
+    // Only disable if there's a schedule error OR if schedule is still loading
+    const disabled = !!scheduleError || todaySchedule === undefined;
+    return disabled;
+  }, [scheduleError, todaySchedule, scheduleQueryError]);
 
   const handleTimeIn = async () => {
     if (isTimeInSubmitting.current) return;
     
     // NEW: Validate schedule before allowing time in
-    if (!validateSchedule('in')) {
+    if (!validateSchedule()) {
       return;
     }
     
@@ -203,14 +346,14 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         setCurrentCoords({ latitude: null, longitude: null });
       }
       
-      const timeInData = {
-        employee_id: employee.id,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy
-      };
-      
-             await timeAPI.timeIn(timeInData);
+              const timeInData = {
+          employee_id: employee.id,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        };
+        
+        await timeAPI.clockIn(timeInData);
       
       // Invalidate and refetch queries to update the dashboard
       await queryClient.invalidateQueries({ queryKey: ['currentSession', employee?.id] });
@@ -233,7 +376,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     if (isTimeOutSubmitting.current) return;
     
     // NEW: Validate schedule before allowing time out
-    if (!validateSchedule('out')) {
+    if (!validateSchedule()) {
       return;
     }
     
@@ -268,14 +411,14 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         setCurrentCoords({ latitude: null, longitude: null });
       }
       
-      const timeOutData = {
-        employee_id: employee.id,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy
-      };
-      
-             await timeAPI.timeOut(timeOutData);
+              const timeOutData = {
+          employee_id: employee.id,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        };
+        
+        await timeAPI.clockOut(timeOutData);
       
       // Invalidate and refetch queries to update the dashboard
       await queryClient.invalidateQueries({ queryKey: ['currentSession', employee?.id] });
@@ -373,25 +516,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     return `${wholeHours}h ${minutes}m`;
   };
 
-  // Test function for total hours calculation
-  const testTotalHoursCalculation = (entries) => {
-    if (!entries || entries.length === 0) return 0;
-    
-    const sortedEntries = entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    const timeInEntries = sortedEntries.filter(e => e.entry_type === 'time_in');
-    const timeOutEntries = sortedEntries.filter(e => e.entry_type === 'time_out');
-    
-    let totalHours = 0;
-    for (let i = 0; i < Math.min(timeInEntries.length, timeOutEntries.length); i++) {
-      const timeIn = new Date(timeInEntries[i].timestamp);
-      const timeOut = new Date(timeOutEntries[i].timestamp);
-      const duration = (timeOut - timeIn) / (1000 * 60 * 60);
-      totalHours += duration;
-    }
-    
-    return totalHours;
-  };
-
   // Helper function to group time_in and time_out entries into sessions
   function groupTimeEntriesToSessions(entries) {
     // Sort entries by timestamp ascending
@@ -444,7 +568,6 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
 
   // Helper to format date/time in PH timezone
   const formatPHTime = (dateString) => {
-    if (!dateString) return '';
     return new Date(dateString).toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
   };
 
@@ -583,24 +706,59 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
               </div>
             </div>
             
-            {/* NEW: Schedule Error Display */}
-            {scheduleError && (
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 sm:p-6">
-                <div className="flex items-center space-x-2">
-                  <div className="text-orange-600">📅</div>
-                  <div>
-                    <p className="text-orange-800 font-medium">Schedule Required</p>
-                    <p className="text-orange-600 text-sm">{scheduleError}</p>
-                    <button
-                      onClick={() => refetchSchedule()}
-                      className="mt-2 text-orange-700 underline text-sm hover:text-orange-800"
-                    >
-                      Refresh Schedule
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+                         {/* NEW: Time Status Display */}
+             {todaySchedule && !scheduleError && (
+               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-6">
+                 <div className="flex items-center space-x-2">
+                   <div className="text-blue-600">⏰</div>
+                   <div>
+                     <p className="text-blue-800 font-medium">Clock-in Status</p>
+                     <div className="text-blue-600 text-sm space-y-1">
+                       <p>Your schedule: {todaySchedule.scheduled_time_in} - {todaySchedule.scheduled_time_out}</p>
+                       {(() => {
+                         try {
+                           const now = new Date();
+                           const scheduledTimeStr = todaySchedule.scheduled_time_in;
+                           const [hours, minutes] = scheduledTimeStr.split(':').map(Number);
+                           const scheduledTime = new Date(now);
+                           scheduledTime.setHours(hours, minutes, 0, 0);
+                           const timeDiffHours = (scheduledTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+                           
+                           if (timeDiffHours > 1) {
+                             return <p className="text-orange-600">⏳ You can clock in starting at {(scheduledTime.getTime() - 60 * 60 * 1000).toLocaleTimeString()}</p>;
+                           } else if (timeDiffHours > 0) {
+                             return <p className="text-green-600">✅ You can clock in now (within 1 hour of schedule)</p>;
+                           } else {
+                             return <p className="text-green-600">✅ You can clock in now</p>;
+                           }
+                         } catch (error) {
+                           return <p>Time validation unavailable</p>;
+                         }
+                       })()}
+                     </div>
+                   </div>
+                 </div>
+               </div>
+             )}
+             
+             {/* NEW: Schedule Error Display */}
+             {scheduleError && (
+               <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 sm:p-6">
+                 <div className="flex items-center space-x-2">
+                   <div className="text-orange-600">📅</div>
+                   <div>
+                     <p className="text-orange-800 font-medium">Schedule Issue</p>
+                     <p className="text-orange-600 text-sm">{scheduleError}</p>
+                     <button
+                       onClick={() => refetchSchedule()}
+                       className="mt-2 text-orange-700 underline text-sm hover:text-orange-800"
+                     >
+                       Refresh Schedule
+                     </button>
+                   </div>
+                 </div>
+               </div>
+             )}
 
             {/* NEW: Schedule Information Display */}
             {todaySchedule && !scheduleError && (

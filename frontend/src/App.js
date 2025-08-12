@@ -110,134 +110,151 @@ function App() {
               <Navbar user={user} employee={employee} onLogout={handleLogout} />
             </div>
           )}
-          <Routes>
-            <Route 
-              path="/" 
-              element={
-                isAuthenticated ? (
-                  (() => {
-                    // Check effective view mode (device detection + user preference)
-                    const isMobileView = shouldShowMobileView();
-                    const isFullView = shouldShowFullView();
-                    
-                    if (isMobileView) {
-                      // Show mobile dashboard for all users in mobile view
-                      return <MobileDashboard user={user} employee={employee} onLogout={handleLogout} />;
-                    } else {
-                      // Show appropriate full dashboard based on role
-                      if (employee?.role === 'team_leader') {
-                        return <Navigate to="/team-leader-dashboard" replace />;
+          
+          {/* Main content area with proper spacing from navbar */}
+          <div className="main-content" style={{ paddingTop: isAuthenticated && shouldShowNavbar() ? '80px' : '0' }}>
+            <Routes>
+              <Route 
+                path="/" 
+                element={
+                  isAuthenticated ? (
+                    (() => {
+                      // Enhanced view logic with automatic redirection
+                      const isMobileView = shouldShowMobileView();
+                      const isFullView = shouldShowFullView();
+                      
+                      if (isMobileView) {
+                        // Show mobile dashboard for all users in mobile view
+                        return <MobileDashboard user={user} employee={employee} onLogout={handleLogout} />;
                       } else {
-                        return <Navigate to="/employee-dashboard" replace />;
+                        // Show appropriate full dashboard based on role
+                        if (employee?.role === 'team_leader') {
+                          return <Navigate to="/team-leader-dashboard" replace />;
+                        } else {
+                          return <Navigate to="/employee-dashboard" replace />;
+                        }
                       }
-                    }
-                  })()
-                ) : (
-                  <Login onLogin={handleLogin} />
-                )
-              } 
-            />
-            {/* Mobile view route - accessible from any device */}
-            <Route 
-              path="/mobile-view"
-              element={
-                isAuthenticated ? (
-                  <MobileDashboard user={user} employee={employee} onLogout={handleLogout} />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
-            <Route 
-              path="/reports"
-              element={
-                isAuthenticated ? (
-                  <Reports user={user} onLogout={handleLogout} />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              } 
-            />
-            <Route 
-              path="/employee-dashboard"
-              element={
-                isAuthenticated ? (
-                  <EmployeeDashboard onLogout={handleLogout} user={user} employee={employee} />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              } 
-            />
-            <Route 
-              path="/team-leader-dashboard"
-              element={
-                isAuthenticated ? (
-                  <TeamLeaderDashboard onLogout={handleLogout} user={user} employee={employee} />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              } 
-            />
-            <Route
-              path="/team-leader-reports"
-              element={
-                isAuthenticated && employee?.role === 'team_leader' ? (
-                  <TeamLeaderReports user={user} employee={employee} onLogout={handleLogout} />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
-            <Route 
-              path="/employee/request"
-              element={
-                isAuthenticated && employee?.role === 'employee' ? (
-                  <EmployeeRequestPage user={user} employee={employee} />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
-            <Route
-              path="/approval"
-              element={
-                isAuthenticated && employee?.role === 'team_leader' ? (
-                  <ApprovalPage user={user} employee={employee} />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
-            <Route
-              path="/schedule"
-              element={
-                isAuthenticated ? (
-                  employee?.role === 'team_leader' ? (
-                    <TeamLeaderScheduleManagement />
+                    })()
                   ) : (
-                    <ScheduleManagement />
+                    <Login onLogin={handleLogin} />
                   )
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
-            <Route
-              path="/schedule-report"
-              element={
-                isAuthenticated ? (
-                  employee?.role === 'team_leader' ? (
-                    <TeamLeaderScheduleReport />
+                } 
+              />
+              {/* Mobile view route - accessible from any device */}
+              <Route 
+                path="/mobile-view"
+                element={
+                  isAuthenticated ? (
+                    <MobileDashboard user={user} employee={employee} onLogout={handleLogout} />
                   ) : (
-                    <ScheduleReport />
+                    <Navigate to="/" replace />
                   )
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+                }
+              />
+              <Route 
+                path="/reports"
+                element={
+                  isAuthenticated ? (
+                    <Reports user={user} onLogout={handleLogout} />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                } 
+              />
+              {/* Full dashboard routes with automatic mobile detection */}
+              <Route 
+                path="/employee-dashboard"
+                element={
+                  isAuthenticated ? (
+                    (() => {
+                      // Check if screen size is mobile - if so, redirect to mobile view
+                      if (shouldShowMobileView()) {
+                        return <Navigate to="/mobile-view" replace />;
+                      }
+                      return <EmployeeDashboard onLogout={handleLogout} user={user} employee={employee} />;
+                    })()
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                } 
+              />
+              <Route 
+                path="/team-leader-dashboard"
+                element={
+                  isAuthenticated ? (
+                    (() => {
+                      // Check if screen size is mobile - if so, redirect to mobile view
+                      if (shouldShowMobileView()) {
+                        return <Navigate to="/mobile-view" replace />;
+                      }
+                      return <TeamLeaderDashboard onLogout={handleLogout} user={user} employee={employee} />;
+                    })()
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                } 
+              />
+              <Route
+                path="/team-leader-reports"
+                element={
+                  isAuthenticated && employee?.role === 'team_leader' ? (
+                    <TeamLeaderReports user={user} employee={employee} onLogout={handleLogout} />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+              <Route 
+                path="/employee/request"
+                element={
+                  isAuthenticated && employee?.role === 'employee' ? (
+                    <EmployeeRequestPage user={user} employee={employee} />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+              <Route
+                path="/approval"
+                element={
+                  isAuthenticated && employee?.role === 'team_leader' ? (
+                    <ApprovalPage user={user} employee={employee} />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+              <Route
+                path="/schedule"
+                element={
+                  isAuthenticated ? (
+                    employee?.role === 'team_leader' ? (
+                      <TeamLeaderScheduleManagement />
+                    ) : (
+                      <ScheduleManagement />
+                    )
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+              <Route
+                path="/schedule-report"
+                element={
+                  isAuthenticated ? (
+                    employee?.role === 'team_leader' ? (
+                      <TeamLeaderScheduleReport />
+                    ) : (
+                      <ScheduleReport />
+                    )
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
         </div>
       </Router>
     </QueryClientProvider>
