@@ -352,7 +352,7 @@ class EmployeeScheduleSerializer(serializers.ModelSerializer):
             'is_night_shift', 'template_used', 'notes', 'created_at', 'updated_at',
             'employee_name', 'template_name', 'formatted_time', 'duration_hours'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'employee']
+        read_only_fields = ['created_at', 'updated_at']  # Remove 'employee' from read-only fields
 
     def validate(self, data):
         # Get the request and user
@@ -361,6 +361,16 @@ class EmployeeScheduleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Request context not available.")
         
         user = request.user
+        
+        # Add debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Serializer validation - User: {user.username}")
+        logger.info(f"Data to validate: {data}")
+        logger.info(f"User is staff: {user.is_staff}")
+        logger.info(f"User has employee profile: {hasattr(user, 'employee_profile')}")
+        if hasattr(user, 'employee_profile'):
+            logger.info(f"User role: {user.employee_profile.role}")
         
         # Staff users can manage any schedules
         if user.is_staff:
@@ -379,7 +389,11 @@ class EmployeeScheduleSerializer(serializers.ModelSerializer):
             return data
         
         # Regular employees can only manage their own schedules
-        # Since employee field is read-only, we don't need to modify it
+        # IMPORTANT: Ensure employee field is set to current user for regular employees
+        if employee.role == 'employee':
+            data['employee'] = employee.id
+            logger.info(f"Setting employee field to current user: {employee.id}")
+        
         return data
 
 
@@ -412,11 +426,13 @@ class BulkScheduleSerializer(serializers.Serializer):
     flip_am_pm = serializers.BooleanField(default=False)
     overwrite_existing = serializers.BooleanField(default=False)
     notes = serializers.CharField(required=False, allow_blank=True)
+    employee = serializers.IntegerField(required=False, help_text="Database ID of the employee to create schedules for")
 
 class CheckExistingSchedulesSerializer(serializers.Serializer):
     start_date = serializers.DateField()
     end_date = serializers.DateField()
     weekdays_only = serializers.BooleanField(default=False)
+    employee = serializers.IntegerField(required=False, help_text="Database ID of the employee to check schedules for")
 
     def validate(self, data):
         if data['start_date'] > data['end_date']:
