@@ -1521,6 +1521,16 @@ class TimeInOutAPIView(APIView):
             try:
                 from datetime import datetime, timedelta
                 
+                # Validate schedule data before calculation
+                if not schedule.scheduled_time_in:
+                    logger.error(f"Schedule validation failed for employee {employee.employee_id}: scheduled_time_in is None")
+                    return Response({
+                        'error': 'Schedule validation failed',
+                        'details': 'Your schedule start time is missing. Please contact your supervisor.',
+                        'employee_id': employee.employee_id,
+                        'action': action
+                    }, status=400)
+                
                 # Calculate earliest allowed time (1 hour before scheduled start)
                 # Rule: Cannot clock in more than 1 hour before scheduled start time
                 # For night shifts: applies to same calendar day as schedule date
@@ -1552,19 +1562,30 @@ class TimeInOutAPIView(APIView):
                     logger = logging.getLogger(__name__)
                     logger.info(f"Clock-in validation passed for employee {employee.employee_id}: Current: {current_time}, Earliest allowed: {earliest_allowed_time}, Scheduled: {schedule.scheduled_time_in}")
                         
+            except (ValueError, TypeError, AttributeError) as e:
+                # Handle specific validation errors with clear messages
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Schedule validation error for employee {employee.employee_id}: {e}")
+                return Response({
+                    'error': 'Schedule validation error',
+                    'details': 'There was an issue with your schedule data. Please contact your supervisor.',
+                    'employee_id': employee.employee_id,
+                    'action': action
+                }, status=400)
             except Exception as e:
-                # CRITICAL: Only allow bypass for Team Leaders, block for regular employees
+                # Handle unexpected errors - only allow bypass for Team Leaders
                 if hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader':
                     # Log Team Leader bypass for audit purposes
                     import logging
                     logger = logging.getLogger(__name__)
-                    logger.warning(f"Team Leader {user.username} bypass due to validation error: {e}")
+                    logger.warning(f"Team Leader {user.username} bypass due to unexpected validation error: {e}")
                     # Allow Team Leader to proceed with caution
                 else:
-                    # Block regular employees on any validation error for security
+                    # Block regular employees on unexpected validation errors for security
                     import logging
                     logger = logging.getLogger(__name__)
-                    logger.error(f"CRITICAL: Validation error for regular employee {employee.employee_id}: {e}")
+                    logger.error(f"CRITICAL: Unexpected validation error for regular employee {employee.employee_id}: {e}")
                     return Response({
                         'error': 'Time validation failed. Clock-in blocked for security.',
                         'details': 'Please contact your supervisor if you believe this is an error.',
@@ -1585,6 +1606,17 @@ class TimeInOutAPIView(APIView):
             # NEW: Check for late time-out (after scheduled shift has ended)
             try:
                 from datetime import datetime, timedelta
+                
+                # Validate schedule data before calculation
+                if not schedule.scheduled_time_out:
+                    logger.error(f"Schedule validation failed for employee {employee.employee_id}: scheduled_time_out is None")
+                    return Response({
+                        'error': 'Schedule validation failed',
+                        'details': 'Your schedule end time is missing. Please contact your supervisor.',
+                        'employee_id': employee.employee_id,
+                        'action': action
+                    }, status=400)
+                
                 scheduled_end_time = datetime.combine(today, schedule.scheduled_time_out)
                 # Handle overnight shifts
                 if schedule.scheduled_time_out < schedule.scheduled_time_in:
@@ -1604,19 +1636,30 @@ class TimeInOutAPIView(APIView):
                             'latest_allowed': latest_allowed_time.strftime("%I:%M %p")
                         }, status=400)
                         
+            except (ValueError, TypeError, AttributeError) as e:
+                # Handle specific validation errors with clear messages
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Schedule validation error for employee {employee.employee_id}: {e}")
+                return Response({
+                    'error': 'Schedule validation error',
+                    'details': 'There was an issue with your schedule data. Please contact your supervisor.',
+                    'employee_id': employee.employee_id,
+                        'action': action
+                }, status=400)
             except Exception as e:
-                # CRITICAL: Only allow bypass for Team Leaders, block for regular employees
+                # Handle unexpected errors - only allow bypass for Team Leaders
                 if hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader':
                     # Log Team Leader bypass for audit purposes
                     import logging
                     logger = logging.getLogger(__name__)
-                    logger.warning(f"Team Leader {user.username} bypass due to validation error: {e}")
+                    logger.warning(f"Team Leader {user.username} bypass due to unexpected validation error: {e}")
                     # Allow Team Leader to proceed with caution
                 else:
-                    # Block regular employees on any validation error for security
+                    # Block regular employees on unexpected validation errors for security
                     import logging
                     logger = logging.getLogger(__name__)
-                    logger.error(f"CRITICAL: Validation error for regular employee {employee.employee_id}: {e}")
+                    logger.error(f"CRITICAL: Unexpected validation error for regular employee {employee.employee_id}: {e}")
                     return Response({
                         'error': 'Time validation failed. Clock-out blocked for security.',
                         'details': 'Please contact your supervisor if you believe this is an error.',
@@ -1656,6 +1699,16 @@ class TimeInOutAPIView(APIView):
                     try:
                         from datetime import datetime, timedelta
                         
+                        # Validate schedule data before calculation
+                        if not schedule.scheduled_time_in:
+                            logger.error(f"Schedule validation failed for team leader {user.username}: scheduled_time_in is None")
+                            return Response({
+                                'error': 'Schedule validation failed',
+                                'details': 'Your schedule start time is missing. Please contact your supervisor.',
+                                'employee_id': employee.employee_id,
+                                'action': action
+                            }, status=400)
+                        
                         # Calculate earliest allowed time (1 hour before scheduled start)
                         # Rule: Cannot clock in more than 1 hour before scheduled start time
                         # For night shifts: applies to same calendar day as schedule date
@@ -1673,6 +1726,17 @@ class TimeInOutAPIView(APIView):
                         
                         # Note: No late clock-in restriction - team leaders can clock in at any time after earliest allowed
                             
+                    except (ValueError, TypeError, AttributeError) as e:
+                        # Handle specific validation errors with clear messages
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Schedule validation error for team leader {user.username}: {e}")
+                        return Response({
+                            'error': 'Schedule validation error',
+                            'details': 'There was an issue with your schedule data. Please contact your supervisor.',
+                            'employee_id': employee.employee_id,
+                            'action': action
+                        }, status=400)
                     except Exception as e:
                         # Team Leader validation error - log warning but allow to proceed
                         import logging
@@ -1684,6 +1748,17 @@ class TimeInOutAPIView(APIView):
                 elif action == 'time-out':
                     try:
                         from datetime import datetime, timedelta
+                        
+                        # Validate schedule data before calculation
+                        if not schedule.scheduled_time_out:
+                            logger.error(f"Schedule validation failed for team leader {user.username}: scheduled_time_out is None")
+                            return Response({
+                                'error': 'Schedule validation failed',
+                                'details': 'Your schedule end time is missing. Please contact your supervisor.',
+                                'employee_id': employee.employee_id,
+                                'action': action
+                            }, status=400)
+                        
                         scheduled_end_time = datetime.combine(today, schedule.scheduled_time_out)
                         # Handle overnight shifts
                         if schedule.scheduled_time_out < schedule.scheduled_time_in:
@@ -1701,6 +1776,17 @@ class TimeInOutAPIView(APIView):
                                 'latest_allowed': latest_allowed_time.strftime("%I:%M %p")
                             }, status=400)
                             
+                    except (ValueError, TypeError, AttributeError) as e:
+                        # Handle specific validation errors with clear messages
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Schedule validation error for team leader {user.username}: {e}")
+                        return Response({
+                            'error': 'Schedule validation error',
+                            'details': 'There was an issue with your schedule data. Please contact your supervisor.',
+                            'employee_id': employee.employee_id,
+                            'action': action
+                        }, status=400)
                     except Exception as e:
                         # Team Leader validation error - log warning but allow to proceed
                         import logging
