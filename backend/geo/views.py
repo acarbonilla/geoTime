@@ -1517,25 +1517,40 @@ class TimeInOutAPIView(APIView):
                 if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
                     return Response({'error': 'Already clocked in. Please clock out first.'}, status=400)
             
-            # Check for early time-in restriction (more than employee's early_login_restriction_hours before scheduled time)
+            # Check for early time-in restriction (1 hour before scheduled start time)
             try:
                 from datetime import datetime, timedelta
-                restriction_hours = float(employee.early_login_restriction_hours or 1.0)
+                
+                # Calculate earliest allowed time (1 hour before scheduled start)
+                # Rule: Cannot clock in more than 1 hour before scheduled start time
+                # For night shifts: applies to same calendar day as schedule date
+                restriction_hours = 1.0
                 earliest_allowed_time = datetime.combine(today, schedule.scheduled_time_in) - timedelta(hours=restriction_hours)
+                
                 current_time = timezone.now()
                 
                 # For team leaders with custom timestamp, we'll check after timestamp is parsed
                 if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
                     if current_time < earliest_allowed_time:
+                        # Log validation failure for audit purposes
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.warning(f"Clock-in validation failed for employee {employee.employee_id}: Too early. Current: {current_time}, Earliest allowed: {earliest_allowed_time}, Scheduled: {schedule.scheduled_time_in}")
+                        
                         return Response({
                             'error': f'Cannot clock in more than {restriction_hours} hour{"s" if restriction_hours != 1 else ""} before scheduled time. Earliest allowed time: {earliest_allowed_time.strftime("%I:%M %p")}',
                             'scheduled_time': schedule.scheduled_time_in.strftime("%I:%M %p"),
-                            'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p")
+                            'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p"),
+                            'rule': 'Early clock-in restriction: 1 hour before scheduled start time'
                         }, status=400)
                     
-                    # REMOVED: Late time-in restriction based on ScheduleOut + 2 hours
-                    # Now clock-in validation is ONLY based on ScheduleIn time (1 hour before)
-                    # Users can clock in at any time after the earliest allowed time (1 hour before ScheduleIn)
+                    # Note: No late clock-in restriction - users can clock in at any time after earliest allowed
+                    # This provides maximum flexibility for late arrivals while maintaining early arrival control
+                    
+                    # Log successful validation for audit purposes
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"Clock-in validation passed for employee {employee.employee_id}: Current: {current_time}, Earliest allowed: {earliest_allowed_time}, Scheduled: {schedule.scheduled_time_in}")
                         
             except Exception as e:
                 # CRITICAL: Only allow bypass for Team Leaders, block for regular employees
@@ -1640,8 +1655,11 @@ class TimeInOutAPIView(APIView):
                 if action == 'time-in':
                     try:
                         from datetime import datetime, timedelta
-                        # Use the already-fetched schedule instead of querying again
-                        restriction_hours = float(employee.early_login_restriction_hours or 1.0)
+                        
+                        # Calculate earliest allowed time (1 hour before scheduled start)
+                        # Rule: Cannot clock in more than 1 hour before scheduled start time
+                        # For night shifts: applies to same calendar day as schedule date
+                        restriction_hours = 1.0
                         earliest_allowed_time = datetime.combine(today, schedule.scheduled_time_in) - timedelta(hours=restriction_hours)
                         earliest_allowed_time = pytz.UTC.localize(earliest_allowed_time)
                         
@@ -1649,12 +1667,11 @@ class TimeInOutAPIView(APIView):
                             return Response({
                                 'error': f'Cannot clock in more than {restriction_hours} hour{"s" if restriction_hours != 1 else ""} before scheduled time. Earliest allowed time: {earliest_allowed_time.strftime("%I:%M %p")}',
                                 'scheduled_time': schedule.scheduled_time_in.strftime("%I:%M %p"),
-                                'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p")
+                                'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p"),
+                                'rule': 'Early clock-in restriction: 1 hour before scheduled start time'
                             }, status=400)
                         
-                        # REMOVED: Late time-in restriction for team leaders with custom timestamp
-                        # Now clock-in validation is ONLY based on ScheduleIn time (1 hour before)
-                        # Team leaders can clock in at any time after the earliest allowed time
+                        # Note: No late clock-in restriction - team leaders can clock in at any time after earliest allowed
                             
                     except Exception as e:
                         # Team Leader validation error - log warning but allow to proceed

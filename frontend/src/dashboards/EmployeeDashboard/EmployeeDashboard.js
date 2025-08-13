@@ -236,13 +236,12 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       const now = new Date();
       const currentTime = now.getTime();
       
-      // Parse scheduled time
+      // Rule: Cannot clock in more than 1 hour before scheduled start time
+      // For night shifts: applies to same calendar day as schedule date
       const scheduledTime = new Date(todaySchedule.scheduled_time_in);
       const scheduledTimeMs = scheduledTime.getTime();
-      const scheduledTimeStr = scheduledTime.toLocaleTimeString();
       
-      // Extract start time hours for overnight shift comparison
-      const [startHours] = todaySchedule.scheduled_time_in.split(':').map(Number);
+      const scheduledTimeStr = scheduledTime.toLocaleTimeString();
       
       // Calculate time difference in hours
       const timeDiffHours = Math.abs(currentTime - scheduledTimeMs) / (1000 * 60 * 60);

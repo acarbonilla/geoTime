@@ -236,7 +236,8 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       const scheduledTimeStr = todaySchedule.scheduled_time_in;
       const [hours, minutes] = scheduledTimeStr.split(':').map(Number);
       
-      // Create scheduled time for today
+      // Rule: Cannot clock in more than 1 hour before scheduled start time
+      // For night shifts: applies to same calendar day as schedule date
       const scheduledTime = new Date(now);
       scheduledTime.setHours(hours, minutes, 0, 0);
       const scheduledTimeMs = scheduledTime.getTime();
