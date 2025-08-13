@@ -262,7 +262,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       scheduledEndTime.setHours(endHours, endMinutes, 0, 0);
       const scheduledEndTimeMs = scheduledEndTime.getTime();
       
-      // Handle overnight shifts
+      // Handle overnight shifts - compare with start time hours
       if (endHours < hours) {
         scheduledEndTime.setDate(scheduledEndTime.getDate() + 1);
       }

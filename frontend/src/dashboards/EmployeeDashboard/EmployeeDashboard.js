@@ -263,7 +263,8 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       scheduledEndTime.setHours(endHours, endMinutes, 0, 0);
       const scheduledEndTimeMs = scheduledEndTime.getTime();
       
-      // Handle overnight shifts
+      // Handle overnight shifts - compare with start time hours
+      const [startHours] = scheduledTimeStr.split(':').map(Number);
       if (endHours < startHours) {
         scheduledEndTime.setDate(scheduledEndTime.getDate() + 1);
       }
