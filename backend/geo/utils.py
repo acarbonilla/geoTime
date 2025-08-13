@@ -314,9 +314,9 @@ def calculate_daily_summary(employee, date):
         event_time__date=date
     ).first()
     
-    # FIXED: Handle cross-day time entries (e.g., night shifts)
-    # If no time out found for this date, check if there's one on the next day
+    # ENHANCED: Comprehensive night shift time out detection
     if not time_out_entry:
+        # Strategy 1: Check next day for time out (common night shift pattern)
         next_day = date + timedelta(days=1)
         next_day_time_out = TimeEntry.objects.filter(
             employee=employee,
@@ -325,9 +325,51 @@ def calculate_daily_summary(employee, date):
         ).first()
         
         if next_day_time_out:
-            # Check if this time out should actually be for the current date
-            # This handles cases where time out is stored on the wrong date
-            time_out_entry = next_day_time_out
+            # Verify this time out belongs to the current day's shift
+            # Check if time out is before 6 AM (typical night shift end time)
+            if next_day_time_out.event_time.time().hour < 6:
+                time_out_entry = next_day_time_out
+        
+        # Strategy 2: Check previous day for time out (if this is a time out day)
+        if not time_out_entry:
+            prev_day = date - timedelta(days=1)
+            prev_day_time_in = TimeEntry.objects.filter(
+                employee=employee,
+                entry_type='time_in',
+                event_time__date=prev_day
+            ).first()
+            
+            if prev_day_time_in and prev_day_time_in.event_time.time().hour >= 18:  # Started at 6 PM or later
+                # This might be a night shift that ended today
+                current_day_time_out = TimeEntry.objects.filter(
+                    employee=employee,
+                    entry_type='time_out',
+                    event_time__date=date
+                ).first()
+                
+                if current_day_time_out and current_day_time_out.event_time.time().hour < 6:
+                    # This time out belongs to the previous day's night shift
+                    # We need to update the previous day's summary, not this one
+                    pass  # This will be handled when processing the previous day
+        
+        # Strategy 3: Look for time out within a reasonable time window
+        if not time_out_entry:
+            # Search for time out entries within 12 hours after time in
+            if time_in_entry and time_in_entry.event_time:
+                time_in_dt = time_in_entry.event_time
+                # Look for time out within 12 hours after time in
+                time_window_end = time_in_dt + timedelta(hours=12)
+                
+                # Search in a broader range
+                potential_time_out = TimeEntry.objects.filter(
+                    employee=employee,
+                    entry_type='time_out',
+                    event_time__gte=time_in_dt,
+                    event_time__lte=time_window_end
+                ).order_by('event_time').first()
+                
+                if potential_time_out:
+                    time_out_entry = potential_time_out
     
     # Get scheduled times for this date
     try:
@@ -897,6 +939,42 @@ def generate_daily_summaries_for_period(start_date, end_date, employee=None):
     }
 
 
+def regenerate_daily_summaries_for_period(employee, start_date, end_date):
+    """
+    Regenerate daily summaries for a specific period to fix missing time out data.
+    This is useful for fixing existing data after backend improvements.
+    """
+    from datetime import date, timedelta
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        logger.info(f"Regenerating daily summaries for employee {employee.employee_id} from {start_date} to {end_date}")
+        
+        current_date = start_date
+        summaries_updated = 0
+        
+        while current_date <= end_date:
+            try:
+                # Regenerate the daily summary for this date
+                summary = generate_daily_summary_for_employee(employee, current_date)
+                if summary:
+                    summaries_updated += 1
+                    logger.info(f"Updated summary for {current_date}")
+            except Exception as e:
+                logger.warning(f"Error updating summary for {current_date}: {str(e)}")
+            
+            current_date += timedelta(days=1)
+        
+        logger.info(f"Successfully updated {summaries_updated} daily summaries")
+        return summaries_updated
+        
+    except Exception as e:
+        logger.error(f"Error in regenerate_daily_summaries_for_period: {str(e)}", exc_info=True)
+        raise
+
+
 def get_employee_time_attendance_report(employee, start_date, end_date):
     """
     Get a complete TIME ATTENDANCE report for an employee.
@@ -958,6 +1036,48 @@ def get_employee_time_attendance_report(employee, start_date, end_date):
             
             # Create report record with safe property access
             try:
+                # ENHANCED: Include TimeEntry data directly for better time out handling
+                time_entries_data = []
+                if summary:
+                    # Get all time entries for this date
+                    from .models import TimeEntry
+                    date_entries = TimeEntry.objects.filter(
+                        employee=employee,
+                        event_time__date=current_date
+                    ).order_by('event_time')
+                    
+                    for entry in date_entries:
+                        time_entries_data.append({
+                            'entry_type': entry.entry_type,
+                            'event_time': entry.event_time.strftime('%H:%M:%S') if entry.event_time else None,
+                            'timestamp': entry.timestamp.strftime('%H:%M:%S') if entry.timestamp else None,
+                            'notes': entry.notes or ''
+                        })
+                    
+                    # Also check for time out entries that might belong to this day's shift
+                    if summary.time_in and not summary.time_out:
+                        # Look for time out within reasonable time window
+                        from datetime import datetime, timedelta
+                        if summary.time_in:
+                            time_in_dt = datetime.combine(current_date, summary.time_in)
+                            time_window_end = time_in_dt + timedelta(hours=12)
+                            
+                            # Search for time out entries within 12 hours
+                            potential_time_out = TimeEntry.objects.filter(
+                                employee=employee,
+                                entry_type='time_out',
+                                event_time__gte=time_in_dt,
+                                event_time__lte=time_window_end
+                            ).order_by('event_time').first()
+                            
+                            if potential_time_out:
+                                time_entries_data.append({
+                                    'entry_type': 'time_out',
+                                    'event_time': potential_time_out.event_time.strftime('%H:%M:%S'),
+                                    'timestamp': potential_time_out.timestamp.strftime('%H:%M:%S'),
+                                    'notes': 'Found via time window search'
+                                })
+                
                 report_data.append({
                     'date': current_date,
                     'day': current_date.strftime('%a'),
@@ -970,6 +1090,7 @@ def get_employee_time_attendance_report(employee, start_date, end_date):
                     'late_minutes': summary.formatted_late_minutes if summary else '-',
                     'undertime_minutes': summary.formatted_undertime_minutes if summary else '-',
                     'night_differential': summary.formatted_night_differential if summary else '-',
+                    'time_entries': time_entries_data,  # NEW: Include TimeEntry data
                 })
             except Exception as e:
                 logger.warning(f"Error creating report record for {current_date}: {str(e)}")
