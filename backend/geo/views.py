@@ -1521,6 +1521,10 @@ class TimeInOutAPIView(APIView):
                 if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
                     return Response({'error': 'Already clocked in. Please clock out first.'}, status=400)
             
+            # TEMPORARY: Skip validation to test if this is causing the 500 error
+            # Uncomment the next line to bypass validation temporarily
+            # return Response({'message': 'Validation bypassed for testing'}, status=200)
+            
             # Check for early time-in restriction (1 hour before scheduled start time)
             try:
                 from datetime import datetime, timedelta
@@ -1539,9 +1543,24 @@ class TimeInOutAPIView(APIView):
                 # Rule: Cannot clock in more than 1 hour before scheduled start time
                 # For night shifts: applies to same calendar day as schedule date
                 restriction_hours = 1.0
-                earliest_allowed_time = datetime.combine(today, schedule.scheduled_time_in) - timedelta(hours=restriction_hours)
+                
+                # Debug logging to identify the issue
+                logger.info(f"Debug: Employee {employee.employee_id}, Schedule: {schedule.scheduled_time_in}, Type: {type(schedule.scheduled_time_in)}")
+                
+                try:
+                    earliest_allowed_time = datetime.combine(today, schedule.scheduled_time_in) - timedelta(hours=restriction_hours)
+                    logger.info(f"Debug: Calculated earliest_allowed_time: {earliest_allowed_time}")
+                except Exception as calc_error:
+                    logger.error(f"Error calculating earliest allowed time: {calc_error}")
+                    return Response({
+                        'error': 'Schedule time calculation error',
+                        'details': 'There was an issue calculating your schedule time. Please contact your supervisor.',
+                        'employee_id': employee.employee_id,
+                        'action': action
+                    }, status=400)
                 
                 current_time = timezone.now()
+                logger.info(f"Debug: Current time: {current_time}")
                 
                 # For team leaders with custom timestamp, we'll check after timestamp is parsed
                 if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
