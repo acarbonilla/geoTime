@@ -1533,21 +1533,9 @@ class TimeInOutAPIView(APIView):
                             'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p")
                         }, status=400)
                     
-                    # NEW: Check for late time-in (after scheduled shift has ended)
-                    scheduled_end_time = datetime.combine(today, schedule.scheduled_time_out)
-                    # Handle overnight shifts
-                    if schedule.scheduled_time_out < schedule.scheduled_time_in:
-                        scheduled_end_time += timedelta(days=1)
-                    
-                    # Allow clock-in up to 2 hours after scheduled end time for flexibility
-                    latest_allowed_time = scheduled_end_time + timedelta(hours=2)
-                    
-                    if current_time > latest_allowed_time:
-                        return Response({
-                            'error': f'Cannot clock in after your shift has ended. Your scheduled time was {schedule.scheduled_time_in.strftime("%I:%M %p")} - {schedule.scheduled_time_out.strftime("%I:%M %p")}. Latest allowed clock-in: {latest_allowed_time.strftime("%I:%M %p")}',
-                            'scheduled_time': f"{schedule.scheduled_time_in.strftime('%I:%M %p')} - {schedule.scheduled_time_out.strftime('%I:%M %p')}",
-                            'latest_allowed': latest_allowed_time.strftime("%I:%M %p")
-                        }, status=400)
+                    # REMOVED: Late time-in restriction based on ScheduleOut + 2 hours
+                    # Now clock-in validation is ONLY based on ScheduleIn time (1 hour before)
+                    # Users can clock in at any time after the earliest allowed time (1 hour before ScheduleIn)
                         
             except Exception as e:
                 # CRITICAL: Only allow bypass for Team Leaders, block for regular employees
@@ -1664,23 +1652,9 @@ class TimeInOutAPIView(APIView):
                                 'earliest_allowed': earliest_allowed_time.strftime("%I:%M %p")
                             }, status=400)
                         
-                        # NEW: Check for late time-in for team leaders with custom timestamp
-                        scheduled_end_time = datetime.combine(today, schedule.scheduled_time_out)
-                        # Handle overnight shifts
-                        if schedule.scheduled_time_out < schedule.scheduled_time_in:
-                            scheduled_end_time += timedelta(days=1)
-                        scheduled_end_time = pytz.UTC.localize(scheduled_end_time)
-                        
-                        # Allow clock-in up to 2 hours after scheduled end time for flexibility
-                        latest_allowed_time = scheduled_end_time + timedelta(hours=2)
-                        latest_allowed_time = pytz.UTC.localize(latest_allowed_time)
-                        
-                        if entry_timestamp > latest_allowed_time:
-                            return Response({
-                                'error': f'Cannot clock in after your shift has ended. Your scheduled time was {schedule.scheduled_time_in.strftime("%I:%M %p")} - {schedule.scheduled_time_out.strftime("%I:%M %p")}. Latest allowed clock-in: {latest_allowed_time.strftime("%I:%M %p")}',
-                                'scheduled_time': f"{schedule.scheduled_time_in.strftime('%I:%M %p')} - {schedule.scheduled_time_out.strftime('%I:%M %p')}",
-                                'latest_allowed': latest_allowed_time.strftime("%I:%M %p")
-                            }, status=400)
+                        # REMOVED: Late time-in restriction for team leaders with custom timestamp
+                        # Now clock-in validation is ONLY based on ScheduleIn time (1 hour before)
+                        # Team leaders can clock in at any time after the earliest allowed time
                             
                     except Exception as e:
                         # Team Leader validation error - log warning but allow to proceed

@@ -778,9 +778,22 @@ def generate_daily_time_summary_from_entries(employee, start_date, end_date=None
                 summary.scheduled_time_out = None
                 summary.schedule_reference = None
             
-            # Determine status
+            # Determine status - FIXED LOGIC to prevent incorrect 'absent' status
             from datetime import date
             today = date.today()
+            
+            # Debug logging for status determination
+            debug_info = {
+                'date': current_date,
+                'employee': employee.full_name,
+                'has_time_in': bool(time_in),
+                'has_time_out': bool(time_out),
+                'has_schedule': bool(schedule),
+                'scheduled_in': summary.scheduled_time_in,
+                'scheduled_out': summary.scheduled_time_out,
+                'is_weekend': summary.is_weekend,
+                'is_future': current_date > today
+            }
             
             if time_in and time_out:
                 summary.status = 'present'
@@ -793,20 +806,23 @@ def generate_daily_time_summary_from_entries(employee, start_date, end_date=None
             elif time_in and not time_out:
                 summary.status = 'present'  # Still working - not half_day
             elif not time_in and not time_out:
+                # No time entries - determine status based on date and schedule
                 if current_date > today:
-                    # Future date - check if there's a schedule
-                    if summary.scheduled_time_in and summary.scheduled_time_out:
+                    # Future date
+                    if schedule and summary.scheduled_time_in and summary.scheduled_time_out:
                         summary.status = 'not_scheduled'  # Future date with schedule - scheduled but not yet worked
                     else:
                         summary.status = 'not_scheduled'  # Future date with no schedule
                 elif summary.is_weekend:
                     summary.status = 'weekend'
                 else:
-                    # Current or past date - check if there's a schedule
-                    if summary.scheduled_time_in and summary.scheduled_time_out:
-                        summary.status = 'absent'  # Past date with schedule but didn't show up
+                    # Current or past date - CRITICAL FIX HERE
+                    if schedule and summary.scheduled_time_in and summary.scheduled_time_out:
+                        # Has schedule but no time entries = absent
+                        summary.status = 'absent'
                     else:
-                        summary.status = 'not_scheduled'  # No schedule at all
+                        # No schedule = not_scheduled (not absent!)
+                        summary.status = 'not_scheduled'
             
             # Detect breaks and set total_break_minutes before calculating metrics
             if time_in and time_out and len(time_entries) > 2:
@@ -1084,3 +1100,132 @@ def get_employee_schedule_report(employee, start_date, end_date):
     except Exception as e:
         logger.error(f"Error in get_employee_schedule_report: {str(e)}", exc_info=True)
         raise 
+
+
+def _validate_status_assignment(summary, debug_info):
+    """
+    Validate that the status assignment is correct and log any anomalies.
+    This helps debug issues with incorrect status assignments.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Check for potential issues
+    issues = []
+    
+    # Issue 1: Absent status without schedule
+    if summary.status == 'absent' and not debug_info['has_schedule']:
+        issues.append("ABSENT status assigned but no schedule exists")
+    
+    # Issue 2: Not scheduled status with schedule
+    if summary.status == 'not_scheduled' and debug_info['has_schedule']:
+        issues.append("NOT_SCHEDULED status assigned but schedule exists")
+    
+    # Issue 3: Weekend status but not actually weekend
+    if summary.status == 'weekend' and not debug_info['is_weekend']:
+        issues.append("WEEKEND status assigned but date is not weekend")
+    
+    # Issue 4: Present status without time entries
+    if summary.status == 'present' and not debug_info['has_time_in']:
+        issues.append("PRESENT status assigned but no time_in entry")
+    
+    if issues:
+        logger.warning(f"Status validation issues for {debug_info['employee']} on {debug_info['date']}: {', '.join(issues)}")
+        logger.warning(f"Debug info: {debug_info}")
+        logger.warning(f"Final status: {summary.status}")
+    
+    return len(issues) == 0 
+
+
+def recalculate_incorrect_statuses(start_date=None, end_date=None, employee=None):
+    """
+    Recalculate and fix existing DailyTimeSummary records that have incorrect status assignments.
+    This is useful after fixing the bug to correct existing data.
+    
+    Args:
+        start_date: Start date for recalculation (defaults to 30 days ago)
+        end_date: End date for recalculation (defaults to today)
+        employee: Specific employee (optional, if None processes all employees)
+    
+    Returns:
+        dict: Summary of fixed records
+    """
+    from datetime import date, timedelta
+    from .models import Employee, DailyTimeSummary
+    
+    if start_date is None:
+        start_date = date.today() - timedelta(days=30)
+    if end_date is None:
+        end_date = date.today()
+    
+    if employee:
+        employees = [employee]
+    else:
+        employees = Employee.objects.filter(employment_status='active')
+    
+    fixed_count = 0
+    total_processed = 0
+    
+    for emp in employees:
+        # Get summaries that might have incorrect statuses
+        summaries = DailyTimeSummary.objects.filter(
+            employee=emp,
+            date__gte=start_date,
+            date__lte=end_date
+        ).exclude(status='present').exclude(status='late')  # Only check non-present statuses
+        
+        for summary in summaries:
+            total_processed += 1
+            original_status = summary.status
+            
+            # Recalculate status based on current logic
+            try:
+                # Get schedule for this date
+                try:
+                    schedule = emp.schedules.get(date=summary.date)
+                    has_schedule = True
+                except:
+                    has_schedule = False
+                
+                # Get time entries for this date
+                time_entries = emp.time_entries.filter(
+                    timestamp__date=summary.date
+                ).order_by('timestamp')
+                
+                has_time_in = time_entries.filter(entry_type='time_in').exists()
+                has_time_out = time_entries.filter(entry_type='time_out').exists()
+                
+                # Determine correct status
+                if has_time_in and has_time_out:
+                    new_status = 'present'
+                elif has_time_in and not has_time_out:
+                    new_status = 'present'
+                elif not has_time_in and not has_time_out:
+                    if summary.date > date.today():
+                        new_status = 'not_scheduled'
+                    elif summary.is_weekend:
+                        new_status = 'weekend'
+                    else:
+                        if has_schedule:
+                            new_status = 'absent'
+                        else:
+                            new_status = 'not_scheduled'
+                else:
+                    new_status = 'not_scheduled'
+                
+                # Update if status changed
+                if new_status != original_status:
+                    summary.status = new_status
+                    summary.save()
+                    fixed_count += 1
+                    print(f"Fixed {emp.full_name} on {summary.date}: {original_status} -> {new_status}")
+                
+            except Exception as e:
+                print(f"Error processing {emp.full_name} on {summary.date}: {e}")
+    
+    return {
+        'total_processed': total_processed,
+        'fixed_count': fixed_count,
+        'start_date': start_date,
+        'end_date': end_date
+    } 

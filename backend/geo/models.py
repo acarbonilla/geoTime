@@ -836,7 +836,7 @@ class DailyTimeSummary(models.Model):
             if scheduled_end < scheduled_start:
                 scheduled_end += timedelta(days=1)
         
-        # Apply abuse prevention logic: Round early arrivals and late departures
+        # Apply business rules for dayshift schedules
         effective_start_dt = datetime.combine(self.date, self.time_in)
         effective_end_dt = datetime.combine(self.date, self.time_out)
         
@@ -844,27 +844,89 @@ class DailyTimeSummary(models.Model):
         if effective_end_dt < effective_start_dt:
             effective_end_dt += timedelta(days=1)
         
-        # ABUSE PREVENTION: Round early arrivals to scheduled start time
-        if scheduled_start and effective_start_dt < scheduled_start:
-            # Employee arrived early - round up to scheduled start time to prevent abuse
-            effective_start_dt = scheduled_start
+        # NEW BUSINESS RULES FOR DAYSHIFT SCHEDULES
+        if scheduled_start and scheduled_end:
+            # Check if this is a dayshift (doesn't cross midnight)
+            is_dayshift = scheduled_end > scheduled_start
+            
+            if is_dayshift:
+                # DAYSHIFT RULES:
+                # 1. If time in is early within 1 hour of scheduled time, round up to scheduled time
+                # 2. If time out is more than scheduled time, round down to scheduled time
+                
+                # Calculate time difference for early arrival
+                time_diff_minutes = int((scheduled_start - effective_start_dt).total_seconds() / 60)
+                
+                if time_diff_minutes > 0 and time_diff_minutes <= 60:
+                    # Early arrival within 1 hour - round up to scheduled time
+                    effective_start_dt = scheduled_start
+                    print(f"DAYSIFT RULE: Early arrival {time_diff_minutes} minutes, rounded up to scheduled time")
+                elif time_diff_minutes > 60:
+                    # Too early (more than 1 hour) - keep actual time (will be handled by frontend validation)
+                    print(f"DAYSIFT RULE: Too early arrival {time_diff_minutes} minutes, keeping actual time")
+                
+                # Check if time out is beyond scheduled time OR before scheduled time (emergency scenarios)
+                if effective_end_dt > scheduled_end:
+                    # EMERGENCY TIME-OUT POLICY: Check if this is an emergency situation
+                    time_out_diff_minutes = int((effective_end_dt - scheduled_end).total_seconds() / 60)
+                    
+                    # If time out is more than 2 hours beyond scheduled time, flag as potential emergency
+                    if time_out_diff_minutes > 120:  # More than 2 hours late
+                        print(f"EMERGENCY POLICY: Time out {time_out_diff_minutes} minutes beyond schedule - potential emergency")
+                        
+                        # For emergency situations, we'll allow the actual time but flag it for review
+                        # The system will create an EmergencyTimeOutRequest for manager approval
+                        self._flag_emergency_timeout(time_out_diff_minutes, effective_end_dt)
+                    else:
+                        # Regular late departure - round down to scheduled time to prevent OT abuse
+                        effective_end_dt = scheduled_end
+                        print(f"DAYSIFT RULE: Late departure {time_out_diff_minutes} minutes, rounded down to scheduled time")
+                
+                elif effective_end_dt < scheduled_start:
+                    # EMERGENCY TIME-OUT POLICY: Early time-out (before scheduled start) - potential emergency
+                    time_out_diff_minutes = int((scheduled_start - effective_end_dt).total_seconds() / 60)
+                    
+                    print(f"EMERGENCY POLICY: Time out {time_out_diff_minutes} minutes BEFORE scheduled start - potential emergency")
+                    
+                    # For emergency situations with early time-out, flag it for review
+                    # This handles cases where employee has to leave immediately after arriving
+                    self._flag_emergency_timeout(-time_out_diff_minutes, effective_end_dt)  # Negative to indicate early
+            else:
+                # NIGHTSHIFT RULES (existing logic):
+                # Round early arrivals to scheduled start time
+                if effective_start_dt < scheduled_start:
+                    effective_start_dt = scheduled_start
+                
+                # Round late departures to scheduled end time
+                if effective_end_dt > scheduled_end:
+                    effective_end_dt = scheduled_end
         
-        # ABUSE PREVENTION: Round late departures to scheduled end time
-        if scheduled_end and effective_end_dt > scheduled_end:
-            # Employee left late - round down to scheduled end time to prevent OT abuse
-            effective_end_dt = scheduled_end
-        
-        # Calculate BH using effective times (after abuse prevention)
+        # Calculate BH using effective times (after business rules)
         bh_minutes = int((effective_end_dt - effective_start_dt).total_seconds() / 60)
         
-        # For flexible break system: only apply break deductions for sessions longer than 4 hours
-        if bh_minutes < 240:  # Less than 4 hours
-            # All time counts as work time for short sessions
-            work_minutes = bh_minutes
+        # REVERTED: Use actual time worked instead of hardcoded 480 minutes for dayshifts
+        if scheduled_start and scheduled_end:
+            is_dayshift = scheduled_end > scheduled_start
+            
+            if is_dayshift:
+                # DAYSHIFT: Use actual time worked (after abuse prevention rules)
+                # The effective_start_dt and effective_end_dt already have business rules applied
+                work_minutes = bh_minutes
+                print(f"DAYSIFT RULE: Using actual time worked: {work_minutes} minutes")
+            else:
+                # NIGHTSHIFT: Use flexible break system
+                if bh_minutes < 240:  # Less than 4 hours
+                    work_minutes = bh_minutes
+                else:
+                    flexible_break_minutes = int(self.employee.flexible_break_hours * 60)
+                    work_minutes = bh_minutes - min(flexible_break_minutes, bh_minutes)
         else:
-            # For longer sessions, apply flexible break deduction
-            flexible_break_minutes = int(self.employee.flexible_break_hours * 60)
-            work_minutes = bh_minutes - min(flexible_break_minutes, bh_minutes)
+            # No schedule: fallback to flexible break system
+            if bh_minutes < 240:  # Less than 4 hours
+                work_minutes = bh_minutes
+            else:
+                flexible_break_minutes = int(self.employee.flexible_break_hours * 60)
+                work_minutes = bh_minutes - min(flexible_break_minutes, bh_minutes)
         
         # Store BH in hours (for backward compatibility) but calculate everything in minutes first
         self.billed_hours = max(0, work_minutes) / 60
@@ -883,7 +945,7 @@ class DailyTimeSummary(models.Model):
             else:
                 self.late_minutes = late_minutes - self.employee.grace_period_minutes  # Late after grace period
         
-        # Calculate undertime using effective BH (after abuse prevention)
+        # Calculate undertime using effective BH (after business rules)
         effective_bh_minutes = int(self.billed_hours * 60)
         
         if self.scheduled_time_in and self.scheduled_time_out:
@@ -896,22 +958,35 @@ class DailyTimeSummary(models.Model):
             
             scheduled_duration_minutes = int((scheduled_end - scheduled_start).total_seconds() / 60)
             
-            # For flexible break system: calculate actual work time (excluding breaks)
-            # If scheduled duration is 4 hours or more, subtract flexible break time
-            if scheduled_duration_minutes >= 240:  # 4 hours or more
-                flexible_break_minutes = int(self.employee.flexible_break_hours * 60)
-                scheduled_work_minutes = scheduled_duration_minutes - flexible_break_minutes
-            else:
-                # For short schedules, all time counts as work time
-                scheduled_work_minutes = scheduled_duration_minutes
+            # NEW BUSINESS RULE: Different calculation for dayshift vs nightshift
+            is_dayshift = scheduled_end > scheduled_start
             
-            # UT = Scheduled Work Duration - BH (using effective BH after abuse prevention)
-            # If BH > Scheduled Work Duration (overtime), UT should be 0, not negative
-            self.undertime_minutes = max(0, scheduled_work_minutes - effective_bh_minutes)
+            if is_dayshift:
+                # DAYSHIFT: UT = Scheduled Work Duration - BH (using actual BH)
+                # Calculate scheduled work duration excluding breaks
+                if scheduled_duration_minutes >= 240:  # 4 hours or more
+                    flexible_break_minutes = int(self.employee.flexible_break_hours * 60)
+                    scheduled_work_minutes = scheduled_duration_minutes - flexible_break_minutes
+                else:
+                    scheduled_work_minutes = scheduled_duration_minutes
+                
+                # UT = Scheduled Work Duration - BH
+                self.undertime_minutes = max(0, scheduled_work_minutes - effective_bh_minutes)
+                print(f"DAYSIFT RULE: UT = {scheduled_work_minutes} - {effective_bh_minutes} = {self.undertime_minutes} minutes")
+            else:
+                # NIGHTSHIFT: Use flexible break system
+                if scheduled_duration_minutes >= 240:  # 4 hours or more
+                    flexible_break_minutes = int(self.employee.flexible_break_hours * 60)
+                    scheduled_work_minutes = scheduled_duration_minutes - flexible_break_minutes
+                else:
+                    scheduled_work_minutes = scheduled_duration_minutes
+                
+                # UT = Scheduled Work Duration - BH
+                self.undertime_minutes = max(0, scheduled_work_minutes - effective_bh_minutes)
         else:
-            # Fallback to 8-hour standard: UT = 480 - BH
-            # If BH > 480 (overtime), UT should be 0, not negative
-            self.undertime_minutes = max(0, 480 - effective_bh_minutes)
+            # Fallback: Use employee's daily work hours instead of hardcoded 480
+            daily_work_minutes = int(self.employee.daily_work_hours * 60)
+            self.undertime_minutes = max(0, daily_work_minutes - effective_bh_minutes)
         
         # Calculate overtime
         if self.billed_hours > self.employee.overtime_threshold_hours:
@@ -980,3 +1055,135 @@ class DailyTimeSummary(models.Model):
             self.night_differential_hours = Decimal('0.00')
         
         self.save()
+    
+    def _flag_emergency_timeout(self, time_out_diff_minutes, actual_time_out):
+        """Flag an emergency time-out situation for manager review"""
+        try:
+            from .models import EmergencyTimeOutRequest
+            
+            # Check if emergency request already exists for this date
+            existing_request = EmergencyTimeOutRequest.objects.filter(
+                employee=self.employee,
+                date=self.date
+            ).first()
+            
+            if not existing_request:
+                # Create new emergency time-out request
+                EmergencyTimeOutRequest.objects.create(
+                    employee=self.employee,
+                    date=self.date,
+                    scheduled_time_out=self.scheduled_time_out,
+                    actual_time_out=actual_time_out.time(),
+                    time_out_diff_minutes=time_out_diff_minutes,
+                    daily_summary=self,
+                    reason="Emergency time-out detected automatically",
+                    status='pending'
+                )
+                print(f"EMERGENCY POLICY: Created emergency time-out request for {self.employee.full_name}")
+            else:
+                # Update existing request
+                existing_request.actual_time_out = actual_time_out.time()
+                existing_request.time_out_diff_minutes = time_out_diff_minutes
+                existing_request.save()
+                print(f"EMERGENCY POLICY: Updated existing emergency time-out request")
+                
+        except Exception as e:
+            print(f"Error creating emergency time-out request: {e}")
+
+
+class EmergencyTimeOutRequest(models.Model):
+    """Model for handling emergency time-out situations"""
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending Review'),
+        ('approved', 'Approved'),
+        ('denied', 'Denied'),
+        ('deleted', 'Time Entry Deleted'),
+    ]
+    
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='emergency_timeout_requests')
+    date = models.DateField()
+    
+    # Time information
+    scheduled_time_out = models.TimeField(help_text='Originally scheduled time out')
+    actual_time_out = models.TimeField(help_text='Actual time out recorded')
+    time_out_diff_minutes = models.IntegerField(help_text='Minutes beyond scheduled time')
+    
+    # Reference to daily summary
+    daily_summary = models.ForeignKey(DailyTimeSummary, on_delete=models.CASCADE, related_name='emergency_requests')
+    
+    # Request details
+    reason = models.TextField(help_text='Reason for emergency time-out')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    # Manager review
+    reviewed_by = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, 
+                                  related_name='reviewed_emergency_requests')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    manager_comments = models.TextField(blank=True, help_text='Manager comments on the request')
+    
+    # Action taken
+    action_taken = models.CharField(max_length=50, blank=True, 
+                                  help_text='Action taken: approved, denied, or deleted time entry')
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Emergency Time-Out Request'
+        verbose_name_plural = 'Emergency Time-Out Requests'
+        unique_together = ['employee', 'date']  # One request per employee per date
+    
+    def __str__(self):
+        return f"Emergency Time-Out: {self.employee.full_name} - {self.date}"
+    
+    @property
+    def formatted_time_out_diff(self):
+        """Format time difference in hours and minutes"""
+        hours = self.time_out_diff_minutes // 60
+        minutes = self.time_out_diff_minutes % 60
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
+    
+    def approve_request(self, manager, comments=""):
+        """Approve the emergency time-out request"""
+        self.status = 'approved'
+        self.reviewed_by = manager
+        self.reviewed_at = timezone.now()
+        self.manager_comments = comments
+        self.action_taken = 'approved'
+        self.save()
+    
+    def deny_request(self, manager, comments=""):
+        """Deny the emergency time-out request"""
+        self.status = 'denied'
+        self.reviewed_by = manager
+        self.reviewed_at = timezone.now()
+        self.manager_comments = comments
+        self.action_taken = 'denied'
+        self.save()
+    
+    def delete_time_entry(self, manager, comments=""):
+        """Delete the time entry for this date (clean slate)"""
+        self.status = 'deleted'
+        self.reviewed_by = manager
+        self.reviewed_at = timezone.now()
+        self.manager_comments = comments
+        self.action_taken = 'deleted time entry'
+        
+        # Delete the time entries for this date
+        from .models import TimeEntry
+        TimeEntry.objects.filter(
+            employee=self.employee,
+            event_time__date=self.date
+        ).delete()
+        
+        # Delete the daily summary
+        if self.daily_summary:
+            self.daily_summary.delete()
+        
+        self.save()
+        print(f"EMERGENCY POLICY: Time entries deleted for {self.employee.full_name} on {self.date}")

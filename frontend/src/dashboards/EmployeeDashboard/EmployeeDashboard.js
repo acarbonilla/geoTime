@@ -269,18 +269,14 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
         scheduledEndTime.setDate(scheduledEndTime.getDate() + 1);
       }
       
-      // If more than 2 hours after scheduled end time, prevent clock in
-      const timeAfterEndHours = (currentTime - scheduledEndTimeMs) / (1000 * 60 * 60);
-      if (currentTime > scheduledEndTimeMs && timeAfterEndHours > 2) {
-        const errorMsg = `Cannot clock in after your shift has ended. Your scheduled time was ${scheduledTimeStr} - ${scheduledEndTimeStr}. Latest allowed clock-in: ${new Date(scheduledEndTimeMs + (2 * 60 * 60 * 1000)).toLocaleTimeString()}`;
-        setScheduleError(errorMsg);
-        return false;
-      }
+      // REMOVED: 2-hour restriction based on ScheduleOut time
+      // Now clock-in validation is ONLY based on ScheduleIn time (1 hour before)
+      // Users can clock in at any time after the earliest allowed time (1 hour before ScheduleIn)
       
-      // If more than 1 hour late but within 2 hours of end time, allow but warn
+      // If more than 1 hour late, allow but warn (no restriction based on end time)
       if (currentTime > scheduledTimeMs && timeDiffHours > 1) {
         // Don't set error, just log warning
-        console.log(`User clocking in ${timeDiffHours.toFixed(1)} hours late, but within allowed window`);
+        console.log(`User clocking in ${timeDiffHours.toFixed(1)} hours late, but allowed since no end time restriction`);
       }
     }
     
