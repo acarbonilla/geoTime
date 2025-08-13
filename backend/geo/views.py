@@ -1510,6 +1510,10 @@ class TimeInOutAPIView(APIView):
         # Get the last time entry for this employee
         last_entry = TimeEntry.objects.filter(employee=employee).order_by('-timestamp').first()
 
+        # Initialize logger for validation
+        import logging
+        logger = logging.getLogger(__name__)
+
         if action == 'time-in':
             if last_entry and last_entry.entry_type == 'time_in':
                 # Allow override for team leaders with custom timestamp
@@ -1543,8 +1547,6 @@ class TimeInOutAPIView(APIView):
                 if not (custom_timestamp and hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader'):
                     if current_time < earliest_allowed_time:
                         # Log validation failure for audit purposes
-                        import logging
-                        logger = logging.getLogger(__name__)
                         logger.warning(f"Clock-in validation failed for employee {employee.employee_id}: Too early. Current: {current_time}, Earliest allowed: {earliest_allowed_time}, Scheduled: {schedule.scheduled_time_in}")
                         
                         return Response({
@@ -1558,14 +1560,10 @@ class TimeInOutAPIView(APIView):
                     # This provides maximum flexibility for late arrivals while maintaining early arrival control
                     
                     # Log successful validation for audit purposes
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.info(f"Clock-in validation passed for employee {employee.employee_id}: Current: {current_time}, Earliest allowed: {earliest_allowed_time}, Scheduled: {schedule.scheduled_time_in}")
                         
             except (ValueError, TypeError, AttributeError) as e:
                 # Handle specific validation errors with clear messages
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.error(f"Schedule validation error for employee {employee.employee_id}: {e}")
                 return Response({
                     'error': 'Schedule validation error',
@@ -1577,14 +1575,10 @@ class TimeInOutAPIView(APIView):
                 # Handle unexpected errors - only allow bypass for Team Leaders
                 if hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader':
                     # Log Team Leader bypass for audit purposes
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.warning(f"Team Leader {user.username} bypass due to unexpected validation error: {e}")
                     # Allow Team Leader to proceed with caution
                 else:
                     # Block regular employees on unexpected validation errors for security
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.error(f"CRITICAL: Unexpected validation error for regular employee {employee.employee_id}: {e}")
                     return Response({
                         'error': 'Time validation failed. Clock-in blocked for security.',
@@ -1638,8 +1632,6 @@ class TimeInOutAPIView(APIView):
                         
             except (ValueError, TypeError, AttributeError) as e:
                 # Handle specific validation errors with clear messages
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.error(f"Schedule validation error for employee {employee.employee_id}: {e}")
                 return Response({
                     'error': 'Schedule validation error',
@@ -1651,14 +1643,10 @@ class TimeInOutAPIView(APIView):
                 # Handle unexpected errors - only allow bypass for Team Leaders
                 if hasattr(user, 'employee_profile') and user.employee_profile.role == 'team_leader':
                     # Log Team Leader bypass for audit purposes
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.warning(f"Team Leader {user.username} bypass due to unexpected validation error: {e}")
                     # Allow Team Leader to proceed with caution
                 else:
                     # Block regular employees on unexpected validation errors for security
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.error(f"CRITICAL: Unexpected validation error for regular employee {employee.employee_id}: {e}")
                     return Response({
                         'error': 'Time validation failed. Clock-out blocked for security.',
@@ -1728,8 +1716,6 @@ class TimeInOutAPIView(APIView):
                             
                     except (ValueError, TypeError, AttributeError) as e:
                         # Handle specific validation errors with clear messages
-                        import logging
-                        logger = logging.getLogger(__name__)
                         logger.error(f"Schedule validation error for team leader {user.username}: {e}")
                         return Response({
                             'error': 'Schedule validation error',
@@ -1739,8 +1725,6 @@ class TimeInOutAPIView(APIView):
                         }, status=400)
                     except Exception as e:
                         # Team Leader validation error - log warning but allow to proceed
-                        import logging
-                        logger = logging.getLogger(__name__)
                         logger.warning(f"Team Leader {user.username} validation error: {e}")
                         # Team Leaders can bypass validation errors for operational flexibility
                 
@@ -1778,8 +1762,6 @@ class TimeInOutAPIView(APIView):
                             
                     except (ValueError, TypeError, AttributeError) as e:
                         # Handle specific validation errors with clear messages
-                        import logging
-                        logger = logging.getLogger(__name__)
                         logger.error(f"Schedule validation error for team leader {user.username}: {e}")
                         return Response({
                             'error': 'Schedule validation error',
@@ -1789,8 +1771,6 @@ class TimeInOutAPIView(APIView):
                         }, status=400)
                     except Exception as e:
                         # Team Leader validation error - log warning but allow to proceed
-                        import logging
-                        logger = logging.getLogger(__name__)
                         logger.warning(f"Team Leader {user.username} validation error: {e}")
                         # Team Leaders can bypass validation errors for operational flexibility
                         
