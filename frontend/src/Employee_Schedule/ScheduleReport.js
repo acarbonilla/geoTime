@@ -546,8 +546,23 @@ const ScheduleReport = () => {
       console.log('No overlap with ND period');
     }
     
-    // Subtract 1 hour for break
-    ndHours = Math.max(0, ndHours - 1);
+    // Apply break deduction based on shift duration (same rules as BH)
+    // First, calculate total shift duration to determine break deduction
+    const totalShiftDuration = timeOutMoment.diff(timeInMoment, 'hours');
+    let breakDeduction = 0;
+    
+    if (totalShiftDuration >= 8) {
+      breakDeduction = 1; // 1 hour break for 8+ hour shifts
+      console.log('ND break deduction: 1 hour (8+ hour shift)');
+    } else if (totalShiftDuration >= 4) {
+      breakDeduction = 0.5; // 30 minutes break for 4+ hour shifts
+      console.log('ND break deduction: 30 minutes (4+ hour shift)');
+    } else {
+      console.log('ND break deduction: 0 hours (shift < 4 hours)');
+    }
+    
+    // Apply break deduction to ND hours
+    ndHours = Math.max(0, ndHours - breakDeduction);
     console.log('ND hours after break deduction:', ndHours);
     
     // Round to 2 decimal places
