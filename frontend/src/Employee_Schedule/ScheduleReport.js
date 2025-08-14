@@ -509,15 +509,9 @@ const ScheduleReport = () => {
     // Start with the date of time in
     const ndStart = moment(timeInMoment).set({ hour: 22, minute: 0, second: 0 });
     
-    // Only add 1 day to ND end if the shift actually spans midnight
-    let ndEnd;
-    if (timeOutMoment.isBefore(timeInMoment)) {
-      // Shift spans midnight, so ND end is 6 AM of the next day
-      ndEnd = moment(timeInMoment).add(1, 'day').set({ hour: 6, minute: 0, second: 0 });
-    } else {
-      // Same day shift, so ND end is 6 AM of the same day
-      ndEnd = moment(timeInMoment).set({ hour: 6, minute: 0, second: 0 });
-    }
+    // ND end is ALWAYS 6 AM of the next day for night differential
+    // This ensures proper calculation regardless of shift duration
+    const ndEnd = moment(timeInMoment).add(1, 'day').set({ hour: 6, minute: 0, second: 0 });
     
     console.log('Initial ND period:', { 
       ndStart: ndStart.format('YYYY-MM-DD HH:mm:ss'), 
