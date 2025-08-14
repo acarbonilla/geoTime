@@ -18,16 +18,17 @@ export const useResponsiveDashboard = (currentDashboard, employeeRole) => {
       // Debounce the resize event to prevent too many redirects
       resizeTimeoutRef.current = setTimeout(() => {
         const currentWidth = window.innerWidth;
-        const isMobile = currentWidth <= 1024;
+        // Mobile breakpoint: only screens 500px and below are considered mobile
+        const isMobile = currentWidth <= 500;
         
         // Determine target dashboard based on current state and screen size
         let targetRoute = null;
         
         if (isMobile && currentDashboard !== 'mobile') {
-          // Redirect to mobile dashboard
+          // Redirect to mobile dashboard only for true mobile devices
           targetRoute = '/mobile-view';
         } else if (!isMobile && currentDashboard === 'mobile') {
-          // Redirect to appropriate full dashboard based on role
+          // Redirect to appropriate full dashboard based on role for tablets/laptops/desktops
           if (employeeRole === 'team_leader') {
             targetRoute = '/team-leader-dashboard';
           } else {

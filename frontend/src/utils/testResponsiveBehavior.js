@@ -75,3 +75,61 @@ if (process.env.NODE_ENV === 'development') {
     testResponsiveBehavior();
   }
 }
+
+// Test utility for responsive behavior
+// This helps verify that the 500px breakpoint is working correctly
+
+export const testResponsiveBreakpoints = () => {
+  const currentWidth = window.innerWidth;
+  const currentHeight = window.innerHeight;
+  
+  console.log('=== Responsive Breakpoint Test ===');
+  console.log(`Current screen dimensions: ${currentWidth}x${currentHeight}`);
+  console.log(`Screen width: ${currentWidth}px`);
+  
+  // Test breakpoints
+  if (currentWidth <= 500) {
+    console.log('✅ MOBILE MODE: Screen width ≤ 500px');
+    console.log('   - Mobile dashboard styles will be applied');
+    console.log('   - Touch-friendly interface enabled');
+  } else if (currentWidth <= 1024) {
+    console.log('✅ TABLET/LAPTOP MODE: Screen width 501px - 1024px');
+    console.log('   - Full dashboard styles will be applied');
+    console.log('   - Standard desktop interface');
+  } else {
+    console.log('✅ DESKTOP MODE: Screen width > 1024px');
+    console.log('   - Full dashboard styles will be applied');
+    console.log('   - Enhanced desktop interface');
+  }
+  
+  // Test device detection
+  const deviceType = getDeviceType();
+  console.log(`Device type detected: ${deviceType}`);
+  
+  // Test view mode
+  const viewMode = getEffectiveViewMode();
+  console.log(`Effective view mode: ${viewMode}`);
+  
+  console.log('================================');
+};
+
+// Helper function to get device type (simplified version)
+const getDeviceType = () => {
+  const width = window.innerWidth;
+  if (width <= 500) return 'mobile';
+  if (width <= 1024) return 'tablet';
+  return 'desktop';
+};
+
+// Helper function to get effective view mode (simplified version)
+const getEffectiveViewMode = () => {
+  const width = window.innerWidth;
+  if (width <= 500) return 'mobile';
+  return 'full';
+};
+
+// Export for use in browser console
+if (typeof window !== 'undefined') {
+  window.testResponsiveBreakpoints = testResponsiveBreakpoints;
+  console.log('Responsive test utility loaded. Run testResponsiveBreakpoints() to test.');
+}

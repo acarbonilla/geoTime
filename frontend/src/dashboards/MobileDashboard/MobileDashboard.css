@@ -1,6 +1,6 @@
-/* MobileDashboard.css - Optimized for mobile devices */
+/* MobileDashboard.css - Optimized for mobile devices ONLY */
 
-/* Ensure full mobile viewport usage */
+/* Base styles - these apply to all screen sizes */
 .mobile-dashboard {
   min-height: 100vh;
   min-height: 100dvh; /* Dynamic viewport height for mobile */
@@ -8,7 +8,7 @@
   overflow-x: hidden;
 }
 
-/* Mobile-optimized buttons */
+/* Mobile-optimized buttons - only apply on small screens */
 .mobile-btn {
   min-height: 48px; /* Touch-friendly button height */
   border-radius: 12px;
@@ -21,21 +21,21 @@
   transform: scale(0.98);
 }
 
-/* Mobile-optimized cards */
+/* Mobile-optimized cards - only apply on small screens */
 .mobile-card {
   border-radius: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   margin-bottom: 16px;
 }
 
-/* Mobile-optimized map container */
+/* Mobile-optimized map container - only apply on small screens */
 .mobile-map {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-/* Mobile-optimized menu */
+/* Mobile-optimized menu - only apply on small screens */
 .mobile-menu {
   border-radius: 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
@@ -51,17 +51,7 @@
   border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
-/* Ensure menu doesn't overlap on very small screens */
-@media (max-width: 480px) {
-  .mobile-menu {
-    right: 8px;
-    left: 8px;
-    max-width: none;
-    min-width: auto;
-  }
-}
-
-/* Mobile-optimized status indicators */
+/* Mobile-optimized status indicators - only apply on small screens */
 .mobile-status {
   border-radius: 20px;
   padding: 8px 16px;
@@ -69,7 +59,7 @@
   text-align: center;
 }
 
-/* Mobile-optimized form elements */
+/* Mobile-optimized form elements - only apply on small screens */
 .mobile-input {
   min-height: 48px;
   border-radius: 12px;
@@ -78,13 +68,13 @@
   font-size: 16px; /* Prevent zoom on iOS */
 }
 
-/* Mobile-optimized spacing */
+/* Mobile-optimized spacing - only apply on small screens */
 .mobile-spacing {
   padding: 16px;
   margin-bottom: 16px;
 }
 
-/* Mobile-optimized text */
+/* Mobile-optimized text - only apply on small screens */
 .mobile-text {
   font-size: 16px;
   line-height: 1.5;
@@ -95,14 +85,14 @@
   line-height: 1.4;
 }
 
-/* Mobile-optimized icons */
+/* Mobile-optimized icons - only apply on small screens */
 .mobile-icon {
   width: 24px;
   height: 24px;
   flex-shrink: 0;
 }
 
-/* Mobile-optimized grid */
+/* Mobile-optimized grid - only apply on small screens */
 .mobile-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -110,7 +100,7 @@
   margin: 16px 0;
 }
 
-/* Mobile-optimized flexbox */
+/* Mobile-optimized flexbox - only apply on small screens */
 .mobile-flex {
   display: flex;
   align-items: center;
@@ -124,7 +114,7 @@
   gap: 12px;
 }
 
-/* Mobile-optimized animations */
+/* Mobile-optimized animations - only apply on small screens */
 @keyframes mobileFadeIn {
   from {
     opacity: 0;
@@ -140,7 +130,7 @@
   animation: mobileFadeIn 0.3s ease-out;
 }
 
-/* Mobile-optimized shadows */
+/* Mobile-optimized shadows - only apply on small screens */
 .mobile-shadow {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
@@ -149,7 +139,7 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
 
-/* Mobile-optimized borders */
+/* Mobile-optimized borders - only apply on small screens */
 .mobile-border {
   border: 1px solid #e5e7eb;
 }
@@ -158,7 +148,7 @@
   border-radius: 16px;
 }
 
-/* Mobile-optimized colors */
+/* Mobile-optimized colors - only apply on small screens */
 .mobile-bg-primary {
   background: linear-gradient(135deg, #3b82f6, #1d4ed8);
 }
@@ -175,8 +165,9 @@
   background: linear-gradient(135deg, #ef4444, #dc2626);
 }
 
-/* Mobile-optimized responsive design */
-@media (max-width: 480px) {
+/* CRITICAL: Mobile styles ONLY apply below 500px */
+@media (max-width: 499px) {
+  /* Mobile-optimized responsive design */
   .mobile-spacing {
     padding: 12px;
     margin-bottom: 12px;
@@ -194,27 +185,98 @@
   .mobile-text-small {
     font-size: 13px;
   }
+  
+  /* Ensure menu doesn't overlap on very small screens */
+  .mobile-menu {
+    right: 8px;
+    left: 8px;
+    max-width: none;
+    min-width: auto;
+  }
 }
 
-/* Mobile-optimized touch targets */
+/* Laptop and desktop styles - screens 500px and above */
+@media (min-width: 500px) {
+  /* Override mobile styles for larger screens */
+  .mobile-dashboard {
+    /* Use standard desktop layout */
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  
+  .mobile-btn {
+    /* Standard button styling for larger screens */
+    min-height: 40px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  
+  .mobile-card {
+    /* Standard card styling for larger screens */
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+  }
+  
+  .mobile-map {
+    /* Standard map styling for larger screens */
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  
+  .mobile-spacing {
+    /* Standard spacing for larger screens */
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .mobile-text {
+    /* Standard text sizing for larger screens */
+    font-size: 14px;
+  }
+  
+  .mobile-text-small {
+    /* Standard small text sizing for larger screens */
+    font-size: 12px;
+  }
+  
+  .mobile-grid {
+    /* Standard grid for larger screens */
+    gap: 20px;
+    margin: 20px 0;
+  }
+  
+  .mobile-flex {
+    /* Standard flexbox for larger screens */
+    gap: 16px;
+  }
+  
+  .mobile-flex-between {
+    /* Standard flexbox for larger screens */
+    gap: 16px;
+  }
+}
+
+/* Mobile-optimized touch targets - only apply on small screens */
 .mobile-touch-target {
   min-height: 44px;
   min-width: 44px;
 }
 
-/* Mobile-optimized scroll behavior */
+/* Mobile-optimized scroll behavior - only apply on small screens */
 .mobile-scroll {
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
 }
 
-/* Mobile-optimized focus states */
+/* Mobile-optimized focus states - only apply on small screens */
 .mobile-focus:focus {
   outline: 2px solid #3b82f6;
   outline-offset: 2px;
 }
 
-/* Mobile-optimized loading states */
+/* Mobile-optimized loading states - only apply on small screens */
 .mobile-loading {
   display: flex;
   align-items: center;
