@@ -196,6 +196,58 @@ const calculateBilledHours = (timeIn, timeOut, scheduledIn, scheduledOut, record
   return finalND;
 };
 
+// Mock the calculateLateMinutes function for testing
+const calculateLateMinutes = (timeIn, scheduledIn, recordDate) => {
+  if (!timeIn || !scheduledIn || timeIn === '-' || scheduledIn === '-') {
+    return 0;
+  }
+  
+  const baseDate = moment(recordDate, 'YYYY-MM-DD');
+  if (!baseDate.isValid()) {
+    return 0;
+  }
+  
+  // Parse actual and scheduled time in
+  const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
+  const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+  
+  if (!timeInMoment.isValid() || !scheduledInMoment.isValid()) {
+    return 0;
+  }
+  
+  // Calculate late minutes (positive if late, negative if early)
+  const lateMinutes = timeInMoment.diff(scheduledInMoment, 'minutes');
+  
+  // Return only positive values (late arrivals)
+  return Math.max(0, lateMinutes);
+};
+
+// Mock the calculateEarlyMinutes function for testing
+const calculateEarlyMinutes = (timeIn, scheduledIn, recordDate) => {
+  if (!timeIn || !scheduledIn || timeIn === '-' || scheduledIn === '-') {
+    return 0;
+  }
+  
+  const baseDate = moment(recordDate, 'YYYY-MM-DD');
+  if (!baseDate.isValid()) {
+    return 0;
+  }
+  
+  // Parse actual and scheduled time in
+  const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
+  const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+  
+  if (!timeInMoment.isValid() || !scheduledInMoment.isValid()) {
+    return 0;
+  }
+  
+  // Calculate early minutes (positive if early, negative if late)
+  const earlyMinutes = scheduledInMoment.diff(timeInMoment, 'minutes');
+  
+  // Return only positive values (early arrivals)
+  return Math.max(0, earlyMinutes);
+};
+
 // Mock the calculateUndertimeMinutes function for testing
 const calculateUndertimeMinutes = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
   if (!timeIn || !timeOut || !scheduledIn || !scheduledOut || 
@@ -349,7 +401,91 @@ const testCases = [
     }
   },
   {
-    name: "Test Case 10: Irregular Night Shift",
+    name: "Test Case 10: Dayshift - Early In, Late Out",
+    schedule: { in: "07:00", out: "16:00" },
+    actual: { in: "06:40", out: "16:10" },
+    date: "2024-08-14",
+    expected: {
+      bh: 480, // 9h - 1h break = 8h = 480 min (capped to scheduled time)
+      nd: 0, // No night differential for dayshift
+      ut: 0 // No undertime since effective = scheduled
+    }
+  },
+  {
+    name: "Test Case 11: Dayshift - Late Arrival",
+    schedule: { in: "07:00", out: "16:00" },
+    actual: { in: "07:30", out: "16:00" },
+    date: "2024-08-14",
+    expected: {
+      bh: 450, // 8h 30m - 1h break = 7h 30m = 450 min
+      nd: 0, // No night differential for dayshift
+      late: 30 // User arrived 30 minutes late (07:30 instead of 07:00)
+    }
+  },
+  {
+    name: "Test Case 12: Dayshift - Early Departure",
+    schedule: { in: "07:00", out: "16:00" },
+    actual: { in: "07:00", out: "14:00" },
+    date: "2024-08-14",
+    expected: {
+      bh: 360, // 7h - 1h break = 6h = 360 min
+      nd: 0, // No night differential for dayshift
+      ut: 120 // 8h scheduled - 6h actual = 2h = 120 min
+    }
+  },
+  {
+    name: "Test Case 13: Dayshift - Short Shift (No 1h Break)",
+    schedule: { in: "08:00", out: "12:00" },
+    actual: { in: "08:00", out: "12:00" },
+    date: "2024-08-14",
+    expected: {
+      bh: 210, // 4h - 30m break = 3h 30m = 210 min
+      nd: 0, // No night differential for dayshift
+      ut: 0 // No undertime
+    }
+  },
+  {
+    name: "Test Case 13A: Dayshift - User Requested Scenario (Main Test)",
+    schedule: { in: "07:00", out: "16:00" },
+    actual: { in: "06:40", out: "16:10" },
+    date: "2024-08-14",
+    expected: {
+      bh: 480, // 9h - 1h break = 8h = 480 min (capped to scheduled time)
+      nd: 0, // No night differential for dayshift
+      ut: 0, // No undertime since effective = scheduled
+      late: 0, // No late time since early arrival is capped
+      early: 20 // 20 minutes early arrival (06:40 vs 07:00)
+    }
+  },
+  {
+    name: "Test Case 13B: Dayshift - Detailed Calculation Breakdown",
+    schedule: { in: "07:00", out: "16:00" },
+    actual: { in: "06:40", out: "16:10" },
+    date: "2024-08-14",
+    expected: {
+      bh: 480, // 8 hours = 480 minutes (after 1h break deduction)
+      nd: 0, // No night differential for dayshift
+      ut: 0, // No undertime
+      late: 0, // No late time
+      early: 20 // 20 minutes early
+    },
+    explanation: `
+      SCHEDULE: 07:00 AM - 04:00 PM (9 hours)
+      ACTUAL: 06:40 AM - 04:10 PM (9 hours 30 minutes)
+      
+      CALCULATIONS:
+      - Gross Time: 06:40 - 16:10 = 9h 30m = 570 minutes
+      - Break Deduction: 1 hour (since > 8 hours) = 60 minutes
+      - Net Time Worked: 570 - 60 = 510 minutes
+      - BH (Billed Hours): Capped to scheduled time (9h - 1h break = 8h = 480 min)
+      - ND (Night Differential): 0 (dayshift, no night hours)
+      - UT (Undertime): 0 (no undertime since effective = scheduled)
+      - LT (Late Time): 0 (no late arrival)
+      - Early Time: 20 minutes (06:40 vs 07:00)
+    `
+  },
+  {
+    name: "Test Case 14: Irregular Night Shift",
     schedule: { in: "20:30", out: "05:30" },
     actual: { in: "20:15", out: "05:45" },
     date: "2024-08-14",
@@ -360,7 +496,7 @@ const testCases = [
     }
   },
   {
-    name: "Test Case 11: 8-Hour Night Shift Spanning Midnight",
+    name: "Test Case 15: 8-Hour Night Shift Spanning Midnight",
     schedule: { in: "21:00", out: "05:00" },
     actual: { in: "21:00", out: "05:00" },
     date: "2024-08-14",
@@ -389,21 +525,29 @@ const validateCalculations = () => {
      const actualBH = calculateBilledHours(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
      const actualND = calculateNightDifferential(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
      const actualUT = calculateUndertimeMinutes(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
+     const actualLT = calculateLateMinutes(testCase.actual.in, testCase.schedule.in, testCase.date);
+     const actualEarly = calculateEarlyMinutes(testCase.actual.in, testCase.schedule.in, testCase.date);
     
     // Compare with expected results
     const bhPass = Math.abs(actualBH - testCase.expected.bh) <= 1; // Allow 1 minute tolerance
     const ndPass = Math.abs(actualND - testCase.expected.nd) <= 0.1; // Allow 0.1 hour tolerance
     
-    // Handle both late and ut cases
+    // Handle late, early, and undertime cases
     let adjustmentPass = true;
     let expectedValue = 0;
     let isLateCase = false;
+    let isEarlyCase = false;
     
     if (testCase.expected.late !== undefined) {
       // This is a late arrival case
       expectedValue = testCase.expected.late;
       isLateCase = true;
-      adjustmentPass = Math.abs(actualUT - expectedValue) <= 1;
+      adjustmentPass = Math.abs(actualLT - expectedValue) <= 1;
+    } else if (testCase.expected.early !== undefined) {
+      // This is an early arrival case
+      expectedValue = testCase.expected.early;
+      isEarlyCase = true;
+      adjustmentPass = Math.abs(actualEarly - expectedValue) <= 1;
     } else {
       // This is an undertime case
       expectedValue = testCase.expected.ut;
@@ -415,7 +559,9 @@ const validateCalculations = () => {
     console.log(`   ND: Expected ${testCase.expected.nd}h, Got ${actualND}h - ${ndPass ? '✅ PASS' : '❌ FAIL'}`);
     
     if (isLateCase) {
-      console.log(`   LT: Expected ${testCase.expected.late}min, Got ${actualUT}min - ${adjustmentPass ? '✅ PASS' : '❌ FAIL'}`);
+      console.log(`   LT: Expected ${testCase.expected.late}min, Got ${actualLT}min - ${adjustmentPass ? '✅ PASS' : '❌ FAIL'}`);
+    } else if (isEarlyCase) {
+      console.log(`   Early: Expected ${testCase.expected.early}min, Got ${actualEarly}min - ${adjustmentPass ? '✅ PASS' : '❌ FAIL'}`);
     } else {
       console.log(`   UT: Expected ${testCase.expected.ut}min, Got ${actualUT}min - ${adjustmentPass ? '✅ PASS' : '❌ FAIL'}`);
     }
@@ -434,7 +580,9 @@ const validateCalculations = () => {
     console.log(`   - BH: ${actualBH} minutes (${(actualBH/60).toFixed(2)} hours)`);
     console.log(`   - ND: ${actualND} hours`);
     if (isLateCase) {
-      console.log(`   - LT: ${actualUT} minutes (${(actualUT/60).toFixed(2)} hours)`);
+      console.log(`   - LT: ${actualLT} minutes (${(actualLT/60).toFixed(2)} hours)`);
+    } else if (isEarlyCase) {
+      console.log(`   - Early: ${actualEarly} minutes (${(actualEarly/60).toFixed(2)} hours)`);
     } else {
       console.log(`   - UT: ${actualUT} minutes (${(actualUT/60).toFixed(2)} hours)`);
     }
@@ -457,7 +605,7 @@ const validateCalculations = () => {
 };
 
 // Export for use in other files
-export { validateCalculations, testCases, calculateBilledHours, calculateNightDifferential, calculateUndertimeMinutes };
+export { validateCalculations, testCases, calculateBilledHours, calculateNightDifferential, calculateUndertimeMinutes, calculateLateMinutes, calculateEarlyMinutes };
 
 // Run validation if this file is executed directly
 if (typeof window !== 'undefined') {

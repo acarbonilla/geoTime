@@ -720,7 +720,8 @@
                         </div>
                         <div>
                             <strong>Expected:</strong><br>
-                            BH: ${testCase.expected.bh}min, ND: ${testCase.expected.nd}h, ${testCase.isLateCase ? 'LT' : 'UT'}: ${testCase.expectedValue}min
+                            BH: ${testCase.expected.bh}min, ND: ${testCase.expected.nd}h<br>
+                            ${testCase.isLateCase ? 'LT' : testCase.isEarlyCase ? 'Early' : 'UT'}: ${testCase.expectedValue}min
                         </div>
                     </div>
                     <div class="test-results">
@@ -737,11 +738,19 @@
                             </span>
                         </div>
                         <div class="result-item">
-                            <span>${testCase.isLateCase ? 'LT:' : 'UT:'}</span>
+                            <span>${testCase.isLateCase ? 'LT:' : testCase.isEarlyCase ? 'Early:' : 'UT:'}</span>
                             <span class="${testCase.passed.ut ? 'pass' : 'fail'}">
                                 ${testCase.actual.ut}min ${testCase.passed.ut ? '✅' : '❌'}
                             </span>
                         </div>
+                        ${testCase.actual.early !== undefined ? `
+                        <div class="result-item">
+                            <span>Early:</span>
+                            <span class="${testCase.passed.early ? 'pass' : 'fail'}">
+                                ${testCase.actual.early}min ${testCase.passed.early ? '✅' : '❌'}
+                            </span>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
             `).join('');
