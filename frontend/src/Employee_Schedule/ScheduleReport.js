@@ -1955,7 +1955,13 @@ const ScheduleReport = () => {
                           
                           // Only calculate ND if we have both time in and time out on the same day
                           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+                            console.log(`🔍 ND Calculation for ${record.date}:`, {
+                              time_in: record.time_in,
+                              time_out: record.time_out,
+                              date: record.date
+                            });
                             const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.date);
+                            console.log(`✅ ND Result for ${record.date}:`, ndHours);
                             return ndHours > 0 ? `${ndHours}h` : '-';
                           }
                           
