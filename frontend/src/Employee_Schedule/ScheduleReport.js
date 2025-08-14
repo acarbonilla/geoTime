@@ -819,33 +819,81 @@ const ScheduleReport = () => {
     };
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'present': return 'status-present';
-      case 'late': return 'status-late';
-      case 'absent': return 'status-absent';
-      case 'weekend': return 'status-weekend';
-      case 'half_day': return 'status-half-day';
-      case 'not_scheduled': return 'status-not-scheduled';
+  const getStatusColor = (status, scheduledIn = null, scheduledOut = null, timeIn = null) => {
+    // Use the intelligent status logic to determine the effective status
+    const effectiveStatus = getStatusDisplay(status, scheduledIn, scheduledOut, timeIn);
+    
+    // Map the display text back to status keys for color selection
+    switch (effectiveStatus) {
+      case 'Present': return 'status-present';
+      case 'Late': return 'status-late';
+      case 'Absent': return 'status-absent';
+      case 'Weekend': return 'status-weekend';
+      case 'Half Day': return 'status-half-day';
+      case 'Scheduled': return 'status-not-scheduled'; // Use the same styling as not_scheduled
+      case 'Not Yet Scheduled': return 'status-not-scheduled';
       default: return 'status-default';
     }
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'present': return <CheckCircleIcon className="w-4 h-4" />;
-      case 'late': return <ExclamationTriangleIcon className="w-4 h-4" />;
-      case 'absent': return <XCircleIcon className="w-4 h-4" />;
-      case 'weekend': return <CalendarIcon className="w-4 h-4" />;
-      case 'half_day': return <ClockIcon className="w-4 h-4" />;
-      case 'not_scheduled': return <InformationCircleIcon className="w-4 h-4" />;
+  const getStatusIcon = (status, scheduledIn = null, scheduledOut = null, timeIn = null) => {
+    // Use the intelligent status logic to determine the effective status
+    const effectiveStatus = getStatusDisplay(status, scheduledIn, scheduledOut, timeIn);
+    
+    // Map the display text back to status keys for icon selection
+    switch (effectiveStatus) {
+      case 'Present': return <CheckCircleIcon className="w-4 h-4" />;
+      case 'Late': return <ExclamationTriangleIcon className="w-4 h-4" />;
+      case 'Absent': return <XCircleIcon className="w-4 h-4" />;
+      case 'Weekend': return <CalendarIcon className="w-4 h-4" />;
+      case 'Half Day': return <ClockIcon className="w-4 h-4" />;
+      case 'Scheduled': return <InformationCircleIcon className="w-4 h-4" />;
+      case 'Not Yet Scheduled': return <InformationCircleIcon className="w-4 h-4" />;
       default: return <InformationCircleIcon className="w-4 h-4" />;
     }
   };
 
-  const getStatusDisplay = (status, scheduledIn = null, scheduledOut = null) => {
-    console.log('getStatusDisplay called with:', { status, scheduledIn, scheduledOut });
-    switch (status) {
+  const getStatusDisplay = (status, scheduledIn = null, scheduledOut = null, timeIn = null) => {
+    console.log('getStatusDisplay called with:', { status, scheduledIn, scheduledOut, timeIn });
+    
+    // INTELLIGENT STATUS LOGIC: Override backend status based on schedule and time data
+    let effectiveStatus = status;
+    
+    // Check if there's a valid schedule (not "-" or empty)
+    const hasSchedule = scheduledIn && scheduledOut && 
+                       scheduledIn !== '-' && scheduledOut !== '-' && 
+                       scheduledIn.toString().trim() !== '' && scheduledOut.toString().trim() !== '';
+    
+    // Check if there's a time in
+    const hasTimeIn = timeIn && timeIn !== '-' && timeIn.toString().trim() !== '';
+    
+    console.log('Status analysis:', { 
+      originalStatus: status, 
+      hasSchedule, 
+      hasTimeIn, 
+      scheduledIn, 
+      scheduledOut, 
+      timeIn 
+    });
+    
+    // RULE 1: If there's a schedule but no time in = ABSENT
+    if (hasSchedule && !hasTimeIn) {
+      effectiveStatus = 'absent';
+      console.log('Overriding status to ABSENT: Has schedule but no time in');
+    }
+    // RULE 2: If there's no schedule = NOT YET SCHEDULED
+    else if (!hasSchedule) {
+      effectiveStatus = 'not_scheduled';
+      console.log('Overriding status to NOT YET SCHEDULED: No schedule found');
+    }
+    // RULE 3: If there's a schedule and time in = PRESENT (or keep original status)
+    else if (hasSchedule && hasTimeIn) {
+      console.log('Keeping original status: Has both schedule and time in');
+    }
+    
+    console.log('Final effective status:', effectiveStatus);
+    
+    switch (effectiveStatus) {
       case 'present': return 'Present';
       case 'late': return 'Late';
       case 'absent': return 'Absent';
@@ -853,11 +901,11 @@ const ScheduleReport = () => {
       case 'half_day': return 'Half Day';
       case 'not_scheduled': 
         // Check if there's a schedule (not "-" or empty)
-        const hasSchedule = scheduledIn && scheduledOut && 
-                           scheduledIn !== '-' && scheduledOut !== '-' && 
-                           scheduledIn.toString().trim() !== '' && scheduledOut.toString().trim() !== '';
-        console.log('not_scheduled case - hasSchedule:', hasSchedule, 'scheduledIn:', scheduledIn, 'scheduledOut:', scheduledOut);
-        return hasSchedule ? 'Scheduled' : 'Not Yet Scheduled';
+        const hasScheduleForDisplay = scheduledIn && scheduledOut && 
+                                     scheduledIn !== '-' && scheduledOut !== '-' && 
+                                     scheduledIn.toString().trim() !== '' && scheduledOut.toString().trim() !== '';
+        console.log('not_scheduled case - hasScheduleForDisplay:', hasScheduleForDisplay, 'scheduledIn:', scheduledIn, 'scheduledOut:', scheduledOut);
+        return hasScheduleForDisplay ? 'Scheduled' : 'Not Yet Scheduled';
       default: return '-';
     }
   };
@@ -910,7 +958,7 @@ const ScheduleReport = () => {
       const csvData = report.daily_records.map(record => ({
         Date: moment(record.date).format('MMM DD, YYYY'),
         Day: record.day,
-        Status: getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out),
+        Status: getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in),
         'Time In': formatTime(record.time_in),
         'Time Out': getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)),
         'Scheduled In': formatTime(record.scheduled_in),
@@ -997,7 +1045,7 @@ const ScheduleReport = () => {
       const excelData = report.daily_records.map(record => ({
         Date: moment(record.date).format('MMM DD, YYYY'),
         Day: record.day,
-        Status: getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out),
+        Status: getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in),
         'Time In': formatTime(record.time_in),
         'Time Out': getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)),
         'Scheduled In': formatTime(record.scheduled_in),
@@ -1118,7 +1166,7 @@ const ScheduleReport = () => {
                 return [
                   moment(record.date).format('MMM DD'),
                   record.day || '-',
-                  getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out) || '-',
+                  getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in) || '-',
                   formatTime(record.time_in) || '-',
                   getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)) || '-',
                   formatTime(record.scheduled_in) || '-',
@@ -1256,7 +1304,7 @@ const ScheduleReport = () => {
           const rowData = [
             moment(record.date).format('MMM DD'),
             record.day || '-',
-            getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out) || '-',
+            getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in) || '-',
             formatTime(record.time_in) || '-',
             getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)) || '-',
             formatTime(record.scheduled_in) || '-',
@@ -1698,9 +1746,9 @@ const ScheduleReport = () => {
                         {record.day}
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        <span className={`status-pill ${getStatusColor(record.status)}`}>
-                          {getStatusIcon(record.status)}
-                          <span>{getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out)}</span>
+                        <span className={`status-pill ${getStatusColor(record.status, record.scheduled_in, record.scheduled_out, record.time_in)}`}>
+                          {getStatusIcon(record.status, record.scheduled_in, record.scheduled_out, record.time_in)}
+                          <span>{getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in)}</span>
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 font-medium">
