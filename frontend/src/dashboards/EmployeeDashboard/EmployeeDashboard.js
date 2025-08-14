@@ -233,50 +233,60 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     
     // Validate time constraints (optional - can be disabled if too restrictive)
     if (validateTimeConstraints) {
-      const now = new Date();
-      const currentTime = now.getTime();
-      
-      // Rule: Cannot clock in more than 1 hour before scheduled start time
-      // For night shifts: applies to same calendar day as schedule date
-      const scheduledTime = new Date(todaySchedule.scheduled_time_in);
-      const scheduledTimeMs = scheduledTime.getTime();
-      
-      const scheduledTimeStr = scheduledTime.toLocaleTimeString();
-      
-      // Calculate time difference in hours
-      const timeDiffHours = Math.abs(currentTime - scheduledTimeMs) / (1000 * 60 * 60);
-      
-      // If more than 1 hour early, prevent clock in
-      if (currentTime < scheduledTimeMs && timeDiffHours > 1) {
-        const earlyHours = timeDiffHours.toFixed(1);
-        const errorMsg = `You cannot clock in yet. Your scheduled time is ${scheduledTimeStr}, and you can only clock in up to 1 hour early. Current time: ${now.toLocaleTimeString()}`;
-        setScheduleError(errorMsg);
-        return false;
-      }
-      
-      // NEW: Check if current time is after scheduled end time
-      const scheduledEndTimeStr = todaySchedule.scheduled_time_out;
-      const [endHours, endMinutes] = scheduledEndTimeStr.split(':').map(Number);
-      
-      // Create scheduled end time for today
-      const scheduledEndTime = new Date(now);
-      scheduledEndTime.setHours(endHours, endMinutes, 0, 0);
-      const scheduledEndTimeMs = scheduledEndTime.getTime();
-      
-      // Handle overnight shifts - compare with start time hours
-      const [startHours] = scheduledTimeStr.split(':').map(Number);
-      if (endHours < startHours) {
-        scheduledEndTime.setDate(scheduledEndTime.getDate() + 1);
-      }
-      
-      // REMOVED: 2-hour restriction based on ScheduleOut time
-      // Now clock-in validation is ONLY based on ScheduleIn time (1 hour before)
-      // Users can clock in at any time after the earliest allowed time (1 hour before ScheduleIn)
-      
-      // If more than 1 hour late, allow but warn (no restriction based on end time)
-      if (currentTime > scheduledTimeMs && timeDiffHours > 1) {
-        // Don't set error, just log warning
-        console.log(`User clocking in ${timeDiffHours.toFixed(1)} hours late, but allowed since no end time restriction`);
+      try {
+        const now = new Date();
+        const currentTime = now.getTime();
+        
+        // FIXED: Parse scheduled time in correctly like MobileDashboard does
+        // Parse scheduled time in (assuming format like "09:00" or "09:00:00")
+        const scheduledTimeStr = todaySchedule.scheduled_time_in;
+        const [hours, minutes] = scheduledTimeStr.split(':').map(Number);
+        
+        // Rule: Cannot clock in more than 1 hour before scheduled start time
+        // For night shifts: applies to same calendar day as schedule date
+        const scheduledTime = new Date(now);
+        scheduledTime.setHours(hours, minutes, 0, 0);
+        const scheduledTimeMs = scheduledTime.getTime();
+        
+        // Calculate time difference in hours
+        const timeDiffHours = Math.abs(currentTime - scheduledTimeMs) / (1000 * 60 * 60);
+        
+        // If more than 1 hour early, prevent clock in
+        if (currentTime < scheduledTimeMs && timeDiffHours > 1) {
+          const earlyHours = timeDiffHours.toFixed(1);
+          const errorMsg = `You cannot clock in yet. Your scheduled time is ${scheduledTimeStr}, and you can only clock in up to 1 hour early. Current time: ${now.toLocaleTimeString()}`;
+          setScheduleError(errorMsg);
+          return false;
+        }
+        
+        // NEW: Check if current time is after scheduled end time
+        const scheduledEndTimeStr = todaySchedule.scheduled_time_out;
+        const [endHours, endMinutes] = scheduledEndTimeStr.split(':').map(Number);
+        
+        // Create scheduled end time for today
+        const scheduledEndTime = new Date(now);
+        scheduledEndTime.setHours(endHours, endMinutes, 0, 0);
+        const scheduledEndTimeMs = scheduledEndTime.getTime();
+        
+        // Handle overnight shifts - compare with start time hours
+        if (endHours < hours) {
+          scheduledEndTime.setDate(scheduledEndTime.getDate() + 1);
+        }
+        
+        // REMOVED: 2-hour restriction based on ScheduleOut time
+        // Now clock-in validation is ONLY based on ScheduleIn time (1 hour before)
+        // Users can clock in at any time after the earliest allowed time (1 hour before ScheduleIn)
+        
+        // If more than 1 hour late, allow but warn (no restriction based on end time)
+        if (currentTime > scheduledTimeMs && timeDiffHours > 1) {
+          // Don't set error, just log warning
+          console.log(`User clocking in ${timeDiffHours.toFixed(1)} hours late, but allowed since no end time restriction`);
+        }
+        
+      } catch (timeError) {
+        console.error('EmployeeDashboard Error parsing scheduled time:', timeError);
+        // If time parsing fails, allow the operation but log the error
+        // This prevents users from being blocked due to time parsing issues
       }
     }
     
