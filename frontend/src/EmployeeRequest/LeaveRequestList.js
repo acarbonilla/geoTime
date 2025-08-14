@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from '../utils/axiosInstance';
-import { FaUserClock, FaCalendarAlt, FaUserCheck, FaUserTimes, FaHourglassHalf, FaSort, FaSortUp, FaSortDown, FaUser, FaEdit, FaTrash } from 'react-icons/fa';
+import { FaUserClock, FaCalendarAlt, FaUserCheck, FaUserTimes, FaHourglassHalf, FaSort, FaSortUp, FaSortDown, FaEdit, FaTrash } from 'react-icons/fa';
 import LeaveRequestForm from './LeaveRequestForm';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];

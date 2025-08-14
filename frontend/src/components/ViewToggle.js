@@ -1,18 +1,14 @@
 import React from 'react';
-import { FaMobile, FaDesktop, FaBars } from 'react-icons/fa';
-import { useNavigate } from 'react-router-dom';
+import { FaMobile, FaDesktop } from 'react-icons/fa';
 import { 
   shouldShowMobileView, 
-  shouldShowFullView, 
   shouldShowViewToggle,
   setUserViewPreference, 
   VIEW_MODES 
 } from '../utils/deviceDetection';
 
 const ViewToggle = ({ onViewChange, className = '' }) => {
-  const navigate = useNavigate();
   const isMobileView = shouldShowMobileView();
-  const isFullView = shouldShowFullView();
   const shouldShow = shouldShowViewToggle();
 
   // Don't render the toggle on desktop/laptop screens

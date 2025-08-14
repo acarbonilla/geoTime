@@ -456,115 +456,94 @@ const ScheduleReport = () => {
     console.log(`🔍 END DEBUG for ${record.date}\n`);
   };
 
-  const calculateNightDifferential = (timeIn, timeOut, recordDate) => {
-    console.log('calculateNightDifferential called with:', { timeIn, timeOut, recordDate });
-    console.log('Input types:', { timeInType: typeof timeIn, timeOutType: typeof timeOut, recordDateType: typeof recordDate });
-    console.log('Raw recordDate value:', recordDate);
-    
-    if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
-      console.log('Invalid input, returning 0');
-      return 0;
-    }
-    
-    // Parse the record date to get the base date for time parsing
-    const baseDate = moment(recordDate, 'YYYY-MM-DD');
-    console.log('Parsed baseDate:', {
-      original: recordDate,
-      parsed: baseDate.format('YYYY-MM-DD'),
-      isValid: baseDate.isValid(),
-      momentObject: baseDate
-    });
-    
-    if (!baseDate.isValid()) {
-      console.log('Invalid record date, returning 0');
-      return 0;
-    }
-    
-    // Parse time strings using the record's date as context
-    const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
-    const timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
-    
-    console.log('Parsed moments with record date context:', { 
-      baseDate: baseDate.format('YYYY-MM-DD'),
-      timeInMoment: timeInMoment.format('YYYY-MM-DD HH:mm:ss'), 
-      timeOutMoment: timeOutMoment.format('YYYY-MM-DD HH:mm:ss'),
-      timeInMomentValid: timeInMoment.isValid(),
-      timeOutMomentValid: timeOutMoment.isValid()
-    });
-    
-    if (!timeInMoment.isValid() || !timeOutMoment.isValid()) {
-      console.log('Invalid moments, returning 0');
-      return 0;
-    }
-    
-    // If time out is before time in, it means the shift spans midnight
-    if (timeOutMoment.isBefore(timeInMoment)) {
-      timeOutMoment.add(1, 'day');
-      console.log('Shift spans midnight, adjusted timeOutMoment:', timeOutMoment.format('YYYY-MM-DD HH:mm:ss'));
-    }
-    
-    let ndHours = 0;
-    
-    // ND period: 10:00 PM (22:00) to 6:00 AM (06:00) of the next day
-    // Start with the date of time in
-    const ndStart = moment(timeInMoment).set({ hour: 22, minute: 0, second: 0 });
-    
-    // ND end is ALWAYS 6 AM of the next day for night differential
-    // This ensures proper calculation regardless of shift duration
-    const ndEnd = moment(timeInMoment).add(1, 'day').set({ hour: 6, minute: 0, second: 0 });
-    
-    console.log('Initial ND period:', { 
-      ndStart: ndStart.format('YYYY-MM-DD HH:mm:ss'), 
-      ndEnd: ndEnd.format('YYYY-MM-DD HH:mm:ss'),
-      shiftSpansMidnight: timeOutMoment.isBefore(timeInMoment)
-    });
-    
-    // If time in is after ND start, adjust ND start to time in
-    if (timeInMoment.isAfter(ndStart)) {
-      ndStart.set({ hour: timeInMoment.hour(), minute: timeInMoment.minute(), second: timeInMoment.second() });
-      console.log('Adjusted ND start to time in:', ndStart.format('YYYY-MM-DD HH:mm:ss'));
-    }
-    
-    // If time out is before ND end, adjust ND end to time out
-    if (timeOutMoment.isBefore(ndEnd)) {
-      ndEnd.set({ hour: timeOutMoment.hour(), minute: timeOutMoment.minute(), second: timeOutMoment.second() });
-      console.log('Adjusted ND end to time out:', ndEnd.format('YYYY-MM-DD HH:mm:ss'));
-    }
-    
-    // Calculate ND hours only if there's overlap with ND period
-    if (ndStart.isBefore(ndEnd)) {
-      const duration = moment.duration(ndEnd.diff(ndStart));
-      ndHours = duration.asHours();
-      console.log('Calculated ND hours before break deduction:', ndHours);
-    } else {
-      console.log('No overlap with ND period');
-    }
-    
-    // Apply break deduction based on shift duration (same rules as BH)
-    // First, calculate total shift duration to determine break deduction
-    const totalShiftDuration = timeOutMoment.diff(timeInMoment, 'hours');
-    let breakDeduction = 0;
-    
-    if (totalShiftDuration >= 8) {
-      breakDeduction = 1; // 1 hour break for 8+ hour shifts
-      console.log('ND break deduction: 1 hour (8+ hour shift)');
-    } else if (totalShiftDuration >= 4) {
-      breakDeduction = 0.5; // 30 minutes break for 4+ hour shifts
-      console.log('ND break deduction: 30 minutes (4+ hour shift)');
-    } else {
-      console.log('ND break deduction: 0 hours (shift < 4 hours)');
-    }
-    
-    // Apply break deduction to ND hours
-    ndHours = Math.max(0, ndHours - breakDeduction);
-    console.log('ND hours after break deduction:', ndHours);
-    
-    // Round to 2 decimal places
-    const finalND = Math.round(ndHours * 100) / 100;
-    console.log('Final ND hours (rounded):', finalND);
-    
-    return finalND;
-  };
+     const calculateNightDifferential = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
+     if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
+       return 0;
+     }
+     
+     if (!scheduledIn || !scheduledOut || scheduledIn === '-' || scheduledOut === '-') {
+       return 0;
+     }
+     
+     const baseDate = moment(recordDate, 'YYYY-MM-DD');
+     if (!baseDate.isValid()) {
+       return 0;
+     }
+     
+     // Parse time strings using the record's date as context
+     const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
+     let timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
+     
+     // Parse scheduled times for ND abuse prevention
+     const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+     const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
+     
+     if (!timeInMoment.isValid() || !timeOutMoment.isValid() || 
+         !scheduledInMoment.isValid() || !scheduledOutMoment.isValid()) {
+       return 0;
+     }
+     
+     // If time out is before time in, it means the shift spans midnight
+     if (timeOutMoment.isBefore(timeInMoment)) {
+       timeOutMoment = moment(timeOutMoment).add(1, 'day');
+     }
+     if (scheduledOutMoment.isBefore(scheduledInMoment)) {
+       scheduledOutMoment.add(1, 'day');
+     }
+     
+     let ndHours = 0;
+     
+     // ND period: 10:00 PM (22:00) to 6:00 AM (06:00) of the next day
+     // Always start ND period at 10 PM of the base date
+     const ndStart = moment(baseDate).set({ hour: 22, minute: 0, second: 0 });
+     
+     // Always end ND period at 6 AM of the next day
+     const ndEnd = moment(baseDate).add(1, 'day').set({ hour: 6, minute: 0, second: 0 });
+     
+     // Find the effective start time for ND calculation
+     let effectiveNDStart = ndStart;
+     if (timeInMoment.isAfter(ndStart)) {
+       effectiveNDStart = timeInMoment.clone();
+     }
+     
+     // Find the effective end time for ND calculation
+     // ABUSE PREVENTION: Cap ND end to scheduled time out if user clocks out late
+     let effectiveNDEnd = ndEnd;
+     
+     // CRITICAL: Always cap ND end to scheduled time out to prevent abuse
+     // This ensures users can't claim extra ND hours by clocking out late
+     if (scheduledOutMoment.isBefore(ndEnd)) {
+       effectiveNDEnd = scheduledOutMoment.clone();
+     } else {
+       effectiveNDEnd = ndEnd.clone();
+     }
+     
+     // Calculate ND hours only if there's overlap with ND period
+     if (effectiveNDStart.isBefore(effectiveNDEnd)) {
+       const duration = moment.duration(effectiveNDEnd.diff(effectiveNDStart));
+       ndHours = duration.asHours();
+     } else {
+       return 0;
+     }
+     
+     // Apply break deduction based on total shift duration
+     const totalShiftDuration = timeOutMoment.diff(timeInMoment, 'hours');
+     let breakDeduction = 0;
+     
+     if (totalShiftDuration >= 8) {
+       breakDeduction = 1; // 1 hour break for 8+ hour shifts
+     } else if (totalShiftDuration >= 4) {
+       breakDeduction = 0.5; // 30 minutes break for 4+ hour shifts
+     }
+     
+     // Apply break deduction to ND hours
+     ndHours = Math.max(0, ndHours - breakDeduction);
+     
+     // Round to 2 decimal places
+     const finalND = Math.round(ndHours * 100) / 100;
+     
+     return finalND;
+   };
 
   const calculateLateMinutes = (timeIn, scheduledIn, recordDate) => {
     if (!timeIn || !scheduledIn || timeIn === '-' || scheduledIn === '-') {
@@ -647,8 +626,8 @@ const ScheduleReport = () => {
     // Calculate net scheduled time (after break deduction)
     const netScheduledMinutes = scheduledMinutes - scheduledBreakMinutes;
     
-    // NEW: Use the dynamic BH calculation (actual time worked)
-    const dynamicBHMinutes = calculateBilledHours(timeIn, timeOut, recordDate);
+         // NEW: Use the dynamic BH calculation (actual time worked)
+     const dynamicBHMinutes = calculateBilledHours(timeIn, timeOut, scheduledIn, scheduledOut, recordDate);
     
     // RULE: UT = (Net Scheduled Hours - Dynamic BH)
     // This represents actual undertime after accounting for scheduled breaks
@@ -714,72 +693,83 @@ const ScheduleReport = () => {
    * 
    * Previous logic used scheduled times, now uses actual clock in/out times for dynamic BH calculation.
    */
-  const calculateBilledHours = (timeIn, timeOut, recordDate) => {
-    if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
-      return 0;
-    }
+     const calculateBilledHours = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
+     if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
+       return 0;
+     }
+     
+     if (!scheduledIn || !scheduledOut || scheduledIn === '-' || scheduledOut === '-') {
+       return 0;
+     }
 
-    // No longer require scheduled times since we're using actual time worked
-    // if (!scheduledIn || !scheduledOut || scheduledIn === '-' || scheduledOut === '-') {
-    //   return 0;
-    // }
+     try {
+       const baseDate = moment(recordDate, 'YYYY-MM-DD');
+       if (!baseDate.isValid()) {
+         return 0;
+       }
 
-    try {
-      const baseDate = moment(recordDate, 'YYYY-MM-DD');
-      if (!baseDate.isValid()) {
-        return 0;
-      }
+       // Parse actual time worked (time out - time in)
+       const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
+       let timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
+       
+       // Parse scheduled times for abuse prevention
+       const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+       const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
+       
+       if (!timeInMoment.isValid() || !timeOutMoment.isValid() || 
+           !scheduledInMoment.isValid() || !scheduledOutMoment.isValid()) {
+         return 0;
+       }
 
-      // Parse actual time worked (time out - time in)
-      const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
-      const timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
-      
-      if (!timeInMoment.isValid() || !timeOutMoment.isValid()) {
-        return 0;
-      }
+       // Handle night shifts that span midnight
+       if (timeOutMoment.isBefore(timeInMoment)) {
+         timeOutMoment = moment(timeOutMoment).add(1, 'day');
+       }
+       if (scheduledOutMoment.isBefore(scheduledInMoment)) {
+         scheduledOutMoment.add(1, 'day');
+       }
 
-      // NEW LOGIC: Use actual time worked instead of scheduled times
-      // This makes BH dynamic based on actual clock in/out times
-      let effectiveTimeIn = timeInMoment;
-      let effectiveTimeOut = timeOutMoment;
-      
-      // Handle night shifts that span midnight
-      if (timeOutMoment.isBefore(timeInMoment)) {
-        // Shift spans midnight, add 1 day to time out
-        effectiveTimeOut = moment(timeOutMoment).add(1, 'day');
-      }
+       // ABUSE PREVENTION: Cap actual times to scheduled times
+       let effectiveTimeIn = timeInMoment;
+       let effectiveTimeOut = timeOutMoment;
+       
+       // If user clocked in early, cap to scheduled time
+       if (timeInMoment.isBefore(scheduledInMoment)) {
+         effectiveTimeIn = scheduledInMoment.clone();
+       }
+       
+       // If user clocked out early, use actual time out (for undertime calculation)
+       // If user clocked out late, cap to scheduled time (to prevent abuse)
+       if (timeOutMoment.isBefore(scheduledOutMoment)) {
+         effectiveTimeOut = timeOutMoment.clone();
+       } else if (timeOutMoment.isAfter(scheduledOutMoment)) {
+         effectiveTimeOut = scheduledOutMoment.clone();
+       }
 
-      // Calculate actual duration worked in minutes
-      let durationMinutes = effectiveTimeOut.diff(effectiveTimeIn, 'minutes');
-      
-      // Ensure duration is positive
-      if (durationMinutes < 0) {
-        console.error('Invalid duration calculation:', { timeIn, timeOut, durationMinutes });
-        return 0;
-      }
+       // Calculate effective duration worked in minutes (capped to scheduled times)
+       let durationMinutes = effectiveTimeOut.diff(effectiveTimeIn, 'minutes');
+       
+       // Ensure duration is positive
+       if (durationMinutes < 0) {
+         return 0;
+       }
 
-      // RULE 4: Break deduction based on shift duration
-      let breakDeduction = 0;
-      if (durationMinutes >= 480) { // 8 hours or more
-        breakDeduction = 60; // 1 hour break
-        durationMinutes -= 60;
-        console.log(`Break deduction applied: ${breakDeduction} minutes (8+ hour shift)`);
-      } else if (durationMinutes >= 240) { // 4 hours or more
-        breakDeduction = 30; // 30 minutes break
-        durationMinutes -= 30;
-        console.log(`Break deduction applied: ${breakDeduction} minutes (4+ hour shift)`);
-      } else {
-        console.log(`No break deduction (shift < 4 hours)`);
-      }
-      
-      console.log(`BH calculation for ${recordDate}: Actual time worked ${effectiveTimeIn.format('HH:mm')} - ${effectiveTimeOut.format('HH:mm')} = ${durationMinutes + breakDeduction} minutes - ${breakDeduction} minutes break = ${durationMinutes} minutes (${(durationMinutes/60).toFixed(2)} hours)`);
+       // Apply break deduction based on shift duration
+       let breakDeduction = 0;
+       if (durationMinutes >= 480) { // 8 hours or more
+         breakDeduction = 60; // 1 hour break
+         durationMinutes -= 60;
+       } else if (durationMinutes >= 240) { // 4 hours or more
+         breakDeduction = 30; // 30 minutes break
+         durationMinutes -= 30;
+       }
 
-      return Math.max(0, durationMinutes);
-    } catch (error) {
-      console.error('Error calculating billed hours:', error);
-      return 0;
-    }
-  };
+       return Math.max(0, durationMinutes);
+     } catch (error) {
+       console.error('Error calculating billed hours:', error);
+       return 0;
+     }
+   };
 
   const calculateSummaryTotals = (dailyRecords) => {
     if (!dailyRecords || dailyRecords.length === 0) {
@@ -797,11 +787,11 @@ const ScheduleReport = () => {
     let totalNightDifferential = 0;
 
     dailyRecords.forEach(record => {
-      // Calculate billed hours
-      if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-        const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
-        totalBilledHours += bhMinutes;
-      }
+               // Calculate billed hours
+         if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+           const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+           totalBilledHours += bhMinutes;
+         }
 
       // Calculate late minutes
       if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
@@ -816,11 +806,11 @@ const ScheduleReport = () => {
         totalUndertimeMinutes += utMinutes;
       }
 
-      // Calculate night differential
-      if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-        const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.date);
-        totalNightDifferential += ndHours;
-      }
+               // Calculate night differential
+         if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+           const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+           totalNightDifferential += ndHours;
+         }
     });
 
     return {
@@ -1007,7 +997,7 @@ const ScheduleReport = () => {
         'Scheduled Out': formatTime(record.scheduled_out),
         'BH (min)': (() => {
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
+            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
             return bhMinutes > 0 ? bhMinutes : '-';
           }
           return '-';
@@ -1094,7 +1084,7 @@ const ScheduleReport = () => {
         'Scheduled Out': formatTime(record.scheduled_out),
         'BH (min)': (() => {
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
+            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
             return bhMinutes > 0 ? bhMinutes : '-';
           }
           return '-';
@@ -1215,7 +1205,7 @@ const ScheduleReport = () => {
                   formatTime(record.scheduled_out) || '-',
                   (() => {
                     if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-                      const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
+                      const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
                       return bhMinutes > 0 ? bhMinutes : '-';
                     }
                     return '-';
@@ -1353,7 +1343,7 @@ const ScheduleReport = () => {
             formatTime(record.scheduled_out) || '-',
             (() => {
               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-                const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
+                const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
                 return bhMinutes > 0 ? bhMinutes : '-';
               }
               return '-';
@@ -1890,7 +1880,7 @@ const ScheduleReport = () => {
                           });
                           
                           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-                            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
+                            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
                             console.log(`✅ BH Result for ${record.date}:`, bhMinutes);
                             return bhMinutes > 0 ? bhMinutes : '-';
                           }

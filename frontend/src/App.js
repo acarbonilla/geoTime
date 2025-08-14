@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ToastContainer, toast } from 'react-toastify';
+import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Login from './Login';
 import 'leaflet/dist/leaflet.css';
@@ -16,7 +16,7 @@ import EmployeeRequestPage from './EmployeeRequest/EmployeeRequestPage';
 import ApprovalPage from './TeamLeaderApproval/ApprovalPage';
 import { ScheduleManagement, ScheduleReport } from './Employee_Schedule';
 import { TeamLeaderScheduleManagement, TeamLeaderScheduleReport } from './TeamLeader_Report';
-import { shouldShowMobileView, shouldShowFullView, shouldShowNavbar, getFeatureFlags } from './utils/deviceDetection';
+import { shouldShowMobileView, shouldShowNavbar } from './utils/deviceDetection';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -121,7 +121,6 @@ function App() {
                     (() => {
                       // Enhanced view logic with automatic redirection
                       const isMobileView = shouldShowMobileView();
-                      const isFullView = shouldShowFullView();
                       
                       if (isMobileView) {
                         // Show mobile dashboard for all users in mobile view

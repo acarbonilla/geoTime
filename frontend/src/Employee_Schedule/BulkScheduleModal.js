@@ -14,7 +14,7 @@ const BulkScheduleModal = ({ isOpen, onClose, onSave, currentMonth, isStaff = fa
     overwrite_existing: false,
     notes: ''
   });
-  const [loading, setLoading] = useState(false);
+
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateTypeFilter, setTemplateTypeFilter] = useState('personal');
   const [editingTemplate, setEditingTemplate] = useState(null);

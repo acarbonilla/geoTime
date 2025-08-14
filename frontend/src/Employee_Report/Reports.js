@@ -40,7 +40,6 @@ const Tooltip = ({ text, children }) => (
 
 const Reports = () => {
   // State for time entries and filtering
-  const [entries, setEntries] = useState([]);
   const [filteredEntries, setFilteredEntries] = useState([]);
   
   // Filter form state
@@ -52,15 +51,13 @@ const Reports = () => {
   
   // State for pagination and UI
   const [currentPage, setCurrentPage] = useState(1);
-  const [entriesPerPage, setEntriesPerPage] = useState(10);
+  const [entriesPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   // Commented out unused state variables
   // const [activeTab, setActiveTab] = useState('timeEntries');
   const [isCorrectionDrawerOpen, setIsCorrectionDrawerOpen] = useState(false);
   // State for UI control
-  const [showTable, setShowTable] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [pageLoading, setPageLoading] = useState(true);
+
   // Remove employee state and related API call
   // const [employee, setEmployee] = useState(null);
   // const [pageSize, setPageSize] = useState(20);
@@ -101,13 +98,7 @@ const Reports = () => {
     fetchTimeEntries();
   };
   
-  const handleEntriesPerPageChange = (e) => {
-    const newEntriesPerPage = Number(e.target.value);
-    setEntriesPerPage(newEntriesPerPage);
-    setCurrentPage(1);
-    // Fetch entries with the new page size
-    fetchTimeEntries();
-  };
+
   
   // Initialize component
   // Filter form change handler
@@ -288,7 +279,6 @@ const Reports = () => {
   const fetchTimeEntries = useCallback(async () => {
     let isMounted = true;
     try {
-      setLoading(true);
       const params = new URLSearchParams();
       
       // Add time entries filters
@@ -302,22 +292,16 @@ const Reports = () => {
       
       const response = await axiosInstance.get(`/time-entries/?${params.toString()}`);
       if (isMounted) {
-        setEntries(response.data.results || response.data);
         setFilteredEntries(response.data.results || response.data);
         setTotalPages(Math.ceil((response.data.count || response.data.length) / entriesPerPage));
-        setShowTable(true);
       }
     } catch (error) {
       console.error('Error fetching time entries:', error);
       if (isMounted) {
-        setEntries([]);
         setFilteredEntries([]);
-        setShowTable(false);
       }
     } finally {
-      if (isMounted) {
-        setLoading(false);
-      }
+      // Cleanup
     }
     
     return () => {
@@ -331,19 +315,12 @@ const Reports = () => {
     
     const fetchData = async () => {
       try {
-        setPageLoading(true);
         // Only fetch time entries
         await fetchTimeEntries();
       } catch (error) {
         console.error('Error initializing data:', error);
         if (isMounted) {
-          setEntries([]);
           setFilteredEntries([]);
-          setShowTable(false);
-        }
-      } finally {
-        if (isMounted) {
-          setPageLoading(false);
         }
       }
     };

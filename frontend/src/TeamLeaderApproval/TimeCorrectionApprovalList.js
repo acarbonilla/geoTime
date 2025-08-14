@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { FaUserClock, FaCalendarAlt, FaClock, FaUserCheck, FaUserTimes, FaHourglassHalf, FaSort, FaSortUp, FaSortDown, FaEdit, FaBan } from 'react-icons/fa';
+import { FaUserClock, FaClock, FaUserCheck, FaUserTimes, FaSort, FaSortUp, FaSortDown } from 'react-icons/fa';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 const STATUS_OPTIONS = [

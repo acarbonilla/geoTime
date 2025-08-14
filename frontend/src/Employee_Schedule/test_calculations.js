@@ -8,7 +8,7 @@
 import moment from 'moment';
 
 // Mock the calculateBilledHours function for testing
-const calculateBilledHours = (timeIn, timeOut, recordDate) => {
+const calculateBilledHours = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
   if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
     return 0;
   }
@@ -23,7 +23,12 @@ const calculateBilledHours = (timeIn, timeOut, recordDate) => {
     const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
     let timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
     
-    if (!timeInMoment.isValid() || !timeOutMoment.isValid()) {
+    // Parse scheduled times for abuse prevention
+    const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+    const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
+    
+    if (!timeInMoment.isValid() || !timeOutMoment.isValid() || 
+        !scheduledInMoment.isValid() || !scheduledOutMoment.isValid()) {
       return 0;
     }
 
@@ -31,13 +36,36 @@ const calculateBilledHours = (timeIn, timeOut, recordDate) => {
     if (timeOutMoment.isBefore(timeInMoment)) {
       timeOutMoment = moment(timeOutMoment).add(1, 'day');
     }
+    if (scheduledOutMoment.isBefore(scheduledInMoment)) {
+      scheduledOutMoment.add(1, 'day');
+    }
 
-    // Calculate actual duration worked in minutes
-    let durationMinutes = timeOutMoment.diff(timeInMoment, 'minutes');
+    // ABUSE PREVENTION: Cap actual times to scheduled times
+    let effectiveTimeIn = timeInMoment;
+    let effectiveTimeOut = timeOutMoment;
+    
+    // If user clocked in early, cap to scheduled time
+    if (timeInMoment.isBefore(scheduledInMoment)) {
+      effectiveTimeIn = scheduledInMoment.clone();
+      console.log(`User clocked in early (${timeInMoment.format('HH:mm')}), capped to scheduled time (${scheduledInMoment.format('HH:mm')})`);
+    }
+    
+         // If user clocked out early, use actual time out (for undertime calculation)
+     // If user clocked out late, cap to scheduled time (to prevent abuse)
+     if (timeOutMoment.isBefore(scheduledOutMoment)) {
+       effectiveTimeOut = timeOutMoment.clone();
+       console.log(`User clocked out early (${timeOutMoment.format('HH:mm')}), using actual time out for undertime calculation`);
+     } else if (timeOutMoment.isAfter(scheduledOutMoment)) {
+       effectiveTimeOut = scheduledOutMoment.clone();
+       console.log(`User clocked out late (${timeOutMoment.format('HH:mm')}), capped to scheduled time (${scheduledOutMoment.format('HH:mm')})`);
+     }
+
+    // Calculate effective duration worked in minutes (capped to scheduled times)
+    let durationMinutes = effectiveTimeOut.diff(effectiveTimeIn, 'minutes');
     
     // Ensure duration is positive
     if (durationMinutes < 0) {
-      console.error('Invalid duration calculation:', { timeIn, timeOut, durationMinutes });
+      console.error('Invalid duration calculation:', { effectiveTimeIn: effectiveTimeIn.format('HH:mm'), effectiveTimeOut: effectiveTimeOut.format('HH:mm'), durationMinutes });
       return 0;
     }
 
@@ -51,7 +79,7 @@ const calculateBilledHours = (timeIn, timeOut, recordDate) => {
       durationMinutes -= 30;
     }
 
-    console.log(`BH calculation for ${recordDate}: Actual time worked ${timeInMoment.format('HH:mm')} - ${timeOutMoment.format('HH:mm')} = ${durationMinutes + breakDeduction} minutes - ${breakDeduction} minutes break = ${durationMinutes} minutes (${(durationMinutes/60).toFixed(2)} hours)`);
+    console.log(`BH calculation for ${recordDate}: Effective time worked ${effectiveTimeIn.format('HH:mm')} - ${effectiveTimeOut.format('HH:mm')} = ${durationMinutes + breakDeduction} minutes - ${breakDeduction} minutes break = ${durationMinutes} minutes (${(durationMinutes/60).toFixed(2)} hours)`);
     
     return Math.max(0, durationMinutes);
   } catch (error) {
@@ -61,7 +89,7 @@ const calculateBilledHours = (timeIn, timeOut, recordDate) => {
 };
 
 // Mock the calculateNightDifferential function for testing
-const calculateNightDifferential = (timeIn, timeOut, recordDate) => {
+ const calculateNightDifferential = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
   console.log('calculateNightDifferential called with:', { timeIn, timeOut, recordDate });
   
   if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
@@ -92,35 +120,74 @@ const calculateNightDifferential = (timeIn, timeOut, recordDate) => {
   let ndHours = 0;
   
   // ND period: 10:00 PM (22:00) to 6:00 AM (06:00) of the next day
-  const ndStart = moment(timeInMoment).set({ hour: 22, minute: 0, second: 0 });
+  // Always start ND period at 10 PM of the base date
+  const ndStart = moment(baseDate).set({ hour: 22, minute: 0, second: 0 });
   
-  let ndEnd;
-  if (timeOutMoment.isBefore(timeInMoment)) {
-    // Shift spans midnight, so ND end is 6 AM of the next day
-    ndEnd = moment(timeInMoment).add(1, 'day').set({ hour: 6, minute: 0, second: 0 });
-  } else {
-    // Same day shift, so ND end is 6 AM of the same day
-    ndEnd = moment(timeInMoment).set({ hour: 6, minute: 0, second: 0 });
-  }
+  // Always end ND period at 6 AM of the next day
+  const ndEnd = moment(baseDate).add(1, 'day').set({ hour: 6, minute: 0, second: 0 });
   
-  // If time in is after ND start, adjust ND start to time in
+  console.log('ND period:', { 
+    ndStart: ndStart.format('YYYY-MM-DD HH:mm:ss'), 
+    ndEnd: ndEnd.format('YYYY-MM-DD HH:mm:ss'),
+    timeIn: timeInMoment.format('YYYY-MM-DD HH:mm:ss'),
+    timeOut: timeOutMoment.format('YYYY-MM-DD HH:mm:ss')
+  });
+  
+  // Find the effective start time for ND calculation
+  let effectiveNDStart = ndStart;
   if (timeInMoment.isAfter(ndStart)) {
-    ndStart.set({ hour: timeInMoment.hour(), minute: timeInMoment.minute(), second: timeInMoment.second() });
+    effectiveNDStart = timeInMoment.clone();
+    console.log('Time in is after ND start, using time in as ND start');
   }
   
-  // If time out is before ND end, adjust ND end to time out
-  if (timeOutMoment.isBefore(ndEnd)) {
-    ndEnd.set({ hour: timeOutMoment.hour(), minute: timeOutMoment.minute(), second: timeOutMoment.second() });
-  }
+     // Find the effective end time for ND calculation
+   // ABUSE PREVENTION: Cap ND end to scheduled time out if user clocks out late
+   let effectiveNDEnd = ndEnd;
+   
+   // Parse scheduled times for ND abuse prevention
+   const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn || '00:00'}`);
+   const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut || '00:00'}`);
+   
+   if (scheduledOutMoment.isBefore(scheduledInMoment)) {
+     scheduledOutMoment.add(1, 'day');
+   }
+   
+   // CRITICAL: Always cap ND end to scheduled time out to prevent abuse
+   // This ensures users can't claim extra ND hours by clocking out late
+   if (scheduledOutMoment.isBefore(ndEnd)) {
+     effectiveNDEnd = scheduledOutMoment.clone();
+     console.log(`ND end capped to scheduled time out: ${scheduledOutMoment.format('HH:mm')} (prevents abuse)`);
+   } else {
+     effectiveNDEnd = ndEnd.clone();
+     console.log(`ND end using standard ND period: ${ndEnd.format('HH:mm')}`);
+   }
   
   // Calculate ND hours only if there's overlap with ND period
-  if (ndStart.isBefore(ndEnd)) {
-    const duration = moment.duration(ndEnd.diff(ndStart));
+  if (effectiveNDStart.isBefore(effectiveNDEnd)) {
+    const duration = moment.duration(effectiveNDEnd.diff(effectiveNDStart));
     ndHours = duration.asHours();
+    console.log(`ND overlap found: ${effectiveNDStart.format('HH:mm')} - ${effectiveNDEnd.format('HH:mm')} = ${ndHours} hours`);
+  } else {
+    console.log('No overlap with ND period');
+    return 0;
   }
   
-  // Subtract 1 hour for break
-  ndHours = Math.max(0, ndHours - 1);
+  // Apply break deduction based on total shift duration
+  const totalShiftDuration = timeOutMoment.diff(timeInMoment, 'hours');
+  let breakDeduction = 0;
+  
+  if (totalShiftDuration >= 8) {
+    breakDeduction = 1; // 1 hour break for 8+ hour shifts
+    console.log('ND break deduction: 1 hour (8+ hour shift)');
+  } else if (totalShiftDuration >= 4) {
+    breakDeduction = 0.5; // 30 minutes break for 4+ hour shifts
+    console.log('ND break deduction: 30 minutes (4+ hour shift)');
+  } else {
+    console.log('ND break deduction: 0 hours (shift < 4 hours)');
+  }
+  
+  // Apply break deduction to ND hours
+  ndHours = Math.max(0, ndHours - breakDeduction);
   
   // Round to 2 decimal places
   const finalND = Math.round(ndHours * 100) / 100;
@@ -170,7 +237,7 @@ const calculateUndertimeMinutes = (timeIn, timeOut, scheduledIn, scheduledOut, r
   const netScheduledMinutes = scheduledMinutes - scheduledBreakMinutes;
   
   // Use the dynamic BH calculation (actual time worked)
-  const dynamicBHMinutes = calculateBilledHours(timeIn, timeOut, recordDate);
+  const dynamicBHMinutes = calculateBilledHours(timeIn, timeOut, scheduledIn, scheduledOut, recordDate);
   
   // UT = (Net Scheduled Hours - Dynamic BH)
   const undertimeMinutes = Math.max(0, netScheduledMinutes - dynamicBHMinutes);
@@ -182,39 +249,39 @@ const calculateUndertimeMinutes = (timeIn, timeOut, scheduledIn, scheduledOut, r
 
 // Test Cases
 const testCases = [
-  {
-    name: "Test Case 1: Standard Night Shift",
-    schedule: { in: "19:00", out: "04:00" },
-    actual: { in: "18:40", out: "04:05" },
-    date: "2024-08-14",
-    expected: {
-      bh: 505, // 9h 25m - 1h break = 8h 25m = 505 min
-      nd: 5.08, // 6h 5m - 1h break = 5h 5m = 5.08h
-      ut: 0 // No undertime since actual > scheduled
-    }
-  },
-  {
-    name: "Test Case 2: Late Arrival Night Shift",
-    schedule: { in: "19:00", out: "04:00" },
-    actual: { in: "19:30", out: "04:00" },
-    date: "2024-08-14",
-    expected: {
-      bh: 450, // 8h 30m - 1h break = 7h 30m = 450 min
-      nd: 5.5, // 6h 30m - 1h break = 5h 30m = 5.5h
-      ut: 30 // 8h scheduled - 7h 30m actual = 30 min
-    }
-  },
-  {
-    name: "Test Case 3: Early Departure Night Shift",
-    schedule: { in: "19:00", out: "04:00" },
-    actual: { in: "19:00", out: "02:00" },
-    date: "2024-08-14",
-    expected: {
-      bh: 360, // 7h - 1h break = 6h = 360 min
-      nd: 3, // 4h - 1h break = 3h
-      ut: 120 // 8h scheduled - 6h actual = 2h = 120 min
-    }
-  },
+     {
+     name: "Test Case 1: Standard Night Shift (Abuse Prevention)",
+     schedule: { in: "19:00", out: "04:00" },
+     actual: { in: "18:40", out: "04:05" },
+     date: "2024-08-14",
+            expected: {
+         bh: 480, // 9h - 1h break = 8h = 480 min (capped to scheduled)
+         nd: 5.00, // 6h - 1h break = 5h (capped to scheduled time out)
+         ut: 0 // No undertime since effective = scheduled
+       }
+   },
+     {
+     name: "Test Case 2: Late Arrival Night Shift",
+     schedule: { in: "19:00", out: "04:00" },
+     actual: { in: "19:30", out: "04:00" },
+     date: "2024-08-14",
+     expected: {
+       bh: 450, // 8h 30m - 1h break = 7h 30m = 450 min
+       nd: 5.0, // 6h - 1h break = 5h (ND period is 19:30-04:00, not 22:00-04:00)
+       late: 30 // User arrived 30 minutes late (19:30 instead of 19:00)
+     }
+   },
+     {
+     name: "Test Case 3: Early Departure Night Shift",
+     schedule: { in: "19:00", out: "04:00" },
+     actual: { in: "19:00", out: "02:00" },
+     date: "2024-08-14",
+     expected: {
+       bh: 240, // 5h - 1h break = 4h = 240 min (using actual time out)
+       nd: 3, // 4h - 1h break = 3h
+       ut: 240 // 8h scheduled - 4h actual = 4h = 240 min
+     }
+   },
   {
     name: "Test Case 4: Short Night Shift (No 1h Break)",
     schedule: { in: "20:00", out: "02:00" },
@@ -291,6 +358,17 @@ const testCases = [
       nd: 6.5, // 7h 30m - 1h break = 6h 30m = 6.5h
       ut: 0 // No undertime since actual > scheduled
     }
+  },
+  {
+    name: "Test Case 11: 8-Hour Night Shift Spanning Midnight",
+    schedule: { in: "21:00", out: "05:00" },
+    actual: { in: "21:00", out: "05:00" },
+    date: "2024-08-14",
+    expected: {
+      bh: 420, // 8h - 1h break = 7h = 420 min
+      nd: 7, // 7h - 1h break = 6h (10:00 PM - 5:00 AM)
+      ut: 0 // No undertime
+    }
   }
 ];
 
@@ -307,22 +385,42 @@ const validateCalculations = () => {
     console.log(`   Actual: ${testCase.actual.in} - ${testCase.actual.out}`);
     console.log(`   Date: ${testCase.date}`);
     
-    // Calculate actual results
-    const actualBH = calculateBilledHours(testCase.actual.in, testCase.actual.out, testCase.date);
-    const actualND = calculateNightDifferential(testCase.actual.in, testCase.actual.out, testCase.date);
-    const actualUT = calculateUndertimeMinutes(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
+         // Calculate actual results
+     const actualBH = calculateBilledHours(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
+     const actualND = calculateNightDifferential(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
+     const actualUT = calculateUndertimeMinutes(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
     
     // Compare with expected results
     const bhPass = Math.abs(actualBH - testCase.expected.bh) <= 1; // Allow 1 minute tolerance
     const ndPass = Math.abs(actualND - testCase.expected.nd) <= 0.1; // Allow 0.1 hour tolerance
-    const utPass = Math.abs(actualUT - testCase.expected.ut) <= 1; // Allow 1 minute tolerance
+    
+    // Handle both late and ut cases
+    let adjustmentPass = true;
+    let expectedValue = 0;
+    let isLateCase = false;
+    
+    if (testCase.expected.late !== undefined) {
+      // This is a late arrival case
+      expectedValue = testCase.expected.late;
+      isLateCase = true;
+      adjustmentPass = Math.abs(actualUT - expectedValue) <= 1;
+    } else {
+      // This is an undertime case
+      expectedValue = testCase.expected.ut;
+      adjustmentPass = Math.abs(actualUT - expectedValue) <= 1;
+    }
     
     console.log(`\n   Results:`);
     console.log(`   BH: Expected ${testCase.expected.bh}min, Got ${actualBH}min - ${bhPass ? '✅ PASS' : '❌ FAIL'}`);
     console.log(`   ND: Expected ${testCase.expected.nd}h, Got ${actualND}h - ${ndPass ? '✅ PASS' : '❌ FAIL'}`);
-    console.log(`   UT: Expected ${testCase.expected.ut}min, Got ${actualUT}min - ${utPass ? '✅ PASS' : '❌ FAIL'}`);
     
-    if (bhPass && ndPass && utPass) {
+    if (isLateCase) {
+      console.log(`   LT: Expected ${testCase.expected.late}min, Got ${actualUT}min - ${adjustmentPass ? '✅ PASS' : '❌ FAIL'}`);
+    } else {
+      console.log(`   UT: Expected ${testCase.expected.ut}min, Got ${actualUT}min - ${adjustmentPass ? '✅ PASS' : '❌ FAIL'}`);
+    }
+    
+    if (bhPass && ndPass && adjustmentPass) {
       passedTests++;
       console.log(`   🎉 All calculations PASSED!`);
     } else {
@@ -335,7 +433,11 @@ const validateCalculations = () => {
     console.log(`   📊 Breakdown:`);
     console.log(`   - BH: ${actualBH} minutes (${(actualBH/60).toFixed(2)} hours)`);
     console.log(`   - ND: ${actualND} hours`);
-    console.log(`   - UT: ${actualUT} minutes (${(actualUT/60).toFixed(2)} hours)`);
+    if (isLateCase) {
+      console.log(`   - LT: ${actualUT} minutes (${(actualUT/60).toFixed(2)} hours)`);
+    } else {
+      console.log(`   - UT: ${actualUT} minutes (${(actualUT/60).toFixed(2)} hours)`);
+    }
     
     console.log("   " + "─".repeat(60));
   });

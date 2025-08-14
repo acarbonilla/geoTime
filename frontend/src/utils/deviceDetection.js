@@ -128,7 +128,6 @@ export const shouldShowViewToggle = () => {
 export const getFeatureFlags = () => {
   const isMobileView = shouldShowMobileView();
   const isFullView = shouldShowFullView();
-  const isMobileDevice = shouldShowMobileInterface();
   const isTabletDevice = shouldShowTabletInterface();
   
   return {

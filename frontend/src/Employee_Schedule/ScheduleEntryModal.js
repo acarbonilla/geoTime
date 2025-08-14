@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import moment from 'moment';
-import { toast } from 'react-toastify';
+
 
 const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selectedDate, isStaff = false }) => {
   const [formData, setFormData] = useState({
@@ -11,7 +11,7 @@ const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selec
     notes: ''
   });
   const [errors, setErrors] = useState({});
-  const [dateWarning, setDateWarning] = useState('');
+
 
   useEffect(() => {
     if (schedule) {
@@ -34,7 +34,7 @@ const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selec
       });
     }
     setErrors({});
-    setDateWarning(''); // Clear any previous warnings
+
   }, [schedule, selectedDate]);
 
   const handleInputChange = (e) => {
@@ -52,10 +52,7 @@ const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selec
       }));
     }
 
-        // Remove date restriction warnings - let backend handle validation
-    if (name === 'date') {
-      setDateWarning(''); // Clear any warnings
-    }
+
   };
 
   const validateForm = () => {
@@ -97,15 +94,7 @@ const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selec
     }
   };
 
-  const handleTemplateSelect = (template) => {
-    setFormData(prev => ({
-      ...prev,
-      scheduled_time_in: template.time_in,
-      scheduled_time_out: template.time_out,
-      is_night_shift: template.is_night_shift
-    }));
-  };
-
+  // Early return if modal is not open
   if (!isOpen) return null;
 
   return (

@@ -25,12 +25,9 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   const [currentCoords, setCurrentCoords] = useState({ latitude: null, longitude: null });
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [scheduleError, setScheduleError] = useState(null);
-  const [validateTimeConstraints, setValidateTimeConstraints] = useState(true);
-  
   // Overtime-related state
   const [overtimeAnalysis, setOvertimeAnalysis] = useState(null);
   const [sessionResponse, setSessionResponse] = useState(null);
-  const [overtimeAlerts, setOvertimeAlerts] = useState([]);
   const [showOvertimeDetails, setShowOvertimeDetails] = useState(false);
   
   const isTimeInSubmitting = useRef(false);
@@ -99,7 +96,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   }, []);
 
   // React Query hooks for data fetching with 30-second polling
-  const { data: sessionData, isLoading: sessionLoading, error: sessionError } = useQuery({
+  const { data: sessionData, isLoading: sessionLoading } = useQuery({
     queryKey: ['currentSession', employee?.id],
     queryFn: async () => {
       const result = await timeAPI.getCurrentSession();
@@ -110,7 +107,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     enabled: !!employee?.id,
   });
 
-  const { data: entriesData, isLoading: entriesLoading, error: entriesError } = useQuery({
+  const { data: entriesData, isLoading: entriesLoading } = useQuery({
     queryKey: ['timeEntries', employee?.id],
     queryFn: () => timeAPI.getTimeEntries({ limit: 20 }),
     refetchInterval: 30000, // 30 seconds
@@ -231,68 +228,12 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       return false;
     }
     
-    // Validate time constraints (optional - can be disabled if too restrictive)
-    if (validateTimeConstraints) {
-      try {
-        const now = new Date();
-        const currentTime = now.getTime();
-        
-        // FIXED: Parse scheduled time in correctly like MobileDashboard does
-        // Parse scheduled time in (assuming format like "09:00" or "09:00:00")
-        const scheduledTimeStr = todaySchedule.scheduled_time_in;
-        const [hours, minutes] = scheduledTimeStr.split(':').map(Number);
-        
-        // Rule: Cannot clock in more than 1 hour before scheduled start time
-        // For night shifts: applies to same calendar day as schedule date
-        const scheduledTime = new Date(now);
-        scheduledTime.setHours(hours, minutes, 0, 0);
-        const scheduledTimeMs = scheduledTime.getTime();
-        
-        // Calculate time difference in hours
-        const timeDiffHours = Math.abs(currentTime - scheduledTimeMs) / (1000 * 60 * 60);
-        
-        // If more than 1 hour early, prevent clock in
-        if (currentTime < scheduledTimeMs && timeDiffHours > 1) {
-          const earlyHours = timeDiffHours.toFixed(1);
-          const errorMsg = `You cannot clock in yet. Your scheduled time is ${scheduledTimeStr}, and you can only clock in up to 1 hour early. Current time: ${now.toLocaleTimeString()}`;
-          setScheduleError(errorMsg);
-          return false;
-        }
-        
-        // NEW: Check if current time is after scheduled end time
-        const scheduledEndTimeStr = todaySchedule.scheduled_time_out;
-        const [endHours, endMinutes] = scheduledEndTimeStr.split(':').map(Number);
-        
-        // Create scheduled end time for today
-        const scheduledEndTime = new Date(now);
-        scheduledEndTime.setHours(endHours, endMinutes, 0, 0);
-        const scheduledEndTimeMs = scheduledEndTime.getTime();
-        
-        // Handle overnight shifts - compare with start time hours
-        if (endHours < hours) {
-          scheduledEndTime.setDate(scheduledEndTime.getDate() + 1);
-        }
-        
-        // REMOVED: 2-hour restriction based on ScheduleOut time
-        // Now clock-in validation is ONLY based on ScheduleIn time (1 hour before)
-        // Users can clock in at any time after the earliest allowed time (1 hour before ScheduleIn)
-        
-        // If more than 1 hour late, allow but warn (no restriction based on end time)
-        if (currentTime > scheduledTimeMs && timeDiffHours > 1) {
-          // Don't set error, just log warning
-          console.log(`User clocking in ${timeDiffHours.toFixed(1)} hours late, but allowed since no end time restriction`);
-        }
-        
-      } catch (timeError) {
-        console.error('EmployeeDashboard Error parsing scheduled time:', timeError);
-        // If time parsing fails, allow the operation but log the error
-        // This prevents users from being blocked due to time parsing issues
-      }
-    }
+    // Time constraint validation removed - always allow operations
+    // This simplifies the clock-in process and removes potential blocking issues
     
     setScheduleError(null);
     return true;
-  }, [todaySchedule, scheduleQueryError, validateTimeConstraints]);
+  }, [todaySchedule, scheduleQueryError]);
 
   // NEW: Auto-validate schedule when component loads or schedule changes
   useEffect(() => {
@@ -590,30 +531,7 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Overtime Alerts */}
-      {overtimeAlerts.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 relative z-10">
-          {overtimeAlerts.map((alert, index) => (
-            <div
-              key={index}
-              className={`mb-2 p-4 rounded-lg border-l-4 shadow-md ${
-                alert.severity === 'warning' ? 'bg-yellow-50 border-yellow-400 text-yellow-800' :
-                alert.severity === 'error' ? 'bg-red-50 border-red-400 text-red-800' :
-                'bg-blue-50 border-blue-400 text-blue-800'
-              }`}
-            >
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  {alert.severity === 'warning' ? '⚠️' : 'ℹ️'}
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium">{alert.message}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-2 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">

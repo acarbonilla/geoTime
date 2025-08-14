@@ -247,7 +247,6 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       
       // If more than 1 hour early, prevent clock in
       if (currentTime < scheduledTimeMs && timeDiffHours > 1) {
-        const earlyHours = timeDiffHours.toFixed(1);
         const errorMsg = `You cannot clock in yet. Your scheduled time is ${scheduledTimeStr}, and you can only clock in up to 1 hour early. Current time: ${now.toLocaleTimeString()}`;
         setScheduleError(errorMsg);
         return false;
@@ -260,7 +259,6 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       // Create scheduled end time for today
       const scheduledEndTime = new Date(now);
       scheduledEndTime.setHours(endHours, endMinutes, 0, 0);
-      const scheduledEndTimeMs = scheduledEndTime.getTime();
       
       // Handle overnight shifts - compare with start time hours
       if (endHours < hours) {
