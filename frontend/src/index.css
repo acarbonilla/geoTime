@@ -2,6 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Status Pill Styles - Explicit CSS to prevent Tailwind purging */
+.status-present {
+  @apply text-green-700 bg-green-100 border-green-200;
+}
+
+.status-late {
+  @apply text-orange-700 bg-orange-100 border-orange-200;
+}
+
+.status-absent {
+  @apply text-red-700 bg-red-100 border-red-200;
+}
+
+.status-weekend {
+  @apply text-gray-700 bg-gray-100 border-gray-200;
+}
+
+.status-half-day {
+  @apply text-yellow-700 bg-yellow-100 border-yellow-200;
+}
+
+.status-not-scheduled {
+  @apply text-blue-700 bg-blue-100 border-blue-200;
+}
+
+.status-default {
+  @apply text-gray-700 bg-gray-100 border-gray-200;
+}
+
+/* Common status pill layout */
+.status-pill {
+  @apply inline-flex items-center space-x-2 px-3 py-1 text-xs font-medium rounded-full border;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

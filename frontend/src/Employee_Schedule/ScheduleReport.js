@@ -821,13 +821,13 @@ const ScheduleReport = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'present': return 'text-green-700 bg-green-100 border-green-200';
-      case 'late': return 'text-orange-700 bg-orange-100 border-orange-200';
-      case 'absent': return 'text-red-700 bg-red-100 border-red-200';
-      case 'weekend': return 'text-gray-700 bg-gray-100 border-gray-200';
-      case 'half_day': return 'text-yellow-700 bg-yellow-100 border-yellow-200';
-      case 'not_scheduled': return 'text-blue-700 bg-blue-100 border-blue-200';
-      default: return 'text-gray-700 bg-gray-100 border-gray-200';
+      case 'present': return 'status-present';
+      case 'late': return 'status-late';
+      case 'absent': return 'status-absent';
+      case 'weekend': return 'status-weekend';
+      case 'half_day': return 'status-half-day';
+      case 'not_scheduled': return 'status-not-scheduled';
+      default: return 'status-default';
     }
   };
 
@@ -1698,7 +1698,7 @@ const ScheduleReport = () => {
                         {record.day}
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        <span className={`inline-flex items-center space-x-2 px-3 py-1 text-xs font-medium rounded-full border ${getStatusColor(record.status)}`}>
+                        <span className={`status-pill ${getStatusColor(record.status)}`}>
                           {getStatusIcon(record.status)}
                           <span>{getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out)}</span>
                         </span>
