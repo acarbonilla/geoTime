@@ -408,8 +408,8 @@ const ScheduleReport = () => {
       }
     }
     
-    // 4. If no time out found, show informative message
-    return 'No time out data';
+    // 4. If no time out found, show dash
+    return '-';
   };
 
 
@@ -591,6 +591,14 @@ const ScheduleReport = () => {
     return 0;
   };
 
+  /**
+   * Calculate Undertime (UT) based on new dynamic BH calculation with proper break consideration
+   * 
+   * NEW LOGIC: Uses the same dynamic BH calculation as the main BH display
+   * Formula: UT = (Scheduled Hours - Break) - Dynamic BH (actual time worked)
+   * 
+   * This ensures UT represents the actual undertime after accounting for scheduled breaks
+   */
   const calculateUndertimeMinutes = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
     if (!timeIn || !timeOut || !scheduledIn || !scheduledOut || 
         timeIn === '-' || timeOut === '-' || scheduledIn === '-' || scheduledOut === '-') {
@@ -602,62 +610,42 @@ const ScheduleReport = () => {
       return 0;
     }
     
-    const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
-    const timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
+    // Parse scheduled times for UT calculation
     const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
     const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
     
-    if (!timeInMoment.isValid() || !timeOutMoment.isValid() || 
-        !scheduledInMoment.isValid() || !scheduledOutMoment.isValid()) {
+    if (!scheduledInMoment.isValid() || !scheduledOutMoment.isValid()) {
       return 0;
     }
     
-    // If time out is before time in, it means the shift spans midnight
-    if (timeOutMoment.isBefore(timeInMoment)) {
-      timeOutMoment.add(1, 'day');
-    }
-    
-    // If scheduled out is before scheduled in, it means the schedule spans midnight
+    // Handle scheduled times that span midnight
     if (scheduledOutMoment.isBefore(scheduledInMoment)) {
       scheduledOutMoment.add(1, 'day');
     }
     
-    // RULE: UT = (Scheduled Hours - BH)
-    // First calculate the actual BH using the same logic as calculateBilledHours
-    let effectiveTimeIn = timeInMoment;
-    if (timeInMoment.isBefore(scheduledInMoment)) {
-      effectiveTimeIn = scheduledInMoment;
-    }
-    
-    let effectiveTimeOut = timeOutMoment;
-    if (timeOutMoment.isAfter(scheduledOutMoment)) {
-      effectiveTimeOut = scheduledOutMoment;
-    }
-    
-    // Calculate actual BH duration
-    let actualBHMins = 0;
-    if (effectiveTimeOut.isAfter(effectiveTimeIn)) {
-      actualBHMins = effectiveTimeOut.diff(effectiveTimeIn, 'minutes');
-    } else {
-      const nextDay = moment(baseDate).add(1, 'day');
-      const effectiveTimeOutNextDay = moment(nextDay.format('YYYY-MM-DD') + ' ' + effectiveTimeOut.format('HH:mm:ss'), 'YYYY-MM-DD HH:mm:ss');
-      actualBHMins = effectiveTimeOutNextDay.diff(effectiveTimeIn, 'minutes');
-    }
-    
-    // Apply break deduction to actual BH
-    if (actualBHMins >= 480) { // 8 hours or more
-      actualBHMins -= 60; // 1 hour break
-    } else if (actualBHMins >= 240) { // 4 hours or more
-      actualBHMins -= 30; // 30 minutes break
-    }
-    actualBHMins = Math.max(0, actualBHMins);
-    
-    // Calculate scheduled duration
+    // Calculate scheduled duration (gross - before break deduction)
     const scheduledDuration = moment.duration(scheduledOutMoment.diff(scheduledInMoment));
     const scheduledMinutes = scheduledDuration.asMinutes();
     
-    // RULE: UT = (Scheduled Hours - BH)
-    const undertimeMinutes = Math.max(0, scheduledMinutes - actualBHMins);
+    // Calculate scheduled break deduction based on scheduled duration
+    let scheduledBreakMinutes = 0;
+    if (scheduledMinutes >= 480) { // 8 hours or more
+      scheduledBreakMinutes = 60; // 1 hour break
+    } else if (scheduledMinutes >= 240) { // 4 hours or more
+      scheduledBreakMinutes = 30; // 30 minutes break
+    }
+    
+    // Calculate net scheduled time (after break deduction)
+    const netScheduledMinutes = scheduledMinutes - scheduledBreakMinutes;
+    
+    // NEW: Use the dynamic BH calculation (actual time worked)
+    const dynamicBHMinutes = calculateBilledHours(timeIn, timeOut, recordDate);
+    
+    // RULE: UT = (Net Scheduled Hours - Dynamic BH)
+    // This represents actual undertime after accounting for scheduled breaks
+    const undertimeMinutes = Math.max(0, netScheduledMinutes - dynamicBHMinutes);
+    
+    console.log(`UT calculation for ${recordDate}: Gross Scheduled ${scheduledMinutes}min - Break ${scheduledBreakMinutes}min = Net Scheduled ${netScheduledMinutes}min - Dynamic BH ${dynamicBHMinutes}min = UT ${undertimeMinutes}min`);
     
     return Math.round(undertimeMinutes);
   };
@@ -699,14 +687,33 @@ const ScheduleReport = () => {
     return breakHours;
   };
 
-  const calculateBilledHours = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
+  /**
+   * Calculate Billed Hours (BH) based on ACTUAL time worked with automatic break deduction
+   * 
+   * NEW LOGIC: Uses actual time worked (time out - time in) instead of scheduled times
+   * This makes BH dynamic and reflects the actual hours worked, not just scheduled hours.
+   * 
+   * BREAK DEDUCTION RULES:
+   * - Shifts ≥ 8 hours (480+ minutes): Deduct 1 hour (60 minutes)
+   * - Shifts ≥ 4 hours (240+ minutes): Deduct 30 minutes
+   * - Shifts < 4 hours: No break deduction
+   * 
+   * Example: 8:59 PM → 11:38 PM (2h 39m = 159 minutes)
+   * - Actual duration: 159 minutes
+   * - Break deduction: 30 minutes (≥4 hours but <8 hours)
+   * - Final BH: 129 minutes
+   * 
+   * Previous logic used scheduled times, now uses actual clock in/out times for dynamic BH calculation.
+   */
+  const calculateBilledHours = (timeIn, timeOut, recordDate) => {
     if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
       return 0;
     }
 
-    if (!scheduledIn || !scheduledOut || scheduledIn === '-' || scheduledOut === '-') {
-      return 0;
-    }
+    // No longer require scheduled times since we're using actual time worked
+    // if (!scheduledIn || !scheduledOut || scheduledIn === '-' || scheduledOut === '-') {
+    //   return 0;
+    // }
 
     try {
       const baseDate = moment(recordDate, 'YYYY-MM-DD');
@@ -714,53 +721,49 @@ const ScheduleReport = () => {
         return 0;
       }
 
-      // Parse all times
+      // Parse actual time worked (time out - time in)
       const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
       const timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
-      const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
-      const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
       
-      if (!timeInMoment.isValid() || !timeOutMoment.isValid() || 
-          !scheduledInMoment.isValid() || !scheduledOutMoment.isValid()) {
+      if (!timeInMoment.isValid() || !timeOutMoment.isValid()) {
         return 0;
       }
 
-      // RULE 1: If Time In is early, round up to Scheduled In
+      // NEW LOGIC: Use actual time worked instead of scheduled times
+      // This makes BH dynamic based on actual clock in/out times
       let effectiveTimeIn = timeInMoment;
-      if (timeInMoment.isBefore(scheduledInMoment)) {
-        effectiveTimeIn = scheduledInMoment;
+      let effectiveTimeOut = timeOutMoment;
+      
+      // Handle night shifts that span midnight
+      if (timeOutMoment.isBefore(timeInMoment)) {
+        // Shift spans midnight, add 1 day to time out
+        effectiveTimeOut = moment(timeOutMoment).add(1, 'day');
       }
 
-      // RULE 2: If Time Out is early, BH = 0
-      if (timeOutMoment.isBefore(scheduledInMoment)) {
+      // Calculate actual duration worked in minutes
+      let durationMinutes = effectiveTimeOut.diff(effectiveTimeIn, 'minutes');
+      
+      // Ensure duration is positive
+      if (durationMinutes < 0) {
+        console.error('Invalid duration calculation:', { timeIn, timeOut, durationMinutes });
         return 0;
       }
 
-      // RULE 3: If Time Out is late, round down to Scheduled Out
-      let effectiveTimeOut = timeOutMoment;
-      if (timeOutMoment.isAfter(scheduledOutMoment)) {
-        effectiveTimeOut = scheduledOutMoment;
-      }
-
-      // Calculate duration in minutes
-      let durationMinutes = 0;
-      
-      if (effectiveTimeOut.isAfter(effectiveTimeIn)) {
-        // Same day shift
-        durationMinutes = effectiveTimeOut.diff(effectiveTimeIn, 'minutes');
-      } else {
-        // Night shift spanning midnight
-        const nextDay = moment(baseDate).add(1, 'day');
-        const effectiveTimeOutNextDay = moment(nextDay.format('YYYY-MM-DD') + ' ' + effectiveTimeOut.format('HH:mm:ss'), 'YYYY-MM-DD HH:mm:ss');
-        durationMinutes = effectiveTimeOutNextDay.diff(effectiveTimeIn, 'minutes');
-      }
-
-      // RULE 4: Minus 1 hour break for shifts 8+ hours
+      // RULE 4: Break deduction based on shift duration
+      let breakDeduction = 0;
       if (durationMinutes >= 480) { // 8 hours or more
-        durationMinutes -= 60; // 1 hour break
+        breakDeduction = 60; // 1 hour break
+        durationMinutes -= 60;
+        console.log(`Break deduction applied: ${breakDeduction} minutes (8+ hour shift)`);
       } else if (durationMinutes >= 240) { // 4 hours or more
-        durationMinutes -= 30; // 30 minutes break
+        breakDeduction = 30; // 30 minutes break
+        durationMinutes -= 30;
+        console.log(`Break deduction applied: ${breakDeduction} minutes (4+ hour shift)`);
+      } else {
+        console.log(`No break deduction (shift < 4 hours)`);
       }
+      
+      console.log(`BH calculation for ${recordDate}: Actual time worked ${effectiveTimeIn.format('HH:mm')} - ${effectiveTimeOut.format('HH:mm')} = ${durationMinutes + breakDeduction} minutes - ${breakDeduction} minutes break = ${durationMinutes} minutes (${(durationMinutes/60).toFixed(2)} hours)`);
 
       return Math.max(0, durationMinutes);
     } catch (error) {
@@ -787,7 +790,7 @@ const ScheduleReport = () => {
     dailyRecords.forEach(record => {
       // Calculate billed hours
       if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-        const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+        const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
         totalBilledHours += bhMinutes;
       }
 
@@ -797,7 +800,7 @@ const ScheduleReport = () => {
         totalLateMinutes += lateMinutes;
       }
 
-      // Calculate undertime minutes
+      // Calculate undertime minutes (now uses dynamic BH calculation with proper break consideration)
       if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
           record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
         const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
@@ -995,7 +998,7 @@ const ScheduleReport = () => {
         'Scheduled Out': formatTime(record.scheduled_out),
         'BH (min)': (() => {
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
             return bhMinutes > 0 ? bhMinutes : '-';
           }
           return '-';
@@ -1082,7 +1085,7 @@ const ScheduleReport = () => {
         'Scheduled Out': formatTime(record.scheduled_out),
         'BH (min)': (() => {
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
             return bhMinutes > 0 ? bhMinutes : '-';
           }
           return '-';
@@ -1203,7 +1206,7 @@ const ScheduleReport = () => {
                   formatTime(record.scheduled_out) || '-',
                   (() => {
                     if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-                      const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+                      const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
                       return bhMinutes > 0 ? bhMinutes : '-';
                     }
                     return '-';
@@ -1341,7 +1344,7 @@ const ScheduleReport = () => {
             formatTime(record.scheduled_out) || '-',
             (() => {
               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-                const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+                const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
                 return bhMinutes > 0 ? bhMinutes : '-';
               }
               return '-';
@@ -1852,8 +1855,8 @@ const ScheduleReport = () => {
                             }
                           }
                           
-                          // 4. If no time out found, show informative message
-                          return 'No time out data';
+                          // 4. If no time out found, show dash
+                          return '-';
                         })()}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 font-medium">
@@ -1878,7 +1881,7 @@ const ScheduleReport = () => {
                           });
                           
                           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-                            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+                            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.date);
                             console.log(`✅ BH Result for ${record.date}:`, bhMinutes);
                             return bhMinutes > 0 ? bhMinutes : '-';
                           }
