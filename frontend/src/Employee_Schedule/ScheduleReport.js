@@ -2151,9 +2151,9 @@ const ScheduleReport = () => {
                             console.log(`🔍 Checking main time_out field:`, {
                               timeOut: nextRecord.time_out,
                               timeoutHour,
-                              isBefore6AM: timeoutHour < 6
+                              isBefore6AM: timeoutHour <= 6
                             });
-                            if (timeoutHour < 6) {
+                            if (timeoutHour <= 6) {
                               hasNextDayTimeout = true;
                               nextDayTimeoutEntry = {
                                 event_time: nextRecord.time_out,
@@ -2172,7 +2172,7 @@ const ScheduleReport = () => {
                             
                             const timeoutInEntries = nextRecord.time_entries.find(entry => 
                               entry.entry_type === 'time_out' && 
-                              parseInt(entry.event_time.split(':')[0]) < 6
+                              parseInt(entry.event_time.split(':')[0]) <= 6
                             );
                             
                             if (timeoutInEntries) {
