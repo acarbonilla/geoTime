@@ -312,7 +312,7 @@
 
                 // Apply break deduction based on shift duration
                 let breakDeduction = 0;
-                if (durationMinutes >= 480) { // 8 hours or more
+                if (durationMinutes >= 420) { // 7 hours or more (changed from 480 to 420)
                     breakDeduction = 60; // 1 hour break
                     durationMinutes -= 60;
                 } else if (durationMinutes >= 240) { // 4 hours or more
@@ -416,13 +416,13 @@
             const scheduledDuration = moment.duration(scheduledOutMoment.diff(scheduledInMoment));
             const scheduledMinutes = scheduledDuration.asMinutes();
             
-            // Calculate scheduled break deduction based on scheduled duration
-            let scheduledBreakMinutes = 0;
-            if (scheduledMinutes >= 480) { // 8 hours or more
-                scheduledBreakMinutes = 60; // 1 hour break
-            } else if (scheduledMinutes >= 240) { // 4 hours or more
-                scheduledBreakMinutes = 30; // 30 minutes break
-            }
+                         // Calculate scheduled break deduction based on scheduled duration
+             let scheduledBreakMinutes = 0;
+             if (scheduledMinutes >= 420) { // 7 hours or more (changed from 480 to 420)
+                 scheduledBreakMinutes = 60; // 1 hour break
+             } else if (scheduledMinutes >= 240) { // 4 hours or more
+                 scheduledBreakMinutes = 30; // 30 minutes break
+             }
             
             // Calculate net scheduled time (after break deduction)
             const netScheduledMinutes = scheduledMinutes - scheduledBreakMinutes;

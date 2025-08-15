@@ -329,9 +329,9 @@ const testCases = [
      actual: { in: "19:00", out: "02:00" },
      date: "2024-08-14",
      expected: {
-       bh: 240, // 5h - 1h break = 4h = 240 min (using actual time out)
-       nd: 3, // 4h - 1h break = 3h
-       ut: 240 // 8h scheduled - 4h actual = 4h = 240 min
+       bh: 390, // 7h (19:00-02:00) - 30m break = 6h 30m = 390 min (using actual time out)
+       nd: 3.5, // 4h (22:00-02:00) - 30m break = 3h 30m = 3.5h
+       ut: 90 // 9h scheduled - 60m break = 8h net - 6h 30m actual = 1h 30m = 90 min
      }
    },
   {
@@ -521,12 +521,12 @@ const validateCalculations = () => {
     console.log(`   Actual: ${testCase.actual.in} - ${testCase.actual.out}`);
     console.log(`   Date: ${testCase.date}`);
     
-         // Calculate actual results
-     const actualBH = calculateBilledHours(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
-     const actualND = calculateNightDifferential(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
-     const actualUT = calculateUndertimeMinutes(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
-     const actualLT = calculateLateMinutes(testCase.actual.in, testCase.schedule.in, testCase.date);
-     const actualEarly = calculateEarlyMinutes(testCase.actual.in, testCase.schedule.in, testCase.date);
+    // Calculate actual results
+    const actualBH = calculateBilledHours(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
+    const actualND = calculateNightDifferential(testCase.actual.in, testCase.actual.out, testCase.date);
+    const actualUT = calculateUndertimeMinutes(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
+    const actualLT = calculateLateMinutes(testCase.actual.in, testCase.schedule.in, testCase.date);
+    const actualEarly = calculateEarlyMinutes(testCase.actual.in, testCase.schedule.in, testCase.date);
     
     // Compare with expected results
     const bhPass = Math.abs(actualBH - testCase.expected.bh) <= 1; // Allow 1 minute tolerance

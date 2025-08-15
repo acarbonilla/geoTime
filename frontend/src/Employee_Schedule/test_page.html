@@ -233,27 +233,23 @@
                     scheduledOutMoment.add(1, 'day');
                 }
 
-                // ABUSE PREVENTION: Cap actual times to scheduled times
+                // STRICT ABUSE PREVENTION: Cap actual times to scheduled times to prevent any abuse
                 let effectiveTimeIn = timeInMoment;
                 let effectiveTimeOut = timeOutMoment;
                 
-                // If user clocked in early, cap to scheduled time
+                // If user clocked in early, cap to scheduled time (prevents abuse)
                 if (timeInMoment.isBefore(scheduledInMoment)) {
                     effectiveTimeIn = scheduledInMoment.clone();
                     console.log(`User clocked in early (${timeInMoment.format('HH:mm')}), capped to scheduled time (${scheduledInMoment.format('HH:mm')})`);
                 }
                 
-                // If user clocked out early, use actual time out (for undertime calculation)
-                // If user clocked out late, cap to scheduled time (to prevent abuse)
-                if (timeOutMoment.isBefore(scheduledOutMoment)) {
-                    effectiveTimeOut = timeOutMoment.clone();
-                    console.log(`User clocked out early (${timeOutMoment.format('HH:mm')}), using actual time out for undertime calculation`);
-                } else if (timeOutMoment.isAfter(scheduledOutMoment)) {
+                // If user clocked out late, cap to scheduled time (prevents abuse)
+                if (timeOutMoment.isAfter(scheduledOutMoment)) {
                     effectiveTimeOut = scheduledOutMoment.clone();
                     console.log(`User clocked out late (${timeOutMoment.format('HH:mm')}), capped to scheduled time (${scheduledOutMoment.format('HH:mm')})`);
                 }
 
-                // Calculate effective duration worked in minutes (capped to scheduled times)
+                // Calculate effective duration worked in minutes
                 let durationMinutes = effectiveTimeOut.diff(effectiveTimeIn, 'minutes');
                 
                 // Ensure duration is positive
@@ -282,7 +278,7 @@
         };
 
                  const calculateNightDifferential = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
-            console.log('calculateNightDifferential called with:', { timeIn, timeOut, recordDate });
+            console.log('calculateNightDifferential called with:', { timeIn, timeOut, scheduledIn, scheduledOut, recordDate });
             
             if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
                 console.log('Invalid input, returning 0');
@@ -309,6 +305,29 @@
                 console.log('Shift spans midnight, adjusted timeOutMoment:', timeOutMoment.format('YYYY-MM-DD HH:mm:ss'));
             }
             
+            // Apply same abuse prevention logic as calculateBilledHours
+            const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+            const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
+            
+            if (scheduledOutMoment.isBefore(scheduledInMoment)) {
+                scheduledOutMoment.add(1, 'day');
+            }
+            
+            let effectiveTimeIn = timeInMoment;
+            let effectiveTimeOut = timeOutMoment;
+            
+            // If user clocked in early, cap to scheduled time (prevents abuse)
+            if (timeInMoment.isBefore(scheduledInMoment)) {
+                effectiveTimeIn = scheduledInMoment.clone();
+                console.log(`ND: User clocked in early (${timeInMoment.format('HH:mm')}), capped to scheduled time (${scheduledInMoment.format('HH:mm')})`);
+            }
+            
+            // If user clocked out late, cap to scheduled time (prevents abuse)
+            if (timeOutMoment.isAfter(scheduledOutMoment)) {
+                effectiveTimeOut = scheduledOutMoment.clone();
+                console.log(`ND: User clocked out late (${timeOutMoment.format('HH:mm')}), capped to scheduled time (${scheduledOutMoment.format('HH:mm')})`);
+            }
+            
             let ndHours = 0;
             
             // ND period: 10:00 PM (22:00) to 6:00 AM (06:00) of the next day
@@ -321,38 +340,24 @@
             console.log('ND period:', { 
                 ndStart: ndStart.format('YYYY-MM-DD HH:mm:ss'), 
                 ndEnd: ndEnd.format('YYYY-MM-DD HH:mm:ss'),
-                timeIn: timeInMoment.format('YYYY-MM-DD HH:mm:ss'),
-                timeOut: timeOutMoment.format('YYYY-MM-DD HH:mm:ss')
+                timeIn: effectiveTimeIn.format('YYYY-MM-DD HH:mm:ss'),
+                timeOut: effectiveTimeOut.format('YYYY-MM-DD HH:mm:ss')
             });
             
             // Find the effective start time for ND calculation
             let effectiveNDStart = ndStart;
-            if (timeInMoment.isAfter(ndStart)) {
-                effectiveNDStart = timeInMoment.clone();
+            if (effectiveTimeIn.isAfter(ndStart)) {
+                effectiveNDStart = effectiveTimeIn.clone();
                 console.log('Time in is after ND start, using time in as ND start');
             }
             
-                         // Find the effective end time for ND calculation
-             // ABUSE PREVENTION: Cap ND end to scheduled time out if user clocks out late
-             let effectiveNDEnd = ndEnd;
-             
-             // Parse scheduled times for ND abuse prevention
-             const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn || '00:00'}`);
-             const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut || '00:00'}`);
-             
-             if (scheduledOutMoment.isBefore(scheduledInMoment)) {
-                 scheduledOutMoment.add(1, 'day');
-             }
-             
-             // CRITICAL: Always cap ND end to scheduled time out to prevent abuse
-             // This ensures users can't claim extra ND hours by clocking out late
-             if (scheduledOutMoment.isBefore(ndEnd)) {
-                 effectiveNDEnd = scheduledOutMoment.clone();
-                 console.log(`ND end capped to scheduled time out: ${scheduledOutMoment.format('HH:mm')} (prevents abuse)`);
-             } else {
-                 effectiveNDEnd = ndEnd.clone();
-                 console.log(`ND end using standard ND period: ${ndEnd.format('HH:mm')}`);
-             }
+            // Find the effective end time for ND calculation
+            // Use effective time out (with abuse prevention applied)
+            let effectiveNDEnd = ndEnd;
+            if (effectiveTimeOut.isBefore(ndEnd)) {
+                effectiveNDEnd = effectiveTimeOut.clone();
+                console.log(`ND end capped to effective time out: ${effectiveTimeOut.format('HH:mm')} (using effective time worked)`);
+            }
             
             // Calculate ND hours only if there's overlap with ND period
             if (effectiveNDStart.isBefore(effectiveNDEnd)) {
@@ -365,7 +370,7 @@
             }
             
             // Apply break deduction based on total shift duration
-            const totalShiftDuration = timeOutMoment.diff(timeInMoment, 'hours');
+            const totalShiftDuration = effectiveTimeOut.diff(effectiveTimeIn, 'hours');
             let breakDeduction = 0;
             
             if (totalShiftDuration >= 8) {
@@ -483,9 +488,9 @@
                  actual: { in: "19:00", out: "02:00" },
                  date: "2024-08-14",
                  expected: {
-                     bh: 300, // 5h - 1h break = 4h = 240 min (using actual time out)
-                     nd: 3, // 4h - 1h break = 3h
-                     ut: 240 // 8h scheduled - 4h actual = 4h = 240 min
+                     bh: 390, // 7h (19:00-02:00) - 30m break = 6h 30m = 390 min (using actual time out)
+                     nd: 3.5, // 4h (22:00-02:00) - 30m break = 3h 30m = 3.5h
+                     ut: 90 // 9h scheduled - 60m break = 8h net - 6h 30m actual = 1h 30m = 90 min
                  }
              },
             {
@@ -560,9 +565,9 @@
                 actual: { in: "20:15", out: "05:45" },
                 date: "2024-08-14",
                 expected: {
-                    bh: 510, // 9h 30m - 1h break = 8h 30m = 510 min
-                    nd: 6.5, // 7h 30m - 1h break = 6h 30m = 6.5h
-                    ut: 0 // No undertime since actual > scheduled
+                    bh: 480, // 9h - 1h break = 8h = 480 min (capped to scheduled times)
+                    nd: 6.5, // 7h 30m - 1h break = 6h 30m = 6.5h (22:00-05:30 = 7.5h, minus 1h break)
+                    ut: 0 // No undertime since effective = scheduled
                 }
             },
             {
@@ -572,7 +577,7 @@
                 date: "2024-08-14",
                 expected: {
                     bh: 420, // 8h - 1h break = 7h = 420 min
-                    nd: 7, // 7h - 1h break = 6h (10:00 PM - 5:00 AM)
+                    nd: 6, // 7h - 1h break = 6h (22:00-05:00 = 7h, minus 1h break)
                     ut: 0 // No undertime
                 }
             }
