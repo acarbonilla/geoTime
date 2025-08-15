@@ -1488,11 +1488,60 @@ class TimeInOutAPIView(APIView):
         
         entry_type = 'time_in' if action == 'time-in' else 'time_out'
         
-        # NEW: ENFORCE SCHEDULE COMPLIANCE - Block if no schedule exists
-        from datetime import date
+        # Initialize logger for validation
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # ENHANCED: SCHEDULE COMPLIANCE WITH NIGHTSHIFT SUPPORT
+        from datetime import date, datetime, timedelta
         today = date.today()
+        current_time = datetime.now()
+        
+        # Primary schedule lookup for current date
         schedule = EmployeeSchedule.objects.filter(employee=employee, date=today).first()
         
+        # If no schedule found and this is a timeout operation, check for nightshift from previous day
+        if not schedule and action == 'time-out':
+            logger.info(f"No schedule found for {today} - checking for nightshift from previous day")
+            
+            # Look for schedule from previous day that might be a nightshift
+            yesterday = today - timedelta(days=1)
+            yesterday_schedule = EmployeeSchedule.objects.filter(
+                employee=employee, date=yesterday
+            ).first()
+            
+            if yesterday_schedule and yesterday_schedule.scheduled_time_out:
+                # Check if this is a nightshift (end time < start time = crosses midnight)
+                if yesterday_schedule.scheduled_time_out < yesterday_schedule.scheduled_time_in:
+                    logger.info(f"Nightshift detected from {yesterday}: {yesterday_schedule.scheduled_time_in} - {yesterday_schedule.scheduled_time_out}")
+                    
+                    # Calculate scheduled end time with midnight crossing
+                    scheduled_end = datetime.combine(yesterday, yesterday_schedule.scheduled_time_out)
+                    if scheduled_end < datetime.combine(yesterday, yesterday_schedule.scheduled_time_in):
+                        scheduled_end += timedelta(days=1)  # Add 24 hours for nightshift
+                    
+                    # Check if current time is within reasonable window after scheduled end (4 hours)
+                    time_diff = current_time - scheduled_end
+                    if time_diff.total_seconds() <= 14400:  # 4 hours = 14400 seconds
+                        logger.info(f"Nightshift timeout allowed - within 4-hour window after scheduled end")
+                        # Use the previous day's schedule for validation
+                        schedule = yesterday_schedule
+                    else:
+                        logger.warning(f"Nightshift timeout blocked - too late after scheduled end ({time_diff.total_seconds()/3600:.1f} hours)")
+                        return Response({
+                            'error': 'Nightshift timeout too late',
+                            'details': f'Your nightshift ended at {yesterday_schedule.scheduled_time_out} on {yesterday}. Timeout is only allowed within 4 hours after scheduled end time.',
+                            'scheduled_end': yesterday_schedule.scheduled_time_out.strftime('%I:%M %p'),
+                            'scheduled_date': yesterday.isoformat(),
+                            'current_time': current_time.strftime('%I:%M %p %Y-%m-%d'),
+                            'hours_late': round(time_diff.total_seconds() / 3600, 1)
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    logger.info(f"Dayshift detected from {yesterday} - no special handling needed")
+            else:
+                logger.info(f"No previous day schedule found for nightshift validation")
+        
+        # Final schedule validation
         if not schedule:
             return Response({
                 'error': 'Schedule required',
@@ -1503,16 +1552,12 @@ class TimeInOutAPIView(APIView):
         if not schedule.scheduled_time_in or not schedule.scheduled_time_out:
             return Response({
                 'error': 'Incomplete schedule',
-                'details': 'Your schedule for today is incomplete. Please contact your supervisor to complete your schedule before clocking in/out.',
-                'date': today.isoformat()
+                'details': 'Your schedule is incomplete. Please contact your supervisor to complete your schedule before clocking in/out.',
+                'date': schedule.date.isoformat()
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Get the last time entry for this employee
         last_entry = TimeEntry.objects.filter(employee=employee).order_by('-timestamp').first()
-
-        # Initialize logger for validation
-        import logging
-        logger = logging.getLogger(__name__)
 
         if action == 'time-in':
             if last_entry and last_entry.entry_type == 'time_in':

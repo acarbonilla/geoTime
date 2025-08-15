@@ -193,8 +193,8 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     }
   }, [sessionLoading, entriesLoading]);
 
-  // NEW: Validate schedule before allowing time operations
-  const validateSchedule = useCallback(() => {
+  // ENHANCED: Validate schedule with nightshift support
+  const validateSchedule = useCallback((action = 'time-in') => {
     // Check if schedule query failed (error state)
     if (scheduleQueryError) {
       const errorMsg = 'Failed to load schedule. Please contact your supervisor.';
@@ -210,15 +210,32 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
     
     // Check if schedule exists for today
     if (!todaySchedule || Object.keys(todaySchedule).length === 0) {
-      const today = new Date().toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-      const errorMsg = `No work schedule found for today (${today}). Please contact your supervisor to set up your schedule before clocking in/out.`;
-      setScheduleError(errorMsg);
-      return false;
+      // ENHANCED: For timeout operations, check if this might be a nightshift scenario
+      if (action === 'time-out') {
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        // Check if we have a schedule from yesterday that might be a nightshift
+        // This is a frontend hint - the backend will do the actual validation
+        console.log('No schedule for today - this might be a nightshift timeout scenario');
+        console.log('Backend will check for nightshift from previous day');
+        
+        // Don't block the user - let the backend handle the validation
+        setScheduleError(null);
+        return true;
+      } else {
+        // For time-in, we still need a schedule
+        const today = new Date().toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+        const errorMsg = `No work schedule found for today (${today}). Please contact your supervisor to set up your schedule before clocking in/out.`;
+        setScheduleError(errorMsg);
+        return false;
+      }
     }
     
     // Check if schedule has required fields
@@ -226,6 +243,20 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
       const errorMsg = 'Your schedule is incomplete. Please contact your supervisor to complete your schedule before clocking in/out.';
       setScheduleError(errorMsg);
       return false;
+    }
+    
+    // ENHANCED: Nightshift detection and validation
+    if (action === 'time-out' && todaySchedule) {
+      const scheduledStartTime = new Date(`2000-01-01T${todaySchedule.scheduled_time_in}`);
+      const scheduledEndTime = new Date(`2000-01-01T${todaySchedule.scheduled_time_out}`);
+      
+      // Check if this is a nightshift (crosses midnight)
+      if (scheduledEndTime < scheduledStartTime) {
+        console.log('Nightshift detected - allowing timeout operations');
+        // For nightshifts, we're more lenient with timeouts
+        setScheduleError(null);
+        return true;
+      }
     }
     
     // Time constraint validation removed - always allow operations
@@ -257,8 +288,8 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   const handleTimeIn = async () => {
     if (isTimeInSubmitting.current) return;
     
-    // NEW: Validate schedule before allowing time in
-    if (!validateSchedule()) {
+    // ENHANCED: Validate schedule before allowing time in
+    if (!validateSchedule('time-in')) {
       return;
     }
     
@@ -322,8 +353,8 @@ export default function EmployeeDashboard({ user, employee, onLogout }) {
   const handleTimeOut = async () => {
     if (isTimeOutSubmitting.current) return;
     
-    // NEW: Validate schedule before allowing time out
-    if (!validateSchedule()) {
+    // ENHANCED: Validate schedule before allowing time out (with nightshift support)
+    if (!validateSchedule('time-out')) {
       return;
     }
     
