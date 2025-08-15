@@ -297,3 +297,105 @@
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* NEW: Collapsible status cards for mobile */
+.mobile-status-toggle {
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.mobile-status-toggle:hover {
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+.mobile-status-toggle:active {
+  transform: scale(0.98);
+}
+
+.mobile-status-content {
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mobile-status-toggle-icon {
+  transition: transform 0.2s ease;
+  font-weight: bold;
+}
+
+.mobile-status-toggle-icon.expanded {
+  transform: rotate(0deg);
+}
+
+.mobile-status-toggle-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+/* Mobile-optimized collapsed state */
+.mobile-status-collapsed {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.mobile-status-expanded {
+  max-height: 500px;
+  opacity: 1;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+}
+
+/* NEW: Smooth toggle animations for status cards */
+.mobile-status-toggle {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mobile-status-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-status-toggle:active {
+  transform: translateY(0);
+}
+
+/* Smooth fade in/out for status cards */
+.mobile-status-fade-enter {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.mobile-status-fade-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms ease-in, transform 300ms ease-out;
+}
+
+.mobile-status-fade-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.mobile-status-fade-exit-active {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 300ms ease-in, transform 300ms ease-out;
+}
+
+/* Compact status card styling */
+.mobile-compact-status {
+  background: linear-gradient(135deg, #f0f9ff 0%, #f0fdf4 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 16px;
+  transition: all 0.3s ease;
+}
+
+.mobile-compact-status:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
+}

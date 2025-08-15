@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import moment from 'moment';
 import { toast } from 'react-toastify';
 import { getTimeAttendanceReport } from '../api/scheduleAPI';
@@ -24,16 +24,26 @@ import {
   ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { 
-  FaCalendarAlt, 
-  FaFilter,
-  FaExclamationTriangle,
-  FaClock,
+  FaCalendar, 
+  FaClock, 
+  FaDownload, 
+  FaFileExcel, 
+  FaFilePdf, 
+  FaFileCsv,
   FaCalendarCheck,
   FaHourglassHalf,
-  FaRegClock
+  FaRegClock,
+  FaCalendarDay,
+  FaInfoCircle,
+  FaSignInAlt,
+  FaSignOutAlt,
+  FaExclamationTriangle,
+  FaFilter,
+  FaCalendarAlt
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 // Try to import jspdf-autotable with error handling
 let autoTableAvailable = false;
@@ -236,7 +246,7 @@ const ScheduleReport = () => {
     }));
   };
 
-  const handleCutOffPeriodChange = async (e) => {
+  const handleCutOffPeriodChange = useCallback(async (e) => {
     const { value } = e.target;
     setFilters(prev => ({
       ...prev,
@@ -247,7 +257,6 @@ const ScheduleReport = () => {
     setAutoDetectedCutOff(false);
 
     if (value) {
-      const currentDate = moment();
       let startDate, endDate;
 
       switch (value) {
@@ -355,7 +364,7 @@ const ScheduleReport = () => {
         }
       }
     }
-  };
+  }, [currentEmployeeId]);
 
   const formatTime = (time) => {
     if (!time || time === '-') return '-';
@@ -414,47 +423,7 @@ const ScheduleReport = () => {
 
 
 
-  const debugTimeDisplay = (record, allRecords, currentIndex) => {
-    console.log(`🔍 DEBUG TIME DISPLAY for ${record.date}:`);
-    console.log(`📅 Record:`, {
-      date: record.date,
-      status: record.status,
-      time_in: record.time_in,
-      time_out: record.time_out,
-      scheduled_in: record.scheduled_in,
-      scheduled_out: record.scheduled_out
-    });
-    
-    console.log(`🔍 Time Out Analysis:`);
-    if (record.time_out && record.time_out !== '-') {
-      console.log(`  ✅ HAS ACTUAL TIME OUT: ${record.time_out}`);
-    } else {
-      console.log(`  ❌ NO ACTUAL TIME OUT`);
-    }
-    
-    if (record.time_in && record.time_in !== '-') {
-      const timeInMoment = moment(record.time_in, 'HH:mm:ss');
-      const isNightShift = timeInMoment.isValid() && timeInMoment.hour() >= 18;
-      console.log(`  🌙 Night Shift: ${isNightShift ? 'YES' : 'NO'} (Time In: ${record.time_in}, Hour: ${timeInMoment.isValid() ? timeInMoment.hour() : 'invalid'})`);
-      
-      if (isNightShift && record.scheduled_out && record.scheduled_out !== '-') {
-        console.log(`  📋 Has Scheduled Out: ${record.scheduled_out}`);
-      }
-    }
-    
-    if (currentIndex !== undefined && currentIndex < allRecords.length - 1) {
-      const nextRecord = allRecords[currentIndex + 1];
-      console.log(`  🔗 Next Record:`, {
-        date: nextRecord?.date,
-        time_out: nextRecord?.time_out,
-        scheduled_out: nextRecord?.scheduled_out,
-        status: nextRecord?.status
-      });
-    }
-    
-    console.log(`📊 Final Result: ${getDisplayTimeOut(record, allRecords, currentIndex)}`);
-    console.log(`🔍 END DEBUG for ${record.date}\n`);
-  };
+
 
      const calculateNightDifferential = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
     if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
@@ -661,42 +630,7 @@ const ScheduleReport = () => {
     return Math.round(undertimeMinutes);
   };
 
-  const calculateBreakHours = (timeIn, timeOut, recordDate) => {
-    if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
-      return 0;
-    }
-    
-    const baseDate = moment(recordDate, 'YYYY-MM-DD');
-    if (!baseDate.isValid()) {
-      return 0;
-    }
-    
-    const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
-    const timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
-    
-    if (!timeInMoment.isValid() || !timeOutMoment.isValid()) {
-      return 0;
-    }
-    
-    // If time out is before time in, it means the shift spans midnight
-    if (timeOutMoment.isBefore(timeInMoment)) {
-      timeOutMoment.add(1, 'day');
-    }
-    
-    // Calculate total work duration
-    const totalDuration = moment.duration(timeOutMoment.diff(timeInMoment));
-    const totalHours = totalDuration.asHours();
-    
-    // Standard break deduction: 1 hour for shifts 7+ hours, 30 minutes for shorter shifts
-    let breakHours = 0;
-    if (totalHours >= 7) { // Changed from 8 to 7
-      breakHours = 1;
-    } else if (totalHours >= 4) {
-      breakHours = 0.5;
-    }
-    
-    return breakHours;
-  };
+
 
   /**
    * Calculate Billed Hours (BH) based on ACTUAL time worked with automatic break deduction
@@ -802,7 +736,8 @@ const ScheduleReport = () => {
         totalBilledHours: 0,
         totalLateMinutes: 0,
         totalUndertimeMinutes: 0,
-        totalNightDifferential: 0
+        totalNightDifferential: 0,
+        totalOvertime: 0
       };
     }
 
@@ -810,6 +745,7 @@ const ScheduleReport = () => {
     let totalLateMinutes = 0;
     let totalUndertimeMinutes = 0;
     let totalNightDifferential = 0;
+    let totalOvertime = 0;
 
     dailyRecords.forEach(record => {
                // Calculate billed hours
@@ -836,13 +772,30 @@ const ScheduleReport = () => {
            const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
            totalNightDifferential += ndHours;
          }
+
+         // Calculate overtime
+         if (record.overtime_hours && record.overtime_hours > 0) {
+           totalOvertime += parseFloat(record.overtime_hours);
+         } else if (record.time_entries && Array.isArray(record.time_entries)) {
+           const overtimeEntries = record.time_entries.filter(entry => 
+             entry.overtime && parseFloat(entry.overtime) > 0
+           );
+           
+           if (overtimeEntries.length > 0) {
+             const recordOvertime = overtimeEntries.reduce((sum, entry) => 
+               sum + parseFloat(entry.overtime), 0
+             );
+             totalOvertime += recordOvertime;
+           }
+         }
     });
 
     return {
       totalBilledHours,
       totalLateMinutes,
       totalUndertimeMinutes,
-      totalNightDifferential: Math.round(totalNightDifferential * 100) / 100
+      totalNightDifferential: Math.round(totalNightDifferential * 100) / 100,
+      totalOvertime: Math.round(totalOvertime * 100) / 100
     };
   };
 
@@ -970,7 +923,6 @@ const ScheduleReport = () => {
   const getCutOffPeriodDisplay = (value) => {
     if (!value) return '';
     
-    const currentDate = moment();
     let startDate, endDate;
 
     switch (value) {
@@ -999,6 +951,118 @@ const ScheduleReport = () => {
     }
   };
 
+  // ENHANCED: Shared function for night shift grouping - used by all export functions
+  const getGroupedRecordsForExport = (dailyRecords) => {
+    if (!dailyRecords || dailyRecords.length === 0) {
+      return [];
+    }
+
+    const groupedRecords = [];
+    
+    for (let i = 0; i < dailyRecords.length; i++) {
+      const currentRecord = dailyRecords[i];
+      const nextRecord = dailyRecords[i + 1];
+      
+      // Check if this is a nightshift (starts late, ends early next day)
+      const isNightshift = currentRecord.scheduled_in && currentRecord.scheduled_out && 
+        parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
+        parseInt(currentRecord.scheduled_out.split(':')[0]) < 12;
+      
+      // Check if current record has time-in but no time-out (incomplete night shift)
+      const hasTimeInNoTimeOut = currentRecord.time_in && currentRecord.time_in !== '-' && 
+        (!currentRecord.time_out || currentRecord.time_out === '-');
+      
+      // Check if next day has early timeout that belongs to this nightshift
+      let hasNextDayTimeout = false;
+      let nextDayTimeoutEntry = null;
+      
+      if (nextRecord) {
+        // First check the main time_out field
+        if (nextRecord.time_out && nextRecord.time_out !== '-') {
+          const timeoutHour = parseInt(nextRecord.time_out.split(':')[0]);
+          if (timeoutHour < 6) {
+            hasNextDayTimeout = true;
+            nextDayTimeoutEntry = {
+              event_time: nextRecord.time_out,
+              entry_type: 'time_out'
+            };
+          }
+        }
+        
+        // If not found in main field, check time_entries array
+        if (!hasNextDayTimeout && nextRecord.time_entries && Array.isArray(nextRecord.time_entries)) {
+          const timeoutInEntries = nextRecord.time_entries.find(entry => 
+            entry.entry_type === 'time_out' && 
+            parseInt(entry.event_time.split(':')[0]) < 6
+          );
+          
+          if (timeoutInEntries) {
+            hasNextDayTimeout = true;
+            nextDayTimeoutEntry = timeoutInEntries;
+          }
+        }
+      }
+      
+      // Check if this is a nightshift that crosses midnight
+      if (isNightshift && hasTimeInNoTimeOut && hasNextDayTimeout) {
+        // Create a combined record for the nightshift
+        const combinedRecord = {
+          ...currentRecord,
+          isNightshift: true,
+          nextDayTimeout: nextDayTimeoutEntry,
+          nextDayDate: nextRecord.date,
+          nextDayDay: nextRecord.day,
+          // Set the time_out to the next day's timeout for calculations
+          time_out: nextDayTimeoutEntry ? nextDayTimeoutEntry.event_time : currentRecord.time_out,
+          // Format the date to show the range
+          displayDate: `${moment(currentRecord.date).format('MMM DD')} → ${moment(nextRecord.date).format('MMM DD')}`,
+          displayDay: `${currentRecord.day} → ${nextRecord.day}`,
+          // Format the timeout to show it's from next day
+          displayTimeOut: `${nextDayTimeoutEntry.event_time} (Next day: ${moment(nextRecord.date).format('MMM DD')})`
+        };
+        
+        groupedRecords.push(combinedRecord);
+        
+        // IMPORTANT: Don't skip the next record - preserve it for potential future time-ins
+        // Instead, mark the next record as having a previous night shift timeout
+        if (nextRecord) {
+          const nextDayRecord = {
+            ...nextRecord,
+            hasPreviousNightshiftTimeout: true,
+            previousNightshiftInfo: `Timeout from ${moment(currentRecord.date).format('MMM DD')} night shift`,
+            displayDate: moment(nextRecord.date).format('MMM DD'),
+            displayDay: nextRecord.day,
+            displayTimeOut: formatTime(nextRecord.time_out) || '-'
+          };
+          groupedRecords.push(nextDayRecord);
+          i++; // Now skip since we've processed both records
+        }
+      } else if (isNightshift && hasTimeInNoTimeOut) {
+        // Nightshift with time-in but no timeout found - mark as incomplete
+        const incompleteRecord = {
+          ...currentRecord,
+          isNightshift: true,
+          isIncomplete: true,
+          displayDate: `${moment(currentRecord.date).format('MMM DD')} (Incomplete)`,
+          displayDay: currentRecord.day,
+          displayTimeOut: '-'
+        };
+        groupedRecords.push(incompleteRecord);
+      } else {
+        // Regular record, add as-is
+        const regularRecord = {
+          ...currentRecord,
+          displayDate: moment(currentRecord.date).format('MMM DD'),
+          displayDay: currentRecord.day,
+          displayTimeOut: formatTime(currentRecord.time_out) || '-'
+        };
+        groupedRecords.push(regularRecord);
+      }
+    }
+    
+    return groupedRecords;
+  };
+
   const handleDownloadCSV = () => {
     if (!report) {
       toast.error('No report data to download.');
@@ -1012,12 +1076,21 @@ const ScheduleReport = () => {
 
     try {
       // Prepare data for CSV export
-      const csvData = report.daily_records.map(record => ({
-        Date: moment(record.date).format('MMM DD, YYYY'),
-        Day: record.day,
-        Status: getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date),
+      const csvData = getGroupedRecordsForExport(report.daily_records).map(record => ({
+        Date: record.displayDate,
+        Day: record.displayDay,
+        Status: (() => {
+          const baseStatus = getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date);
+          if (record.isNightshift) {
+            return `${baseStatus} 🌙 Nightshift`;
+          }
+          if (record.hasPreviousNightshiftTimeout) {
+            return `${baseStatus} 📝 Previous timeout used`;
+          }
+          return baseStatus;
+        })(),
         'Time In': formatTime(record.time_in),
-        'Time Out': getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)),
+        'Time Out': record.displayTimeOut,
         'Scheduled In': formatTime(record.scheduled_in),
         'Scheduled Out': formatTime(record.scheduled_out),
         'BH (min)': (() => {
@@ -1048,6 +1121,28 @@ const ScheduleReport = () => {
             return ndHours > 0 ? `${ndHours}h` : '-';
           }
           return '-';
+        })(),
+        'OT': (() => {
+          // OT calculation from DailyTimeSummary or TimeEntry
+          if (record.overtime_hours && record.overtime_hours > 0) {
+            return `${record.overtime_hours}h`;
+          }
+          
+          // Fallback: Calculate from time entries if available
+          if (record.time_entries && Array.isArray(record.time_entries)) {
+            const overtimeEntries = record.time_entries.filter(entry => 
+              entry.overtime && parseFloat(entry.overtime) > 0
+            );
+            
+            if (overtimeEntries.length > 0) {
+              const totalOvertime = overtimeEntries.reduce((sum, entry) => 
+                sum + parseFloat(entry.overtime), 0
+              );
+              return totalOvertime > 0 ? `${totalOvertime.toFixed(2)}h` : '-';
+            }
+          }
+          
+          return '-';
         })()
       }));
 
@@ -1065,6 +1160,7 @@ const ScheduleReport = () => {
         { 'Total LT (min)': calculatedTotals.totalLateMinutes },
         { 'Total UT (min)': calculatedTotals.totalUndertimeMinutes },
         { 'Total ND': calculatedTotals.totalNightDifferential },
+        { 'Total OT': calculatedTotals.totalOvertime },
         {},
         { 'Daily Records': '' }
       ];
@@ -1099,12 +1195,21 @@ const ScheduleReport = () => {
 
     try {
       // Prepare data for Excel export
-      const excelData = report.daily_records.map(record => ({
-        Date: moment(record.date).format('MMM DD, YYYY'),
-        Day: record.day,
-        Status: getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date),
+      const excelData = getGroupedRecordsForExport(report.daily_records).map(record => ({
+        Date: record.displayDate,
+        Day: record.displayDay,
+        Status: (() => {
+          const baseStatus = getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date);
+          if (record.isNightshift) {
+            return `${baseStatus} 🌙 Nightshift`;
+          }
+          if (record.hasPreviousNightshiftTimeout) {
+            return `${baseStatus} 📝 Previous timeout used`;
+          }
+          return baseStatus;
+        })(),
         'Time In': formatTime(record.time_in),
-        'Time Out': getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)),
+        'Time Out': record.displayTimeOut,
         'Scheduled In': formatTime(record.scheduled_in),
         'Scheduled Out': formatTime(record.scheduled_out),
         'BH (min)': (() => {
@@ -1135,6 +1240,28 @@ const ScheduleReport = () => {
             return ndHours > 0 ? `${ndHours}h` : '-';
           }
           return '-';
+        })(),
+        'OT': (() => {
+          // OT calculation from DailyTimeSummary or TimeEntry
+          if (record.overtime_hours && record.overtime_hours > 0) {
+            return `${record.overtime_hours}h`;
+          }
+          
+          // Fallback: Calculate from time entries if available
+          if (record.time_entries && Array.isArray(record.time_entries)) {
+            const overtimeEntries = record.time_entries.filter(entry => 
+              entry.overtime && parseFloat(entry.overtime) > 0
+            );
+            
+            if (overtimeEntries.length > 0) {
+              const totalOvertime = overtimeEntries.reduce((sum, entry) => 
+                sum + parseFloat(entry.overtime), 0
+              );
+              return totalOvertime > 0 ? `${totalOvertime.toFixed(2)}h` : '-';
+            }
+          }
+          
+          return '-';
         })()
       }));
 
@@ -1153,7 +1280,8 @@ const ScheduleReport = () => {
         { 'Total BH (min)': calculatedTotals.totalBilledHours },
         { 'Total LT (min)': calculatedTotals.totalLateMinutes },
         { 'Total UT (min)': calculatedTotals.totalUndertimeMinutes },
-        { 'Total ND': calculatedTotals.totalNightDifferential }
+        { 'Total ND': calculatedTotals.totalNightDifferential },
+        { 'Total OT': calculatedTotals.totalOvertime }
       ];
       const summaryWorksheet = XLSX.utils.json_to_sheet(summaryData);
       
@@ -1204,28 +1332,40 @@ const ScheduleReport = () => {
           // Check if autoTable is available
           if (typeof doc.autoTable === 'function') {
             // Add title - even smaller font and closer to top
-            doc.setFontSize(14);
+            doc.setFontSize(16);
+            doc.setTextColor(59, 130, 246); // Blue color for title
             doc.text('TIME ATTENDANCE REPORT', 14, 18);
             
             // Add employee info - even smaller font and tighter spacing
-            doc.setFontSize(8);
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0); // Black color for text
             doc.text(`Employee: ${report.employee?.name || 'N/A'} (${report.employee?.employee_id || 'N/A'})`, 14, 24);
             doc.text(`Department: ${report.employee?.department || 'N/A'}`, 14, 28);
             doc.text(`Period: ${report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A'}`, 14, 32);
             
             // Add summary stats - even smaller font and tighter spacing
             const calculatedTotals = calculateSummaryTotals(report.daily_records);
-            doc.text(`Days: ${report.summary?.days_worked || 0} | BH: ${calculatedTotals.totalBilledHours}min | LT: ${calculatedTotals.totalLateMinutes}min | UT: ${calculatedTotals.totalUndertimeMinutes}min | ND: ${calculatedTotals.totalNightDifferential}`, 14, 36);
+            doc.setFontSize(9);
+            doc.text(`Days: ${report.summary?.days_worked || 0} | BH: ${calculatedTotals.totalBilledHours}min | LT: ${calculatedTotals.totalLateMinutes}min | UT: ${calculatedTotals.totalUndertimeMinutes}min | ND: ${calculatedTotals.totalNightDifferential} | OT: ${calculatedTotals.totalOvertime}h`, 14, 36);
 
             // Prepare table data
-            const tableData = report.daily_records.map(record => {
+            const tableData = getGroupedRecordsForExport(report.daily_records).map(record => {
               try {
                 return [
-                  moment(record.date).format('MMM DD'),
-                  record.day || '-',
-                  getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date) || '-',
+                  record.displayDate,
+                  record.displayDay,
+                  (() => {
+                    const baseStatus = getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date);
+                    if (record.isNightshift) {
+                      return `${baseStatus} [NIGHTSHIFT]`;
+                    }
+                    if (record.hasPreviousNightshiftTimeout) {
+                      return `${baseStatus} [PREVIOUS TIMEOUT USED]`;
+                    }
+                    return baseStatus;
+                  })(),
                   formatTime(record.time_in) || '-',
-                  getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)) || '-',
+                  record.displayTimeOut || '-',
                   formatTime(record.scheduled_in) || '-',
                   formatTime(record.scheduled_out) || '-',
                   (() => {
@@ -1260,47 +1400,89 @@ const ScheduleReport = () => {
                     } catch (ndError) {
                       return '-';
                     }
+                  })(),
+                  (() => {
+                    // OT calculation from DailyTimeSummary or TimeEntry
+                    if (record.overtime_hours && record.overtime_hours > 0) {
+                      return `${record.overtime_hours}h`;
+                    }
+                    
+                    // Fallback: Calculate from time entries if available
+                    if (record.time_entries && Array.isArray(record.time_entries)) {
+                      const overtimeEntries = record.time_entries.filter(entry => 
+                        entry.overtime && parseFloat(entry.overtime) > 0
+                      );
+                      
+                      if (overtimeEntries.length > 0) {
+                        const totalOvertime = overtimeEntries.reduce((sum, entry) => 
+                          sum + parseFloat(entry.overtime), 0
+                        );
+                        return totalOvertime > 0 ? `${totalOvertime.toFixed(2)}h` : '-';
+                      }
+                    }
+                    
+                    return '-';
                   })()
                 ];
               } catch (recordError) {
                 console.error('Error processing record:', recordError, record);
-                return ['Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error'];
+                return ['Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error'];
               }
             });
 
-            // Create table - optimized for single page with smaller fonts
+            // Create table - optimized for single page with better styling
             doc.autoTable({
-              head: [['Date', 'Day', 'Status', 'Time In', 'Time Out', 'Scheduled In', 'Scheduled Out', 'BH (min)', 'LT', 'UT', 'ND']],
+              head: [['Date', 'Day', 'Status', 'Time In', 'Time Out', 'Scheduled In', 'Scheduled Out', 'BH (min)', 'LT', 'UT', 'ND', 'OT']],
               body: tableData,
               startY: 42,
               styles: {
-                fontSize: 6,
-                cellPadding: 1
+                fontSize: 7,
+                cellPadding: 2,
+                lineColor: [200, 200, 200],
+                lineWidth: 0.1
               },
               headStyles: {
                 fillColor: [59, 130, 246],
                 textColor: 255,
-                fontSize: 6
+                fontSize: 7,
+                fontStyle: 'bold'
+              },
+              alternateRowStyles: {
+                fillColor: [248, 250, 252]
               },
               margin: { top: 42, right: 8, bottom: 8, left: 8 },
               // Optimize column widths for landscape orientation
               columnStyles: {
-                0: { cellWidth: 18 }, // Date
-                1: { cellWidth: 14 }, // Day
-                2: { cellWidth: 22 }, // Status
-                3: { cellWidth: 18 }, // Time In
-                4: { cellWidth: 18 }, // Time Out
-                5: { cellWidth: 22 }, // Scheduled In
-                6: { cellWidth: 22 }, // Scheduled Out
-                7: { cellWidth: 16 }, // BH
-                8: { cellWidth: 14 }, // LT
-                9: { cellWidth: 14 }, // UT
-                10: { cellWidth: 14 } // ND
+                0: { cellWidth: 20, halign: 'center' }, // Date
+                1: { cellWidth: 16, halign: 'center' }, // Day
+                2: { cellWidth: 25, halign: 'left' },   // Status
+                3: { cellWidth: 20, halign: 'center' }, // Time In
+                4: { cellWidth: 25, halign: 'center' }, // Time Out
+                5: { cellWidth: 22, halign: 'center' }, // Scheduled In
+                6: { cellWidth: 22, halign: 'center' }, // Scheduled Out
+                7: { cellWidth: 18, halign: 'center' }, // BH
+                8: { cellWidth: 16, halign: 'center' }, // LT
+                9: { cellWidth: 16, halign: 'center' }, // UT
+                10: { cellWidth: 16, halign: 'center' }, // ND
+                11: { cellWidth: 16, halign: 'center' }  // OT
               },
               // Force single page
               pageBreak: 'avoid',
-              // Reduce row height even more
-              rowHeight: 6
+              // Better row height
+              rowHeight: 8,
+              // Add some styling for night shift rows
+              didParseCell: function(data) {
+                // Highlight night shift rows
+                if (data.row.index > 0 && data.column.index === 2) { // Status column
+                  const statusText = data.cell.text.join('');
+                  if (statusText.includes('[NIGHTSHIFT]')) {
+                    data.row.styles.fillColor = [239, 246, 255]; // Light blue background
+                  }
+                  if (statusText.includes('[PREVIOUS TIMEOUT USED]')) {
+                    data.row.styles.fillColor = [209, 250, 229]; // Light green background
+                  }
+                }
+              }
             });
 
             const filename = `time_attendance_report_${moment().format('YYYY-MM-DD_HH-mm-ss')}.pdf`;
@@ -1319,29 +1501,33 @@ const ScheduleReport = () => {
       const doc = new jsPDF('landscape');
       
       // Add title - even smaller font and closer to top
-      doc.setFontSize(14);
+      doc.setFontSize(16);
+      doc.setTextColor(59, 130, 246); // Blue color for title
       doc.text('TIME ATTENDANCE REPORT', 14, 18);
       
       // Add employee info - even smaller font and tighter spacing
-      doc.setFontSize(8);
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0); // Black color for text
       doc.text(`Employee: ${report.employee?.name || 'N/A'} (${report.employee?.employee_id || 'N/A'})`, 14, 24);
       doc.text(`Department: ${report.employee?.department || 'N/A'}`, 14, 28);
       doc.text(`Period: ${report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A'}`, 14, 32);
       
       // Add summary stats - even smaller font and tighter spacing
       const calculatedTotals = calculateSummaryTotals(report.daily_records);
-      doc.text(`Days: ${report.summary?.days_worked || 0} | BH: ${calculatedTotals.totalBilledHours}min | LT: ${calculatedTotals.totalLateMinutes}min | UT: ${calculatedTotals.totalUndertimeMinutes}min | ND: ${calculatedTotals.totalNightDifferential}`, 14, 36);
+      doc.setFontSize(9);
+      doc.text(`Days: ${report.summary?.days_worked || 0} | BH: ${calculatedTotals.totalBilledHours}min | LT: ${calculatedTotals.totalLateMinutes}min | UT: ${calculatedTotals.totalUndertimeMinutes}min | ND: ${calculatedTotals.totalNightDifferential} | OT: ${calculatedTotals.totalOvertime}h`, 14, 36);
       
       // Add daily records as text
-      doc.setFontSize(8);
+      doc.setFontSize(10);
       doc.text('Daily Records:', 14, 42);
       let yPosition = 50;
       
       // Add headers - optimized spacing for landscape
-      const headers = ['Date', 'Day', 'Status', 'Time In', 'Time Out', 'Scheduled In', 'Scheduled Out', 'BH', 'LT', 'UT', 'ND'];
-      doc.setFontSize(6);
+      const headers = ['Date', 'Day', 'Status', 'Time In', 'Time Out', 'Scheduled In', 'Scheduled Out', 'BH', 'LT', 'UT', 'ND', 'OT'];
+      doc.setFontSize(8);
+      doc.setFont(undefined, 'bold'); // Make headers bold
       let xPosition = 14;
-      const columnWidths = [18, 14, 22, 18, 18, 22, 22, 16, 14, 14, 14]; // Match autoTable column widths
+      const columnWidths = [20, 16, 25, 20, 25, 22, 22, 18, 16, 16, 16, 16]; // Match autoTable column widths
       headers.forEach((header, index) => {
         doc.text(header, xPosition, yPosition);
         xPosition += columnWidths[index];
@@ -1349,21 +1535,43 @@ const ScheduleReport = () => {
       yPosition += 10;
       
       // Add data rows - optimized for single page
-      doc.setFontSize(5);
-      report.daily_records.forEach((record, index) => {
+      doc.setFontSize(7);
+      doc.setFont(undefined, 'normal'); // Normal font for data
+      getGroupedRecordsForExport(report.daily_records).forEach((record, index) => {
         // Check if we need a new page (landscape height is ~200)
         if (yPosition > 190) {
           doc.addPage();
           yPosition = 20;
         }
         
+        // Highlight night shift rows with background color
+        if (record.isNightshift) {
+          doc.setFillColor(239, 246, 255); // Light blue background
+          doc.rect(14, yPosition - 4, 280, 8, 'F'); // Fill background
+        }
+        
+        // Highlight next day rows with previous night shift timeouts
+        if (record.hasPreviousNightshiftTimeout) {
+          doc.setFillColor(209, 250, 229); // Light green background
+          doc.rect(14, yPosition - 4, 280, 8, 'F'); // Fill background
+        }
+        
         try {
           const rowData = [
-            moment(record.date).format('MMM DD'),
-            record.day || '-',
-            getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date) || '-',
+            record.displayDate,
+            record.displayDay,
+            (() => {
+              const baseStatus = getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date);
+              if (record.isNightshift) {
+                return `${baseStatus} [NIGHTSHIFT]`;
+              }
+              if (record.hasPreviousNightshiftTimeout) {
+                return `${baseStatus} [PREVIOUS TIMEOUT USED]`;
+              }
+              return baseStatus;
+            })(),
             formatTime(record.time_in) || '-',
-            getDisplayTimeOut(record, report.daily_records, report.daily_records.indexOf(record)) || '-',
+            record.displayTimeOut || '-',
             formatTime(record.scheduled_in) || '-',
             formatTime(record.scheduled_out) || '-',
             (() => {
@@ -1398,6 +1606,28 @@ const ScheduleReport = () => {
               } catch (ndError) {
                 return '-';
               }
+            })(),
+            (() => {
+              // OT calculation from DailyTimeSummary or TimeEntry
+              if (record.overtime_hours && record.overtime_hours > 0) {
+                return `${record.overtime_hours}h`;
+              }
+              
+              // Fallback: Calculate from time entries if available
+              if (record.time_entries && Array.isArray(record.time_entries)) {
+                const overtimeEntries = record.time_entries.filter(entry => 
+                  entry.overtime && parseFloat(entry.overtime) > 0
+                );
+                
+                if (overtimeEntries.length > 0) {
+                  const totalOvertime = overtimeEntries.reduce((sum, entry) => 
+                    sum + parseFloat(entry.overtime), 0
+                  );
+                  return totalOvertime > 0 ? `${totalOvertime.toFixed(2)}h` : '-';
+                }
+              }
+              
+              return '-';
             })()
           ];
           
@@ -1656,453 +1886,667 @@ const ScheduleReport = () => {
               </div>
             </div>
 
-            {/* Summary Stats */}
-            {(() => {
-              const calculatedTotals = calculateSummaryTotals(report.daily_records);
-              return (
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-2xl text-center border border-blue-200 shadow-lg hover:shadow-xl transition-all duration-200">
-                    <div className="flex justify-center mb-2">
-                      <FaCalendarCheck className="w-8 h-8 text-blue-600" />
+            {/* Report Summary */}
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Report Summary</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="flex items-center">
+                    <FaCalendar className="w-5 h-5 text-blue-600 mr-2" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-900">Period</p>
+                      <p className="text-lg font-semibold text-blue-700">
+                        {report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A'}
+                      </p>
                     </div>
-                    <div className="text-3xl font-bold text-blue-700">{report.summary.days_worked}</div>
-                    <div className="text-sm text-blue-800 font-medium">Days Worked</div>
-                  </div>
-                  <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-2xl text-center border border-green-200 shadow-lg hover:shadow-xl transition-all duration-200">
-                    <div className="flex justify-center mb-2">
-                      <FaClock className="w-8 h-8 text-green-600" />
-                    </div>
-                    <div className="text-3xl font-bold text-green-700">{calculatedTotals.totalBilledHours}</div>
-                    <div className="text-sm text-green-800 font-medium">Total BH (minutes)</div>
-                  </div>
-                  <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-2xl text-center border border-orange-200 shadow-lg hover:shadow-xl transition-all duration-200">
-                    <div className="flex justify-center mb-2">
-                      <FaExclamationTriangle className="w-8 h-8 text-orange-600" />
-                    </div>
-                    <div className="text-3xl font-bold text-orange-700">{calculatedTotals.totalLateMinutes}</div>
-                    <div className="text-sm text-orange-800 font-medium">Total LT</div>
-                  </div>
-                  <div className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-2xl text-center border border-red-200 shadow-lg hover:shadow-xl transition-all duration-200">
-                    <div className="flex justify-center mb-2">
-                      <FaRegClock className="w-8 h-8 text-red-600" />
-                    </div>
-                    <div className="text-3xl font-bold text-red-700">{calculatedTotals.totalUndertimeMinutes}</div>
-                    <div className="text-sm text-red-800 font-medium">Total UT</div>
-                  </div>
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-2xl text-center border border-purple-200 shadow-lg hover:shadow-xl transition-all duration-200">
-                    <div className="flex justify-center mb-2">
-                      <FaHourglassHalf className="w-8 h-8 text-purple-600" />
-                    </div>
-                    <div className="text-3xl font-bold text-purple-700">{calculatedTotals.totalNightDifferential}</div>
-                    <div className="text-sm text-purple-800 font-medium">Total ND</div>
                   </div>
                 </div>
-              );
-            })()}
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <div className="flex items-center">
+                    <FaClock className="w-5 h-5 text-green-600 mr-2" />
+                    <div>
+                      <p className="text-sm font-medium text-green-900">Total Hours</p>
+                      <p className="text-lg font-semibold text-green-700">
+                        {calculateSummaryTotals(report.daily_records).totalBilledHours} min
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <div className="flex items-center">
+                    <FaExclamationTriangle className="w-5 h-5 text-yellow-600 mr-2" />
+                    <div>
+                      <p className="text-sm font-medium text-yellow-900">Late Minutes</p>
+                      <p className="text-lg font-semibold text-yellow-700">
+                        {calculateSummaryTotals(report.daily_records).totalLateMinutes} min
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <div className="flex items-center">
+                    <FaHourglassHalf className="w-5 h-5 text-purple-600 mr-2" />
+                    <div>
+                      <p className="text-sm font-medium text-purple-900">Night Differential</p>
+                      <p className="text-lg font-semibold text-purple-700">
+                        {calculateSummaryTotals(report.daily_records).totalNightDifferential}h
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-            {/* Daily Records Table */}
-            <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-lg">
-              {console.log('About to check daily_records:', {
-                hasDailyRecords: !!report.daily_records,
-                dailyRecordsType: typeof report.daily_records,
-                dailyRecordsLength: report.daily_records?.length || 0,
-                dailyRecordsIsArray: Array.isArray(report.daily_records),
-                dailyRecordsContent: report.daily_records
-              })}
-              {!report.daily_records || report.daily_records.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  <div className="text-lg font-medium mb-2">No Daily Records Found</div>
-                  <div className="text-sm">The report was generated but no daily records are available.</div>
-                  <div className="text-xs mt-2 text-gray-400">
-                    Debug: {JSON.stringify({
-                      hasDailyRecords: !!report.daily_records,
-                      dailyRecordsLength: report.daily_records?.length || 0,
-                      reportKeys: Object.keys(report || {})
-                    })}
+            {/* Night Shift Information */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start space-x-3">
+                <div className="text-blue-600 text-xl">🌙</div>
+                <div className="flex-1">
+                  <h4 className="text-blue-800 font-semibold text-base mb-2">Night Shift Data Grouping</h4>
+                  <div className="text-blue-700 text-sm space-y-2">
+                    <p>
+                      <strong>How it works:</strong> When a night shift crosses midnight (e.g., 10:00 PM - 7:00 AM), 
+                      the system automatically groups the time-in and time-out entries on the same row for better readability.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                      <div>
+                        <p className="font-medium">📅 Date Column:</p>
+                        <ul className="text-xs space-y-1 mt-1">
+                          <li>• Shows start date (e.g., Aug 15)</li>
+                          <li>• → Next date (e.g., Aug 16) for night shifts</li>
+                          <li>• ⚠️ Incomplete for missing timeouts</li>
+                          <li>• ✓ Available for new time-in (next day rows)</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="font-medium">⏰ Time Out Column:</p>
+                        <ul className="text-xs space-y-1 mt-1">
+                          <li>• Shows actual timeout time</li>
+                          <li>• (Next day: Aug 16) for night shifts</li>
+                          <li>• (Previous day: Aug 15) for early timeouts</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-sm text-green-800 font-medium mb-2">🔄 Next Day Row Preservation</p>
+                      <p className="text-xs text-green-700">
+                        <strong>Important:</strong> The next day's row (e.g., Aug 16) is preserved and available for new time-ins. 
+                        It shows a green background with "✓ Available for new time-in" indicator, so users can still clock in 
+                        on the evening of the next day even after a night shift timeout.
+                      </p>
+                    </div>
+                    <p className="text-xs text-blue-600 mt-2">
+                      💡 <strong>Tip:</strong> Night shift rows have a blue background and left border for easy identification.
+                      Next day rows with previous timeouts have a green background and border.
+                    </p>
                   </div>
                 </div>
-              ) : (
-              <table className="min-w-full bg-white">
-                <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <CalendarIcon className="w-4 h-4" />
-                        <span>Date</span>
-                      </div>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <CalendarDaysIcon className="w-4 h-4" />
-                        <span>Day</span>
-                      </div>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <InformationCircleIcon className="w-4 h-4" />
-                        <span>Status</span>
-                      </div>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <PlayIcon className="w-4 h-4" />
-                        <span>Time In</span>
-                      </div>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <StopIcon className="w-4 h-4" />
-                        <span>Time Out</span>
-                      </div>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <ClockIcon className="w-4 h-4" />
-                        <span>Scheduled In</span>
-                      </div>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <ClockIcon className="w-4 h-4" />
-                        <span>Scheduled Out</span>
-                      </div>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <FaClock className="w-3 h-3" />
-                        <span>BH (min)</span>
-                      </div>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <FaExclamationTriangle className="w-3 h-3" />
-                        <span>LT</span>
-                      </div>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <FaRegClock className="w-3 h-3" />
-                        <span>UT</span>
-                      </div>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <FaHourglassHalf className="w-3 h-3" />
-                        <span>ND</span>
-                      </div>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {(() => {
-                    // ENHANCED: Group nightshift entries together on the same row
-                    const groupedRecords = [];
-                    
-                    for (let i = 0; i < report.daily_records.length; i++) {
-                      const currentRecord = report.daily_records[i];
-                      const nextRecord = report.daily_records[i + 1];
+              </div>
+            </div>
+
+            {/* Data Table */}
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Daily Time Records</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaCalendar className="w-3 h-3" />
+                          <span>Date</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaCalendarDay className="w-3 h-3" />
+                          <span>Day</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaInfoCircle className="w-3 h-3" />
+                          <span>Status</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaSignInAlt className="w-3 h-3" />
+                          <span>Time In</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaSignOutAlt className="w-3 h-3" />
+                          <span>Time Out</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaClock className="w-3 h-3" />
+                          <span>Scheduled In</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaClock className="w-3 h-3" />
+                          <span>Scheduled Out</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaHourglassHalf className="w-3 h-3" />
+                          <span>BH (min)</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaExclamationTriangle className="w-3 h-3" />
+                          <span>LT</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaExclamationTriangle className="w-3 h-3" />
+                          <span>UT</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaHourglassHalf className="w-3 h-3" />
+                          <span>ND</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaExclamationTriangle className="w-3 h-3" />
+                          <span>OT</span>
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {(() => {
+                      // ENHANCED: Comprehensive nightshift grouping to align time-in and time-out on same row
+                      const groupedRecords = [];
                       
-                      // Check if this is a nightshift (starts late, ends early next day)
-                      const isNightshift = currentRecord.scheduled_in && currentRecord.scheduled_out && 
-                        parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
-                        parseInt(currentRecord.scheduled_out.split(':')[0]) < 12;
-                      
-                      // Check if next day has early timeout (before 6 AM) that belongs to this nightshift
-                      const hasNextDayTimeout = nextRecord && nextRecord.time_entries && 
-                        nextRecord.time_entries.some(entry => 
-                          entry.entry_type === 'time_out' && 
-                          parseInt(entry.event_time.split(':')[0]) < 6
+                      // Check if there are daily records to process
+                      if (!report.daily_records || report.daily_records.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan="12" className="px-6 py-8 text-center text-gray-500">
+                              <div className="text-lg font-medium mb-2">No Daily Records Found</div>
+                              <div className="text-sm">The report was generated but no daily records are available.</div>
+                              <div className="text-xs mt-2 text-gray-400">
+                                Debug: {JSON.stringify({
+                                  hasDailyRecords: !!report.daily_records,
+                                  dailyRecordsLength: report.daily_records?.length || 0,
+                                  reportKeys: Object.keys(report || {})
+                                })}
+                              </div>
+                            </td>
+                          </tr>
                         );
-                      
-                      if (isNightshift && hasNextDayTimeout) {
-                        // Create a combined row for the nightshift
-                        const combinedRecord = {
-                          ...currentRecord,
-                          isNightshift: true,
-                          nextDayTimeout: nextRecord.time_entries.find(entry => 
-                            entry.entry_type === 'time_out' && 
-                            parseInt(entry.event_time.split(':')[0]) < 6
-                          ),
-                          nextDayDate: nextRecord.date,
-                          nextDayDay: nextRecord.day
-                        };
-                        
-                        groupedRecords.push(combinedRecord);
-                        i++; // Skip the next record since we've combined it
-                      } else {
-                        // Regular record, add as-is
-                        groupedRecords.push(currentRecord);
                       }
-                    }
-                    
-                    return groupedRecords.map((record, index) => (
-                      <tr key={index} className={`hover:bg-gray-50 transition-colors duration-200 ${
-                        record.isNightshift ? 'nightshift-row' : ''
-                      }`}>
-                        <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                          {moment(record.date).format('MMM DD')}
-                          {record.isNightshift && record.nextDayDate && (
-                            <div className="text-xs text-blue-600 font-normal">
-                              → {moment(record.nextDayDate).format('MMM DD')}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {record.day}
-                          {record.isNightshift && record.nextDayDay && (
-                            <div className="text-xs text-blue-600 font-normal">
-                              → {record.nextDayDay}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-sm">
-                          <span className={`status-pill ${getStatusColor(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date)}`}>
-                            {getStatusIcon(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date)}
-                            <span>{getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date)}</span>
-                          </span>
-                          {record.isNightshift && (
-                            <div className="nightshift-indicator">
-                              🌙 Nightshift
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                          {formatTime(record.time_in)}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                          {(() => {
-                            // ENHANCED: Smart time out detection with nightshift grouping
-                            
-                            // 1. Try the direct time_out field first (from DailyTimeSummary)
-                            if (record.time_out && record.time_out !== '-') {
-                              return formatTime(record.time_out);
+                      
+                      for (let i = 0; i < report.daily_records.length; i++) {
+                        const currentRecord = report.daily_records[i];
+                        const nextRecord = report.daily_records[i + 1];
+                        
+                        // DEBUG: Log the current record structure
+                        console.log(`🔍 Processing record ${i}:`, {
+                          date: currentRecord.date,
+                          time_in: currentRecord.time_in,
+                          time_out: currentRecord.time_out,
+                          scheduled_in: currentRecord.scheduled_in,
+                          scheduled_out: currentRecord.scheduled_out,
+                          hasTimeEntries: !!currentRecord.time_entries,
+                          timeEntriesCount: currentRecord.time_entries?.length || 0
+                        });
+                        
+                        if (nextRecord) {
+                          console.log(`🔍 Next record:`, {
+                            date: nextRecord.date,
+                            time_in: nextRecord.time_in,
+                            time_out: nextRecord.time_out,
+                            hasTimeEntries: !!nextRecord.time_entries,
+                            timeEntriesCount: nextRecord.time_entries?.length || 0
+                          });
+                        }
+                        
+                        // Check if this is a nightshift (starts late, ends early next day)
+                        const isNightshift = currentRecord.scheduled_in && currentRecord.scheduled_out && 
+                          parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
+                          parseInt(currentRecord.scheduled_out.split(':')[0]) < 12;
+                        
+                        console.log(`🌙 Nightshift detection for ${currentRecord.date}:`, {
+                          scheduledIn: currentRecord.scheduled_in,
+                          scheduledOut: currentRecord.scheduled_out,
+                          scheduledInHour: currentRecord.scheduled_in ? parseInt(currentRecord.scheduled_in.split(':')[0]) : null,
+                          scheduledOutHour: currentRecord.scheduled_out ? parseInt(currentRecord.scheduled_out.split(':')[0]) : null,
+                          isNightshift
+                        });
+                        
+                        // Check if current record has time-in but no time-out (incomplete night shift)
+                        const hasTimeInNoTimeOut = currentRecord.time_in && currentRecord.time_in !== '-' && 
+                          (!currentRecord.time_out || currentRecord.time_out === '-');
+                        
+                        console.log(`⏰ Time-in/out check for ${currentRecord.date}:`, {
+                          hasTimeIn: !!currentRecord.time_in,
+                          hasTimeOut: !!currentRecord.time_out,
+                          hasTimeInNoTimeOut
+                        });
+                        
+                        // ENHANCED: Check if next day has early timeout that belongs to this nightshift
+                        // Look in both time_entries array AND the main time_out field
+                        let hasNextDayTimeout = false;
+                        let nextDayTimeoutEntry = null;
+                        
+                        if (nextRecord) {
+                          // First check the main time_out field
+                          if (nextRecord.time_out && nextRecord.time_out !== '-') {
+                            const timeoutHour = parseInt(nextRecord.time_out.split(':')[0]);
+                            console.log(`🔍 Checking main time_out field:`, {
+                              timeOut: nextRecord.time_out,
+                              timeoutHour,
+                              isBefore6AM: timeoutHour < 6
+                            });
+                            if (timeoutHour < 6) {
+                              hasNextDayTimeout = true;
+                              nextDayTimeoutEntry = {
+                                event_time: nextRecord.time_out,
+                                entry_type: 'time_out'
+                              };
+                              console.log(`✅ Found timeout in main field: ${nextRecord.time_out}`);
                             }
+                          }
+                          
+                          // If not found in main field, check time_entries array
+                          if (!hasNextDayTimeout && nextRecord.time_entries && Array.isArray(nextRecord.time_entries)) {
+                            console.log(`🔍 Checking time_entries array:`, {
+                              timeEntries: nextRecord.time_entries,
+                              timeOutEntries: nextRecord.time_entries.filter(e => e.entry_type === 'time_out')
+                            });
                             
-                            // 2. Check if we have time_entries data from the enhanced API
-                            if (record.time_entries && Array.isArray(record.time_entries)) {
-                              // Find time out entry
-                              const timeOutEntry = record.time_entries.find(entry => 
-                                entry.entry_type === 'time_out' && entry.event_time
-                              );
-                              
-                              if (timeOutEntry && timeOutEntry.event_time) {
-                                return formatTime(timeOutEntry.event_time);
-                              }
+                            const timeoutInEntries = nextRecord.time_entries.find(entry => 
+                              entry.entry_type === 'time_out' && 
+                              parseInt(entry.event_time.split(':')[0]) < 6
+                            );
+                            
+                            if (timeoutInEntries) {
+                              hasNextDayTimeout = true;
+                              nextDayTimeoutEntry = timeoutInEntries;
+                              console.log(`✅ Found timeout in time_entries: ${timeoutInEntries.event_time}`);
                             }
-                            
-                            // 3. Check for next day timeout from nightshift grouping
-                            if (record.isNightshift && record.nextDayTimeout) {
-                              return (
-                                <div className="text-blue-600">
-                                  {formatTime(record.nextDayTimeout.event_time)}
-                                  <div className="text-xs text-blue-500">
-                                    (Next day)
-                                  </div>
+                          }
+                        }
+                        
+                        console.log(`🎯 Final timeout detection for ${currentRecord.date}:`, {
+                          hasNextDayTimeout,
+                          nextDayTimeoutEntry,
+                          willGroup: isNightshift && hasTimeInNoTimeOut && hasNextDayTimeout
+                        });
+                        
+                        // Check if this is a nightshift that crosses midnight
+                        if (isNightshift && hasTimeInNoTimeOut && hasNextDayTimeout) {
+                          // Create a combined row for the nightshift
+                          const combinedRecord = {
+                            ...currentRecord,
+                            isNightshift: true,
+                            nextDayTimeout: nextDayTimeoutEntry,
+                            nextDayDate: nextRecord.date,
+                            nextDayDay: nextRecord.day,
+                            // Set the time_out to the next day's timeout for calculations
+                            time_out: nextDayTimeoutEntry ? nextDayTimeoutEntry.event_time : currentRecord.time_out
+                          };
+                          
+                          groupedRecords.push(combinedRecord);
+                          i++; // Skip the next record since we've combined it
+                          console.log(`🌙 Nightshift grouped: ${currentRecord.date} → ${nextRecord.date} with timeout: ${nextDayTimeoutEntry.event_time}`);
+                        } else if (isNightshift && hasTimeInNoTimeOut) {
+                          // Nightshift with time-in but no timeout found - mark as incomplete
+                          const incompleteRecord = {
+                            ...currentRecord,
+                            isNightshift: true,
+                            isIncomplete: true
+                          };
+                          groupedRecords.push(incompleteRecord);
+                          console.log(`🌙 Incomplete nightshift: ${currentRecord.date}`);
+                        } else {
+                          // Regular record, add as-is
+                          groupedRecords.push(currentRecord);
+                        }
+                      }
+                      
+                      return groupedRecords.map((record, index) => (
+                        <tr key={index} className={`hover:bg-gray-50 transition-colors duration-200 ${
+                          record.isNightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : 
+                          record.hasPreviousNightshiftTimeout ? 'previous-nightshift-timeout-row bg-green-50 border-l-4 border-green-400' : ''
+                        }`}>
+                          <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                            <div className="flex flex-col">
+                              <span>{moment(record.date).format('MMM DD')}</span>
+                              {record.isNightshift && record.nextDayDate && (
+                                <div className="text-xs text-blue-600 font-normal">
+                                  → {moment(record.nextDayDate).format('MMM DD')}
                                 </div>
-                              );
-                            }
-                            
-                            // 4. Smart fallback: Look for time out in nearby records
-                            if (report.daily_records && report.daily_records.length > 0) {
-                              const currentIndex = report.daily_records.findIndex(r => r.date === record.date);
+                              )}
+                              {record.isNightshift && !record.nextDayDate && record.isIncomplete && (
+                                <div className="text-xs text-orange-600 font-normal">
+                                  ⚠️ Incomplete
+                                </div>
+                              )}
+                              {record.hasPreviousNightshiftTimeout && (
+                                <div className="text-xs text-green-600 font-normal">
+                                  ✓ Available for new time-in
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            <div className="flex flex-col">
+                              <span>{record.day}</span>
+                              {record.isNightshift && record.nextDayDay && (
+                                <div className="text-xs text-blue-600 font-normal">
+                                  → {record.nextDayDay}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <span className={`status-pill ${getStatusColor(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date)}`}>
+                              {getStatusIcon(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date)}
+                              <span>{getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date)}</span>
+                            </span>
+                            {record.isNightshift && (
+                              <div className="nightshift-indicator text-xs text-blue-600 font-medium mt-1">
+                                🌙 Nightshift
+                              </div>
+                            )}
+                            {record.hasPreviousNightshiftTimeout && (
+                              <div className="previous-timeout-indicator text-xs text-green-600 font-medium mt-1">
+                                📝 Previous timeout used
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                            {formatTime(record.time_in)}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                            {(() => {
+                              // ENHANCED: Smart time out detection with comprehensive nightshift handling
                               
-                              if (currentIndex >= 0) {
-                                // Check next day for time out (night shift pattern)
-                                if (currentIndex < report.daily_records.length - 1) {
-                                  const nextRecord = report.daily_records[currentIndex + 1];
-                                  if (nextRecord && nextRecord.time_entries) {
-                                    const nextTimeOut = nextRecord.time_entries.find(entry => 
-                                      entry.entry_type === 'time_out' && entry.event_time
-                                    );
-                                    
-                                    if (nextTimeOut && nextTimeOut.event_time) {
-                                      const timeOutHour = parseInt(nextTimeOut.event_time.split(':')[0]);
-                                      // If time out is before 6 AM, it likely belongs to the previous day's night shift
-                                      if (timeOutHour < 6) {
-                                        return formatTime(nextTimeOut.event_time);
-                                      }
-                                    }
-                                  }
-                                }
+                              // 1. Check for next day timeout from nightshift grouping (highest priority)
+                              if (record.isNightshift && record.nextDayTimeout) {
+                                return (
+                                  <div className="text-blue-600">
+                                    <span className="font-medium">{formatTime(record.nextDayTimeout.event_time)}</span>
+                                    <div className="text-xs text-blue-500">
+                                      (Next day: {moment(record.nextDayDate).format('MMM DD')})
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              
+                              // 2. Try the direct time_out field (from DailyTimeSummary)
+                              if (record.time_out && record.time_out !== '-') {
+                                return formatTime(record.time_out);
+                              }
+                              
+                              // 3. Check if we have time_entries data from the enhanced API
+                              if (record.time_entries && Array.isArray(record.time_entries)) {
+                                // Find time out entry
+                                const timeOutEntry = record.time_entries.find(entry => 
+                                  entry.entry_type === 'time_out' && entry.event_time
+                                );
                                 
-                                // Check previous day for night shift that ended today
-                                if (currentIndex > 0) {
-                                  const prevRecord = report.daily_records[currentIndex - 1];
-                                  if (prevRecord && prevRecord.time_in && prevRecord.time_in !== '-') {
-                                    const timeInHour = parseInt(prevRecord.time_in.split(':')[0]);
-                                    // If previous day started at 6 PM or later, check if today has time out
-                                    if (timeInHour >= 18 && record.time_entries) {
-                                      const todayTimeOut = record.time_entries.find(entry => 
+                                if (timeOutEntry && timeOutEntry.event_time) {
+                                  return formatTime(timeOutEntry.event_time);
+                                }
+                              }
+                              
+                              // 4. Smart fallback: Look for time out in nearby records
+                              if (report.daily_records && report.daily_records.length > 0) {
+                                const currentIndex = report.daily_records.findIndex(r => r.date === record.date);
+                                
+                                if (currentIndex >= 0) {
+                                  // Check next day for time out (night shift pattern)
+                                  if (currentIndex < report.daily_records.length - 1) {
+                                    const nextRecord = report.daily_records[currentIndex + 1];
+                                    if (nextRecord && nextRecord.time_entries) {
+                                      const nextTimeOut = nextRecord.time_entries.find(entry => 
                                         entry.entry_type === 'time_out' && entry.event_time
                                       );
                                       
-                                      if (todayTimeOut && todayTimeOut.event_time) {
-                                        const timeOutHour = parseInt(todayTimeOut.event_time.split(':')[0]);
-                                        // If time out is before 6 AM, it belongs to previous day's night shift
+                                      if (nextTimeOut && nextTimeOut.event_time) {
+                                        const timeOutHour = parseInt(nextTimeOut.event_time.split(':')[0]);
+                                        // If time out is before 6 AM, it likely belongs to the previous day's night shift
                                         if (timeOutHour < 6) {
-                                          return formatTime(todayTimeOut.event_time);
+                                          return (
+                                            <div className="text-blue-600">
+                                              <span className="font-medium">{formatTime(nextTimeOut.event_time)}</span>
+                                              <div className="text-xs text-blue-500">
+                                                (Next day: {moment(nextRecord.date).format('MMM DD')})
+                                              </div>
+                                            </div>
+                                          );
+                                        }
+                                      }
+                                    }
+                                  }
+                                  
+                                  // Check previous day for night shift that ended today
+                                  if (currentIndex > 0) {
+                                    const prevRecord = report.daily_records[currentIndex - 1];
+                                    if (prevRecord && prevRecord.time_in && prevRecord.time_in !== '-') {
+                                      const timeInHour = parseInt(prevRecord.time_in.split(':')[0]);
+                                      // If previous day started at 6 PM or later, check if today has time out
+                                      if (timeInHour >= 18 && record.time_entries) {
+                                        const todayTimeOut = record.time_entries.find(entry => 
+                                          entry.entry_type === 'time_out' && entry.event_time
+                                        );
+                                        
+                                        if (todayTimeOut && todayTimeOut.event_time) {
+                                          const timeOutHour = parseInt(todayTimeOut.event_time.split(':')[0]);
+                                          // If time out is before 6 AM, it belongs to previous day's night shift
+                                          if (timeOutHour < 6) {
+                                            return (
+                                              <div className="text-blue-600">
+                                                <span className="font-medium">{formatTime(todayTimeOut.event_time)}</span>
+                                                <div className="text-xs text-blue-500">
+                                                  (Previous day: {moment(prevRecord.date).format('MMM DD')})
+                                                </div>
+                                              </div>
+                                            );
+                                          }
                                         }
                                       }
                                     }
                                   }
                                 }
                               }
-                            }
-                            
-                            // 5. If no time out found, show dash
-                            return '-';
-                          })()}
-                        </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                        {formatTime(record.scheduled_in)}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                        {formatTime(record.scheduled_out)}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                        {(() => {
-                          // DEBUG: Log the data being passed to calculateBilledHours
-                          console.log(`🔍 BH Calculation for ${record.date}:`, {
-                            time_in: record.time_in,
-                            time_out: record.time_out,
-                            scheduled_in: record.scheduled_in,
-                            scheduled_out: record.scheduled_out,
-                            date: record.date,
-                            hasTimeIn: !!record.time_in,
-                            hasTimeOut: !!record.time_out,
-                            hasScheduledIn: !!record.scheduled_in,
-                            hasScheduledOut: !!record.scheduled_out
-                          });
-                          
-                          if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-                            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-                            console.log(`✅ BH Result for ${record.date}:`, bhMinutes);
-                            return bhMinutes > 0 ? bhMinutes : '-';
-                          }
-                          console.log(`❌ Missing data for BH calculation on ${record.date}`);
-                          return '-';
-                        })()}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                        {(() => {
-                          // DEBUG: Log the data being passed to calculateLateMinutes
-                          console.log(`🔍 Late Calculation for ${record.date}:`, {
-                            time_in: record.time_in,
-                            scheduled_in: record.scheduled_in,
-                            date: record.date,
-                            hasTimeIn: !!record.time_in,
-                            hasScheduledIn: !!record.scheduled_in
-                          });
-                          
-                          if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
-                            const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
-                            console.log(`✅ Late Result for ${record.date}:`, lateMinutes);
-                            return lateMinutes > 0 ? lateMinutes : '-';
-                          }
-                          console.log(`❌ Missing data for Late calculation on ${record.date}`);
-                          return '-';
-                        })()}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                        {(() => {
-                          // DEBUG: Log the data being passed to calculateUndertimeMinutes
-                          console.log(`🔍 UT Calculation for ${record.date}:`, {
-                            time_in: record.time_in,
-                            time_out: record.time_out,
-                            scheduled_in: record.scheduled_in,
-                            scheduled_out: record.scheduled_out,
-                            date: record.date,
-                            hasTimeIn: !!record.time_in,
-                            hasTimeOut: !!record.time_out,
-                            hasScheduledIn: !!record.scheduled_in,
-                            hasScheduledOut: !!record.scheduled_out
-                          });
-                          
-                          if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
-                              record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
-                            const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-                            console.log(`✅ UT Result for ${record.date}:`, utMinutes);
-                            return utMinutes > 0 ? utMinutes : '-';
-                          }
-                          console.log(`❌ Missing data for UT calculation on ${record.date}`);
-                          return '-';
-                        })()}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                        {(() => {
-                          // Clean ND calculation without excessive logging
-                          
-                          // Only calculate ND if we have both time in and time out on the same day
-                          if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-                            console.log(`🔍 ND Calculation for ${record.date}:`, {
-                              time_in: record.time_in,
-                              time_out: record.time_out,
-                              date: record.date
-                            });
-                            const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-                            console.log(`✅ ND Result for ${record.date}:`, ndHours);
-                            return ndHours > 0 ? `${ndHours}h` : '-';
-                          }
-                          
-                          // For night shifts spanning midnight, look ahead for time out
-                          if (record.time_in && record.time_in !== '-' && (!record.time_out || record.time_out === '-')) {
-                            const timeInMoment = moment(record.time_in, 'HH:mm:ss');
-                            
-                            // Check if this is a night shift (started at 6 PM or later)
-                            if (timeInMoment.hour() >= 18) {
-                              // Look ahead for time out on next day
-                              if (index < report.daily_records.length - 1) {
-                                const nextRecord = report.daily_records[index + 1];
+                              
+                              // 5. If no time out found, show dash
+                              return '-';
+                            })()}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                            {formatTime(record.scheduled_in)}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                            {formatTime(record.scheduled_out)}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                            {(() => {
+                              // DEBUG: Log the data being passed to calculateBilledHours
+                              console.log(`🔍 BH Calculation for ${record.date}:`, {
+                                time_in: record.time_in,
+                                time_out: record.time_out,
+                                scheduled_in: record.scheduled_in,
+                                scheduled_out: record.scheduled_out,
+                                date: record.date,
+                                hasTimeIn: !!record.time_in,
+                                hasTimeOut: !!record.time_out,
+                                hasScheduledIn: !!record.scheduled_in,
+                                hasScheduledOut: !!record.scheduled_out
+                              });
+                              
+                              if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+                                const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+                                console.log(`✅ BH Result for ${record.date}:`, bhMinutes);
+                                return bhMinutes > 0 ? bhMinutes : '-';
+                              }
+                              console.log(`❌ Missing data for BH calculation on ${record.date}`);
+                              return '-';
+                            })()}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                            {(() => {
+                              // DEBUG: Log the data being passed to calculateLateMinutes
+                              console.log(`🔍 Late Calculation for ${record.date}:`, {
+                                time_in: record.time_in,
+                                scheduled_in: record.scheduled_in,
+                                date: record.date,
+                                hasTimeIn: !!record.time_in,
+                                hasScheduledIn: !!record.scheduled_in
+                              });
+                              
+                              if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
+                                const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
+                                console.log(`✅ Late Result for ${record.date}:`, lateMinutes);
+                                return lateMinutes > 0 ? lateMinutes : '-';
+                              }
+                              console.log(`❌ Missing data for Late calculation on ${record.date}`);
+                              return '-';
+                            })()}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                            {(() => {
+                              // DEBUG: Log the data being passed to calculateUndertimeMinutes
+                              console.log(`🔍 UT Calculation for ${record.date}:`, {
+                                time_in: record.time_in,
+                                time_out: record.time_out,
+                                scheduled_in: record.scheduled_in,
+                                scheduled_out: record.scheduled_out,
+                                date: record.date,
+                                hasTimeIn: !!record.time_in,
+                                hasTimeOut: !!record.time_out,
+                                hasScheduledIn: !!record.scheduled_in,
+                                hasScheduledOut: !!record.scheduled_out
+                              });
+                              
+                              if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
+                                  record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
+                                const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+                                console.log(`✅ UT Result for ${record.date}:`, utMinutes);
+                                return utMinutes > 0 ? utMinutes : '-';
+                              }
+                              console.log(`❌ Missing data for UT calculation on ${record.date}`);
+                              return '-';
+                            })()}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                            {(() => {
+                              // Clean ND calculation without excessive logging
+                              
+                              // Only calculate ND if we have both time in and time out on the same day
+                              if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+                                console.log(`🔍 ND Calculation for ${record.date}:`, {
+                                  time_in: record.time_in,
+                                  time_out: record.time_out,
+                                  date: record.date
+                                });
+                                const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+                                console.log(`✅ ND Result for ${record.date}:`, ndHours);
+                                return ndHours > 0 ? `${ndHours}h` : '-';
+                              }
+                              
+                              // For night shifts spanning midnight, look ahead for time out
+                              if (record.time_in && record.time_in !== '-' && (!record.time_out || record.time_out === '-')) {
+                                const timeInMoment = moment(record.time_in, 'HH:mm:ss');
                                 
-                                if (nextRecord && nextRecord.time_out && nextRecord.time_out !== '-') {
-                                  const nextTimeOutMoment = moment(nextRecord.time_out, 'HH:mm:ss');
-                                  
-                                  // Next day time out is before 6 AM (night differential period)
-                                  if (nextTimeOutMoment.hour() < 6) {
-                                    // Calculate ND for this night shift spanning midnight
-                                    const ndHours = calculateNightDifferential(record.time_in, nextRecord.time_out, record.scheduled_in, record.scheduled_out, record.date);
-                                    console.log(`Night shift ND calculation for ${record.date}:`, { time_in: record.time_in, nextTimeOut: nextRecord.time_out, ndHours });
-                                    return ndHours > 0 ? `${ndHours}h` : '-';
+                                // Check if this is a night shift (started at 6 PM or later)
+                                if (timeInMoment.hour() >= 18) {
+                                  // Look ahead for time out on next day
+                                  if (index < report.daily_records.length - 1) {
+                                    const nextRecord = report.daily_records[index + 1];
+                                    
+                                    if (nextRecord && nextRecord.time_out && nextRecord.time_out !== '-') {
+                                      const nextTimeOutMoment = moment(nextRecord.time_out, 'HH:mm:ss');
+                                      
+                                      // Next day time out is before 6 AM (night differential period)
+                                      if (nextTimeOutMoment.hour() < 6) {
+                                        // Calculate ND for this night shift spanning midnight
+                                        const ndHours = calculateNightDifferential(record.time_in, nextRecord.time_out, record.scheduled_in, record.scheduled_out, record.date);
+                                        console.log(`Night shift ND calculation for ${record.date}:`, { time_in: record.time_in, nextTimeOut: nextRecord.time_out, ndHours });
+                                        return ndHours > 0 ? `${ndHours}h` : '-';
+                                      }
+                                    }
                                   }
                                 }
                               }
-                            }
-                          }
-                          
-                          // Check if this record has a time out that belongs to a previous day's night shift
-                          // BUT only if this day actually has a schedule (not "Not Yet Scheduled")
-                          if (record.time_out && record.time_out !== '-') {
-                            const timeOutMoment = moment(record.time_out, 'HH:mm:ss');
-                            console.log(`Checking if ${record.date} time out belongs to previous night shift:`, { timeOut: record.time_out, timeOutHour: timeOutMoment.hour() });
-                            
-                            // If time out is before 6 AM, it might belong to a previous night shift
-                            if (timeOutMoment.hour() < 6 && index > 0) {
-                              const prevRecord = report.daily_records[index - 1];
-                              if (prevRecord && prevRecord.time_in && prevRecord.time_in !== '-') {
-                                const prevTimeInMoment = moment(prevRecord.time_in, 'HH:mm:ss');
-                                console.log(`Previous record check:`, { prevRecord: { date: prevRecord.date, time_in: prevRecord.time_in }, prevTimeInHour: prevTimeInMoment.hour() });
+                              
+                              // Check if this record has a time out that belongs to a previous day's night shift
+                              // BUT only if this day actually has a schedule (not "Not Yet Scheduled")
+                              if (record.time_out && record.time_out !== '-') {
+                                const timeOutMoment = moment(record.time_out, 'HH:mm:ss');
+                                console.log(`Checking if ${record.date} time out belongs to previous night shift:`, { timeOut: record.time_out, timeOutHour: timeOutMoment.hour() });
                                 
-                                // If previous day started at 6 PM or later, this time out belongs to that night shift
-                                // BUT only calculate ND if this day has a schedule (not "Not Yet Scheduled")
-                                if (prevTimeInMoment.hour() >= 18 && record.scheduled_in && record.scheduled_in !== '-') {
-                                  const ndHours = calculateNightDifferential(prevRecord.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-                                  console.log(`Previous night shift ND calculation for ${record.date}:`, { prevTimeIn: prevRecord.time_in, timeOut: record.time_out, ndHours });
-                                  return ndHours > 0 ? `${ndHours}h` : '-';
+                                // If time out is before 6 AM, it might belong to a previous night shift
+                                if (timeOutMoment.hour() < 6 && index > 0) {
+                                  const prevRecord = report.daily_records[index - 1];
+                                  if (prevRecord && prevRecord.time_in && prevRecord.time_in !== '-') {
+                                    const prevTimeInMoment = moment(prevRecord.time_in, 'HH:mm:ss');
+                                    console.log(`Previous record check:`, { prevRecord: { date: prevRecord.date, time_in: prevRecord.time_in }, prevTimeInHour: prevTimeInMoment.hour() });
+                                    
+                                    // If previous day started at 6 PM or later, this time out belongs to that night shift
+                                    // BUT only calculate ND if this day has a schedule (not "Not Yet Scheduled")
+                                    if (prevTimeInMoment.hour() >= 18 && record.scheduled_in && record.scheduled_in !== '-') {
+                                      const ndHours = calculateNightDifferential(prevRecord.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+                                      console.log(`Previous night shift ND calculation for ${record.date}:`, { prevTimeIn: prevRecord.time_in, timeOut: record.time_out, ndHours });
+                                      return ndHours > 0 ? `${ndHours}h` : '-';
+                                    }
+                                  }
                                 }
                               }
-                            }
-                          }
-                          
-                          console.log(`No ND for ${record.date}`);
-                          return '-';
-                        })()}
-                      </td>
-                    </tr>
-                  ));
-                })()}
-                </tbody>
-              </table>
-              )}
+                              
+                              console.log(`No ND for ${record.date}`);
+                              return '-';
+                            })()}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                            {(() => {
+                              // OT calculation from DailyTimeSummary or TimeEntry
+                              if (record.overtime_hours && record.overtime_hours > 0) {
+                                // Use the calculated overtime from DailyTimeSummary
+                                return `${record.overtime_hours}h`;
+                              }
+                              
+                              // Fallback: Calculate from time entries if available
+                              if (record.time_entries && Array.isArray(record.time_entries)) {
+                                const overtimeEntries = record.time_entries.filter(entry => 
+                                  entry.overtime && parseFloat(entry.overtime) > 0
+                                );
+                                
+                                if (overtimeEntries.length > 0) {
+                                  const totalOvertime = overtimeEntries.reduce((sum, entry) => 
+                                    sum + parseFloat(entry.overtime), 0
+                                  );
+                                  return totalOvertime > 0 ? `${totalOvertime.toFixed(2)}h` : '-';
+                                }
+                              }
+                              
+                              return '-';
+                            })()}
+                          </td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -2163,6 +2607,21 @@ const ScheduleReport = () => {
           .nightshift-arrow {
             color: #3b82f6;
             font-weight: normal;
+          }
+          
+          .previous-nightshift-timeout-row {
+            background-color: #d1fae5 !important;
+            border-left: 4px solid #15803d !important;
+          }
+          
+          .previous-nightshift-timeout-row:hover {
+            background-color: #a7f3d0 !important;
+          }
+          
+          .previous-timeout-indicator {
+            color: #15803d;
+            font-size: 0.75rem;
+            margin-top: 0.25rem;
           }
         `
       }} />

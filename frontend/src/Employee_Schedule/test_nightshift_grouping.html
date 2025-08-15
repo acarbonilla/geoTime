@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌙 Night Shift Grouping Test Suite</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .test-section {
+            padding: 30px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .test-section:last-child {
+            border-bottom: none;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .test-case {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 15px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .test-case:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.1);
+        }
+        
+        .test-case.active {
+            border-color: #10b981;
+            background: #ecfdf5;
+        }
+        
+        .test-case h3 {
+            color: #1f2937;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #374151;
+            font-size: 0.9rem;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .time-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+        
+        .btn-success {
+            background: #10b981;
+        }
+        
+        .btn-success:hover {
+            background: #059669;
+        }
+        
+        .btn-warning {
+            background: #f59e0b;
+        }
+        
+        .btn-warning:hover {
+            background: #d97706;
+        }
+        
+        .results {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .results h4 {
+            color: #1f2937;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+        
+        .result-item {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+        
+        .result-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .result-label {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 5px;
+        }
+        
+        .result-value {
+            color: #6b7280;
+            font-family: monospace;
+            background: #f3f4f6;
+            padding: 5px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .nightshift-row {
+            background: #dbeafe !important;
+            border-left: 4px solid #3b82f6 !important;
+        }
+        
+        .next-day-row {
+            background: #d1fae5 !important;
+            border-left: 4px solid #10b981 !important;
+        }
+        
+        .test-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        
+        .test-table th,
+        .test-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .test-table th {
+            background: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+            font-size: 0.9rem;
+        }
+        
+        .test-table td {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        
+        .status-present {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-scheduled {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .status-absent {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .info-box {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .info-box h4 {
+            color: #1e40af;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+        
+        .info-box p {
+            color: #374151;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        .scenario-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .scenario-tab {
+            padding: 10px 20px;
+            background: #f3f4f6;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #6b7280;
+            transition: all 0.3s ease;
+        }
+        
+        .scenario-tab:hover {
+            background: #e5e7eb;
+            color: #374151;
+        }
+        
+        .scenario-tab.active {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+        
+        .debug-info {
+            background: #fef3c7;
+            border: 1px solid #fbbf24;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        .debug-info h4 {
+            color: #92400e;
+            margin-bottom: 10px;
+        }
+        
+        .debug-info pre {
+            background: #fef3c7;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 0.8rem;
+            color: #92400e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌙 Night Shift Grouping Test Suite</h1>
+            <p>Test various night shift scenarios with editable dates and times</p>
+        </div>
+
+        <div class="test-section">
+            <div class="section-title">
+                🎯 Test Scenarios
+            </div>
+            
+            <div class="scenario-tabs">
+                <div class="scenario-tab active" onclick="loadScenario('basic')">Basic Night Shift</div>
+                <div class="scenario-tab" onclick="loadScenario('early_timeout')">Early Timeout</div>
+                <div class="scenario-tab" onclick="loadScenario('incomplete')">Incomplete Night Shift</div>
+                <div class="scenario-tab" onclick="loadScenario('multiple_nights')">Multiple Night Shifts</div>
+                <div class="scenario-tab" onclick="loadScenario('mixed_schedule')">Mixed Schedule</div>
+                <div class="scenario-tab" onclick="loadScenario('custom')">Custom Test</div>
+            </div>
+
+            <div class="info-box">
+                <h4>💡 How to Use</h4>
+                <p>
+                    1. <strong>Select a scenario</strong> from the tabs above to load predefined test data<br>
+                    2. <strong>Edit any date or time</strong> in the form below to test different scenarios<br>
+                    3. <strong>Click "Test Grouping Logic"</strong> to see how the system would group the data<br>
+                    4. <strong>View results</strong> in the table below showing the grouped records
+                </p>
+            </div>
+
+            <div class="test-grid">
+                <div class="test-case" id="nightshift-case">
+                    <h3>🌙 Night Shift Entry</h3>
+                    <div class="form-group">
+                        <label>Date:</label>
+                        <input type="date" class="form-control" id="nightshift-date" value="2025-08-15">
+                    </div>
+                    <div class="form-group">
+                        <label>Day:</label>
+                        <select class="form-control" id="nightshift-day">
+                            <option value="Mon">Monday</option>
+                            <option value="Tue">Tuesday</option>
+                            <option value="Wed">Wednesday</option>
+                            <option value="Thu">Thursday</option>
+                            <option value="Fri" selected>Friday</option>
+                            <option value="Sat">Saturday</option>
+                            <option value="Sun">Sunday</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Scheduled Times:</label>
+                        <div class="time-inputs">
+                            <input type="time" class="form-control" id="nightshift-scheduled-in" value="22:00">
+                            <input type="time" class="form-control" id="nightshift-scheduled-out" value="07:00">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Actual Times:</label>
+                        <div class="time-inputs">
+                            <input type="time" class="form-control" id="nightshift-time-in" value="21:41">
+                            <input type="time" class="form-control" id="nightshift-time-out" value="">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="test-case" id="next-day-case">
+                    <h3>📅 Next Day Entry</h3>
+                    <div class="form-group">
+                        <label>Date:</label>
+                        <input type="date" class="form-control" id="next-day-date" value="2025-08-16">
+                    </div>
+                    <div class="form-group">
+                        <label>Day:</label>
+                        <select class="form-control" id="next-day-day">
+                            <option value="Mon">Monday</option>
+                            <option value="Tue">Tuesday</option>
+                            <option value="Wed">Wednesday</option>
+                            <option value="Thu">Thursday</option>
+                            <option value="Fri">Friday</option>
+                            <option value="Sat" selected>Saturday</option>
+                            <option value="Sun">Sunday</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Scheduled Times:</label>
+                        <div class="time-inputs">
+                            <input type="time" class="form-control" id="next-day-scheduled-in" value="09:00">
+                            <input type="time" class="form-control" id="next-day-scheduled-out" value="17:00">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Actual Times:</label>
+                        <div class="time-inputs">
+                            <input type="time" class="form-control" id="next-day-time-in" value="">
+                            <input type="time" class="form-control" id="next-day-time-out" value="00:21">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="test-controls">
+                <button class="btn btn-success" onclick="testGroupingLogic()">
+                    🧪 Test Grouping Logic
+                </button>
+                <button class="btn btn-warning" onclick="resetToDefaults()">
+                    🔄 Reset to Defaults
+                </button>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <div class="section-title">
+                📊 Test Results
+            </div>
+            
+            <div class="results">
+                <h4>Grouped Records Output</h4>
+                <div id="grouped-results">
+                    <p class="text-gray-500">Click "Test Grouping Logic" to see results...</p>
+                </div>
+            </div>
+
+            <div class="debug-info">
+                <h4>🐛 Debug Information</h4>
+                <pre id="debug-output">No debug information available yet...</pre>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <div class="section-title">
+                📋 Expected Behavior
+            </div>
+            
+            <div class="test-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Scenario</th>
+                            <th>Expected Result</th>
+                            <th>Row Styling</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Complete Night Shift</strong><br>Time in + Time out on different days</td>
+                            <td>Grouped on start date row<br>Next day row preserved for new time-ins</td>
+                            <td><span class="status-badge status-present">Blue Background</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Incomplete Night Shift</strong><br>Time in only, no timeout</td>
+                            <td>Marked as incomplete<br>Shows warning indicator</td>
+                            <td><span class="status-badge status-scheduled">Blue + Warning</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Next Day Available</strong><br>Row preserved after night shift</td>
+                            <td>Available for new time-ins<br>Shows "Previous timeout used"</td>
+                            <td><span class="status-badge status-absent">Green Background</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Regular Day Shift</strong><br>Normal 9 AM - 5 PM</td>
+                            <td>Standard display<br>No special grouping</td>
+                            <td><span class="status-badge status-present">White Background</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Predefined test scenarios
+        const scenarios = {
+            basic: {
+                name: "Basic Night Shift",
+                description: "Standard night shift crossing midnight",
+                nightshift: {
+                    date: "2025-08-15",
+                    day: "Fri",
+                    scheduledIn: "22:00",
+                    scheduledOut: "07:00",
+                    timeIn: "21:41",
+                    timeOut: ""
+                },
+                nextDay: {
+                    date: "2025-08-16",
+                    day: "Sat",
+                    scheduledIn: "09:00",
+                    scheduledOut: "17:00",
+                    timeIn: "",
+                    timeOut: "00:21"
+                }
+            },
+            early_timeout: {
+                name: "Early Timeout",
+                description: "Night shift with very early timeout (before 6 AM)",
+                nightshift: {
+                    date: "2025-08-20",
+                    day: "Wed",
+                    scheduledIn: "23:00",
+                    scheduledOut: "08:00",
+                    timeIn: "22:45",
+                    timeOut: ""
+                },
+                nextDay: {
+                    date: "2025-08-21",
+                    day: "Thu",
+                    scheduledIn: "09:00",
+                    scheduledOut: "18:00",
+                    timeIn: "",
+                    timeOut: "03:15"
+                }
+            },
+            incomplete: {
+                name: "Incomplete Night Shift",
+                description: "Night shift with time-in but no timeout",
+                nightshift: {
+                    date: "2025-08-25",
+                    day: "Mon",
+                    scheduledIn: "21:00",
+                    scheduledOut: "06:00",
+                    timeIn: "20:55",
+                    timeOut: ""
+                },
+                nextDay: {
+                    date: "2025-08-26",
+                    day: "Tue",
+                    scheduledIn: "08:00",
+                    scheduledOut: "17:00",
+                    timeIn: "",
+                    timeOut: ""
+                }
+            },
+            multiple_nights: {
+                name: "Multiple Night Shifts",
+                description: "Consecutive night shifts",
+                nightshift: {
+                    date: "2025-08-28",
+                    day: "Thu",
+                    scheduledIn: "22:00",
+                    scheduledOut: "07:00",
+                    timeIn: "21:30",
+                    timeOut: ""
+                },
+                nextDay: {
+                    date: "2025-08-29",
+                    day: "Fri",
+                    scheduledIn: "22:00",
+                    scheduledOut: "07:00",
+                    timeIn: "",
+                    timeOut: "00:45"
+                }
+            },
+            mixed_schedule: {
+                name: "Mixed Schedule",
+                description: "Night shift followed by day shift",
+                nightshift: {
+                    date: "2025-08-30",
+                    day: "Sat",
+                    scheduledIn: "23:00",
+                    scheduledOut: "08:00",
+                    timeIn: "22:45",
+                    timeOut: ""
+                },
+                nextDay: {
+                    date: "2025-08-31",
+                    day: "Sun",
+                    scheduledIn: "09:00",
+                    scheduledOut: "17:00",
+                    timeIn: "",
+                    timeOut: "01:30"
+                }
+            },
+            custom: {
+                name: "Custom Test",
+                description: "Edit all fields manually",
+                nightshift: {
+                    date: "2025-09-01",
+                    day: "Mon",
+                    scheduledIn: "20:00",
+                    scheduledOut: "05:00",
+                    timeIn: "19:45",
+                    timeOut: ""
+                },
+                nextDay: {
+                    date: "2025-09-02",
+                    day: "Tue",
+                    scheduledIn: "08:00",
+                    scheduledOut: "16:00",
+                    timeIn: "",
+                    timeOut: "02:15"
+                }
+            }
+        };
+
+        let currentScenario = 'basic';
+
+        function loadScenario(scenarioKey) {
+            currentScenario = scenarioKey;
+            const scenario = scenarios[scenarioKey];
+            
+            // Update active tab
+            document.querySelectorAll('.scenario-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Load night shift data
+            document.getElementById('nightshift-date').value = scenario.nightshift.date;
+            document.getElementById('nightshift-day').value = scenario.nightshift.day;
+            document.getElementById('nightshift-scheduled-in').value = scenario.nightshift.scheduledIn;
+            document.getElementById('nightshift-scheduled-out').value = scenario.nightshift.scheduledOut;
+            document.getElementById('nightshift-time-in').value = scenario.nightshift.timeIn;
+            document.getElementById('nightshift-time-out').value = scenario.nightshift.timeOut;
+            
+            // Load next day data
+            document.getElementById('next-day-date').value = scenario.nextDay.date;
+            document.getElementById('next-day-day').value = scenario.nextDay.day;
+            document.getElementById('next-day-scheduled-in').value = scenario.nextDay.scheduledIn;
+            document.getElementById('next-day-scheduled-out').value = scenario.nextDay.scheduledOut;
+            document.getElementById('next-day-time-in').value = scenario.nextDay.timeIn;
+            document.getElementById('next-day-time-out').value = scenario.nextDay.timeOut;
+            
+            // Update test case styling
+            document.getElementById('nightshift-case').classList.add('active');
+            document.getElementById('next-day-case').classList.add('active');
+            
+            console.log(`Loaded scenario: ${scenario.name}`);
+        }
+
+        function resetToDefaults() {
+            loadScenario('basic');
+        }
+
+        function testGroupingLogic() {
+            // Get current form values
+            const nightshiftData = {
+                date: document.getElementById('nightshift-date').value,
+                day: document.getElementById('nightshift-day').value,
+                scheduled_in: document.getElementById('nightshift-scheduled-in').value,
+                scheduled_out: document.getElementById('nightshift-scheduled-out').value,
+                time_in: document.getElementById('nightshift-time-in').value,
+                time_out: document.getElementById('nightshift-time-out').value
+            };
+            
+            const nextDayData = {
+                date: document.getElementById('next-day-date').value,
+                day: document.getElementById('next-day-day').value,
+                scheduled_in: document.getElementById('next-day-scheduled-in').value,
+                scheduled_out: document.getElementById('next-day-scheduled-out').value,
+                time_in: document.getElementById('next-day-time-in').value,
+                time_out: document.getElementById('next-day-time-out').value
+            };
+
+            // Simulate the grouping logic
+            const results = simulateGroupingLogic(nightshiftData, nextDayData);
+            
+            // Display results
+            displayResults(results);
+            
+            // Show debug info
+            showDebugInfo(nightshiftData, nextDayData, results);
+        }
+
+        function simulateGroupingLogic(nightshift, nextDay) {
+            // Convert time strings to hours for comparison
+            const scheduledInHour = parseInt(nightshift.scheduled_in.split(':')[0]);
+            const scheduledOutHour = parseInt(nightshift.scheduled_out.split(':')[0]);
+            
+            // Check if this is a nightshift (starts late, ends early next day)
+            const isNightshift = scheduledInHour >= 18 && scheduledOutHour < 12;
+            
+            // Check if current record has time-in but no time-out
+            const hasTimeInNoTimeOut = nightshift.time_in && nightshift.time_in !== '' && 
+                (!nightshift.time_out || nightshift.time_out === '');
+            
+            // Check if next day has early timeout that belongs to this nightshift
+            let hasNextDayTimeout = false;
+            let nextDayTimeoutEntry = null;
+            
+            if (nextDay.time_out && nextDay.time_out !== '') {
+                const timeoutHour = parseInt(nextDay.time_out.split(':')[0]);
+                if (timeoutHour < 6) {
+                    hasNextDayTimeout = true;
+                    nextDayTimeoutEntry = {
+                        event_time: nextDay.time_out,
+                        entry_type: 'time_out'
+                    };
+                }
+            }
+            
+            // Determine grouping behavior
+            let groupedRecords = [];
+            
+            if (isNightshift && hasTimeInNoTimeOut && hasNextDayTimeout) {
+                // Create a combined record for the nightshift
+                const combinedRecord = {
+                    ...nightshift,
+                    isNightshift: true,
+                    nextDayTimeout: nextDayTimeoutEntry,
+                    nextDayDate: nextDay.date,
+                    nextDayDay: nextDay.day,
+                    time_out: nextDayTimeoutEntry ? nextDayTimeoutEntry.event_time : nightshift.time_out,
+                    displayDate: `${formatDate(nightshift.date)} → ${formatDate(nextDay.date)}`,
+                    displayDay: `${nightshift.day} → ${nextDay.day}`,
+                    displayTimeOut: `${nextDayTimeoutEntry.event_time} (Next day: ${formatDate(nextDay.date)})`,
+                    status: 'Present',
+                    rowType: 'nightshift-grouped'
+                };
+                
+                groupedRecords.push(combinedRecord);
+                
+                // Create next day record with previous timeout info
+                const nextDayRecord = {
+                    ...nextDay,
+                    hasPreviousNightshiftTimeout: true,
+                    previousNightshiftInfo: `Timeout from ${formatDate(nightshift.date)} night shift`,
+                    displayDate: formatDate(nextDay.date),
+                    displayDay: nextDay.day,
+                    displayTimeOut: formatTime(nextDay.time_out) || '-',
+                    status: 'Present',
+                    rowType: 'next-day-available'
+                };
+                
+                groupedRecords.push(nextDayRecord);
+                
+            } else if (isNightshift && hasTimeInNoTimeOut) {
+                // Nightshift with time-in but no timeout found - mark as incomplete
+                const incompleteRecord = {
+                    ...nightshift,
+                    isNightshift: true,
+                    isIncomplete: true,
+                    displayDate: `${formatDate(nightshift.date)} (Incomplete)`,
+                    displayDay: nightshift.day,
+                    displayTimeOut: '-',
+                    status: 'Present',
+                    rowType: 'nightshift-incomplete'
+                };
+                
+                groupedRecords.push(incompleteRecord);
+                
+                // Add next day record as regular
+                const nextDayRecord = {
+                    ...nextDay,
+                    displayDate: formatDate(nextDay.date),
+                    displayDay: nextDay.day,
+                    displayTimeOut: formatTime(nextDay.time_out) || '-',
+                    status: 'Scheduled',
+                    rowType: 'regular'
+                };
+                
+                groupedRecords.push(nextDayRecord);
+                
+            } else {
+                // Regular records, add as-is
+                const nightshiftRecord = {
+                    ...nightshift,
+                    displayDate: formatDate(nightshift.date),
+                    displayDay: nightshift.day,
+                    displayTimeOut: formatTime(nightshift.time_out) || '-',
+                    status: nightshift.time_in ? 'Present' : 'Scheduled',
+                    rowType: 'regular'
+                };
+                
+                const nextDayRecord = {
+                    ...nextDay,
+                    displayDate: formatDate(nextDay.date),
+                    displayDay: nextDay.day,
+                    displayTimeOut: formatTime(nextDay.time_out) || '-',
+                    status: nextDay.time_in ? 'Present' : 'Scheduled',
+                    rowType: 'regular'
+                };
+                
+                groupedRecords.push(nightshiftRecord, nextDayRecord);
+            }
+            
+            return {
+                isNightshift,
+                hasTimeInNoTimeOut,
+                hasNextDayTimeout,
+                groupedRecords,
+                logic: {
+                    scheduledInHour,
+                    scheduledOutHour,
+                    timeoutHour: nextDay.time_out ? parseInt(nextDay.time_out.split(':')[0]) : null
+                }
+            };
+        }
+
+        function formatDate(dateString) {
+            return moment(dateString).format('MMM DD');
+        }
+
+        function formatTime(timeString) {
+            if (!timeString || timeString === '') return '-';
+            return moment(`2000-01-01 ${timeString}`).format('hh:mm A');
+        }
+
+        function displayResults(results) {
+            const container = document.getElementById('grouped-results');
+            
+            let html = `
+                <div class="result-item">
+                    <div class="result-label">Logic Analysis:</div>
+                    <div class="result-value">
+                        Nightshift: ${results.isNightshift ? '✅ Yes' : '❌ No'} | 
+                        Has Time-in: ${results.hasTimeInNoTimeOut ? '✅ Yes' : '❌ No'} | 
+                        Has Next Day Timeout: ${results.hasNextDayTimeout ? '✅ Yes' : '❌ No'}
+                    </div>
+                </div>
+                
+                <div class="result-item">
+                    <div class="result-label">Time Analysis:</div>
+                    <div class="result-value">
+                        Scheduled In: ${results.logic.scheduledInHour}:00 | 
+                        Scheduled Out: ${results.logic.scheduledOutHour}:00 | 
+                        Timeout Hour: ${results.logic.timeoutHour || 'N/A'}
+                    </div>
+                </div>
+            `;
+            
+            // Display grouped records
+            html += '<div class="result-item"><div class="result-label">Grouped Records:</div></div>';
+            
+            results.groupedRecords.forEach((record, index) => {
+                const rowClass = getRowClass(record.rowType);
+                const statusClass = getStatusClass(record.status);
+                
+                html += `
+                    <div class="result-item ${rowClass}">
+                        <div class="result-label">Row ${index + 1}: ${record.displayDate}</div>
+                        <div class="result-value">
+                            <strong>Date:</strong> ${record.displayDate} | 
+                            <strong>Day:</strong> ${record.displayDay} | 
+                            <strong>Status:</strong> <span class="${statusClass}">${record.status}</span> | 
+                            <strong>Time In:</strong> ${formatTime(record.time_in)} | 
+                            <strong>Time Out:</strong> ${record.displayTimeOut} | 
+                            <strong>Type:</strong> ${record.rowType}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function getRowClass(rowType) {
+            switch (rowType) {
+                case 'nightshift-grouped': return 'nightshift-row';
+                case 'next-day-available': return 'next-day-row';
+                case 'nightshift-incomplete': return 'nightshift-row';
+                default: return '';
+            }
+        }
+
+        function getStatusClass(status) {
+            switch (status) {
+                case 'Present': return 'status-present';
+                case 'Scheduled': return 'status-scheduled';
+                case 'Absent': return 'status-absent';
+                default: return '';
+            }
+        }
+
+        function showDebugInfo(nightshift, nextDay, results) {
+            const debugContainer = document.getElementById('debug-output');
+            
+            const debugData = {
+                input: { nightshift, nextDay },
+                analysis: results.logic,
+                grouping: {
+                    isNightshift: results.isNightshift,
+                    hasTimeInNoTimeOut: results.hasTimeInNoTimeOut,
+                    hasNextDayTimeout: results.hasNextDayTimeout
+                },
+                output: results.groupedRecords.map(record => ({
+                    displayDate: record.displayDate,
+                    displayDay: record.displayDay,
+                    status: record.status,
+                    rowType: record.rowType,
+                    timeIn: record.time_in,
+                    timeOut: record.displayTimeOut
+                }))
+            };
+            
+            debugContainer.textContent = JSON.stringify(debugData, null, 2);
+        }
+
+        // Initialize with basic scenario
+        document.addEventListener('DOMContentLoaded', function() {
+            loadScenario('basic');
+        });
+    </script>
+</body>
+</html>

@@ -25,6 +25,9 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [showMap, setShowMap] = useState(true);
   const [scheduleError, setScheduleError] = useState(null);
+  const [showStatusDetails, setShowStatusDetails] = useState(true); // Toggle for status cards
+  const [processedEntries, setProcessedEntries] = useState([]); // ENHANCED: For filtered time entries
+  const [totalHoursToday, setTotalHoursToday] = useState(0); // ENHANCED: For total hours calculation
   
   const isTimeInSubmitting = useRef(false);
   const isTimeOutSubmitting = useRef(false);
@@ -126,8 +129,8 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       setCurrentStatus('clocked_in');
     } else {
       // Check if there are any time entries today to determine status
-      if (todayEntries?.length > 0) {
-        const lastEntry = todayEntries[todayEntries.length - 1];
+      if (processedEntries?.length > 0) {
+        const lastEntry = processedEntries[processedEntries.length - 1];
         if (lastEntry.entry_type === 'time_in') {
           setCurrentStatus('clocked_in');
         } else {
@@ -137,7 +140,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
         setCurrentStatus('not_started');
       }
     }
-  }, [sessionResponse, todayEntries]);
+  }, [sessionResponse, processedEntries]);
 
   // Click-away logic for mobile menu
   useEffect(() => {
@@ -212,18 +215,26 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
     if (!todaySchedule || Object.keys(todaySchedule).length === 0) {
       // ENHANCED: For timeout operations, check if this might be a nightshift scenario
       if (action === 'time-out') {
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        
-        // Check if we have a schedule from yesterday that might be a nightshift
-        // This is a frontend hint - the backend will do the actual validation
-        console.log('No schedule for today - this might be a nightshift timeout scenario');
-        console.log('Backend will check for nightshift from previous day');
-        
-        // Don't block the user - let the backend handle the validation
-        setScheduleError(null);
-        return true;
+        // For nightshift timeouts, we need to check if there's an active session
+        // that started on a previous day. The backend will handle the actual validation.
+        if (sessionResponse?.active_session) {
+          console.log('No schedule for today but active session exists - this might be a nightshift timeout scenario');
+          console.log('Backend will check for nightshift from previous day');
+          
+          // Don't block the user - let the backend handle the validation
+          setScheduleError(null);
+          return true;
+        } else {
+          // No active session and no schedule - can't clock out
+          const today = new Date().toLocaleDateString('en-US', { 
+            month: '2-digit', 
+            day: '2-digit', 
+            year: 'numeric' 
+          });
+          const errorMsg = `No work schedule found for today (${today}) and no active session. Please contact your supervisor to set up your schedule before clocking in/out.`;
+          setScheduleError(errorMsg);
+          return false;
+        }
       } else {
         // For time-in, we still need a schedule
         const today = new Date().toLocaleDateString('en-US', { 
@@ -251,7 +262,27 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       
       // Parse scheduled time in (assuming format like "09:00" or "09:00:00")
       const scheduledTimeStr = todaySchedule.scheduled_time_in;
-      const [hours, minutes] = scheduledTimeStr.split(':').map(Number);
+      
+      // Handle different time formats (HH:MM or HH:MM:SS)
+      let hours, minutes;
+      if (scheduledTimeStr.includes(':')) {
+        const timeParts = scheduledTimeStr.split(':');
+        hours = parseInt(timeParts[0], 10);
+        minutes = parseInt(timeParts[1], 10);
+        
+        // Validate parsed values
+        if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+          console.error('Invalid time format:', scheduledTimeStr, 'Parsed:', { hours, minutes });
+          const errorMsg = `Invalid schedule time format: ${scheduledTimeStr}`;
+          setScheduleError(errorMsg);
+          return false;
+        }
+      } else {
+        console.error('Unexpected time format:', scheduledTimeStr);
+        const errorMsg = `Unexpected time format: ${scheduledTimeStr}`;
+        setScheduleError(errorMsg);
+        return false;
+      }
       
       // Rule: Cannot clock in more than 1 hour before scheduled start time
       // For night shifts: applies to same calendar day as schedule date
@@ -259,39 +290,62 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       scheduledTime.setHours(hours, minutes, 0, 0);
       const scheduledTimeMs = scheduledTime.getTime();
       
-      // Calculate time difference in hours
-      const timeDiffHours = Math.abs(currentTime - scheduledTimeMs) / (1000 * 60 * 60);
+      // Calculate time difference in hours (positive = early, negative = late)
+      const timeDiffHours = (scheduledTimeMs - currentTime) / (1000 * 60 * 60);
+      
+      console.log('MobileDashboard time validation debug:', {
+        now: now.toLocaleTimeString(),
+        scheduledTimeStr,
+        parsed: { hours, minutes },
+        scheduledTime: scheduledTime.toLocaleTimeString(),
+        timeDiffHours: timeDiffHours.toFixed(2)
+      });
       
       // If more than 1 hour early, prevent clock in
-      if (currentTime < scheduledTimeMs && timeDiffHours > 1) {
-        const errorMsg = `You cannot clock in yet. Your scheduled time is ${scheduledTimeStr}, and you can only clock in up to 1 hour early. Current time: ${now.toLocaleTimeString()}`;
+      if (timeDiffHours > 1) {
+        const earliestTime = new Date(scheduledTimeMs - 60 * 60 * 1000);
+        const errorMsg = `You can only clock in starting at ${earliestTime.toLocaleTimeString()}. Your scheduled time is ${scheduledTimeStr}.`;
         setScheduleError(errorMsg);
         return false;
       }
       
       // NEW: Check if current time is after scheduled end time
       const scheduledEndTimeStr = todaySchedule.scheduled_time_out;
-      const [endHours, endMinutes] = scheduledEndTimeStr.split(':').map(Number);
+      
+      // Handle different time formats for end time
+      let endHours, endMinutes;
+      if (scheduledEndTimeStr.includes(':')) {
+        const endTimeParts = scheduledEndTimeStr.split(':');
+        endHours = parseInt(endTimeParts[0], 10);
+        endMinutes = parseInt(endTimeParts[1], 10);
+        
+        // Validate parsed values
+        if (isNaN(endHours) || isNaN(endMinutes) || endHours < 0 || endHours > 23 || endMinutes < 0 || endMinutes > 59) {
+          console.error('Invalid end time format:', scheduledEndTimeStr, 'Parsed:', { endHours, endMinutes });
+          // Don't block the operation for end time parsing errors
+        }
+      } else {
+        console.error('Unexpected end time format:', scheduledEndTimeStr);
+        // Don't block the operation for end time parsing errors
+      }
       
       // Create scheduled end time for today
       const scheduledEndTime = new Date(now);
-      scheduledEndTime.setHours(endHours, endMinutes, 0, 0);
-      
-      // Handle overnight shifts - compare with start time hours
-      if (endHours < hours) {
-        scheduledEndTime.setDate(scheduledEndTime.getDate() + 1);
+      if (!isNaN(endHours) && !isNaN(endMinutes)) {
+        scheduledEndTime.setHours(endHours, endMinutes, 0, 0);
+        
+        // Handle overnight shifts - compare with start time hours
+        if (endHours < hours) {
+          scheduledEndTime.setDate(scheduledEndTime.getDate() + 1);
+        }
       }
       
       // REMOVED: 2-hour restriction based on ScheduleOut time
       // Now clock-in validation is ONLY based on ScheduleIn time (1 hour before)
       // Users can clock in at any time after the earliest allowed time (1 hour before ScheduleIn)
       
-      // If more than 1 hour late, allow but warn (no restriction based on end time)
-      if (currentTime > scheduledTimeMs && timeDiffHours > 1) {
-        const lateHours = timeDiffHours.toFixed(1);
-        // Don't set error, just log warning
-        console.log(`User clocking in ${lateHours} hours late, but allowed since no end time restriction`);
-      }
+      // Note: Late clock-ins are allowed (no restriction based on end time)
+      // Users can clock in at any time after the earliest allowed time (1 hour before ScheduleIn)
       
       // ENHANCED: Nightshift detection and validation
       if (action === 'time-out' && todaySchedule) {
@@ -314,14 +368,24 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
     
     setScheduleError(null);
     return true;
-  }, [todaySchedule, scheduleQueryError]);
+  }, [todaySchedule, scheduleQueryError, sessionResponse]);
 
   // NEW: Auto-validate schedule when component loads or schedule changes
   useEffect(() => {
     if (todaySchedule !== undefined || scheduleQueryError) {
-      validateSchedule();
+      // ENHANCED: Auto-validation with nightshift awareness
+      // If there's an active session, don't show schedule errors for time-in
+      // This prevents false errors for night shift workers
+      if (sessionResponse?.active_session) {
+        // Active session exists - this could be a night shift
+        // Don't show schedule errors that would block legitimate operations
+        setScheduleError(null);
+      } else {
+        // No active session - validate normally
+        validateSchedule();
+      }
     }
-  }, [todaySchedule, scheduleQueryError, validateSchedule]);
+  }, [todaySchedule, scheduleQueryError, sessionResponse, validateSchedule]);
 
   const handleTimeIn = async () => {
     if (isTimeInSubmitting.current) return;
@@ -470,6 +534,13 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       return false;
     }
     
+    // ENHANCED: Night shift awareness for time operations
+    // If there's an active session, don't disable time operations
+    // This allows night shift workers to clock out even without today's schedule
+    if (sessionResponse?.active_session) {
+      return false; // Allow operations when active session exists
+    }
+    
     // Only disable if there's a schedule error OR if schedule is still loading
     const disabled = !!scheduleError || todaySchedule === undefined;
     return disabled;
@@ -497,6 +568,92 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return `${hours}h ${minutes}m`;
+  };
+
+  // Process time entries data
+  useEffect(() => {
+    if (todayEntries && todayEntries.length > 0) {
+      // ENHANCED: Filter and group early timeouts with previous night's time-in
+      const filteredEntries = filterAndGroupEarlyTimeouts(todayEntries);
+      setProcessedEntries(filteredEntries);
+      const totalHours = calculateTotalHours(filteredEntries);
+      setTotalHoursToday(totalHours);
+    } else {
+      setProcessedEntries([]);
+      setTotalHoursToday(0);
+    }
+  }, [todayEntries]);
+
+  // ENHANCED: Filter and group early timeouts with previous night's time-in entries
+  const filterAndGroupEarlyTimeouts = (entries) => {
+    if (!entries || entries.length === 0) return entries;
+    
+    const sortedEntries = [...entries].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const filteredEntries = [];
+    
+    for (let i = 0; i < sortedEntries.length; i++) {
+      const currentEntry = sortedEntries[i];
+      
+      // IMPORTANT: Always preserve time-in entries - they're needed for time-in operations
+      if (currentEntry.entry_type === 'time_in') {
+        filteredEntries.push(currentEntry);
+        continue;
+      }
+      
+      // Check if this is a time-out entry
+      if (currentEntry.entry_type === 'time_out') {
+        const timeoutHour = new Date(currentEntry.timestamp).getHours();
+        
+        // Check if this is an early timeout (before 6 AM)
+        if (timeoutHour < 6) {
+          // Look for the previous time-in entry
+          let previousTimeIn = null;
+          for (let j = i - 1; j >= 0; j--) {
+            if (sortedEntries[j].entry_type === 'time_in') {
+              previousTimeIn = sortedEntries[j];
+              break;
+            }
+          }
+          
+          // If we found a previous time-in and it's from a different day (night shift)
+          if (previousTimeIn) {
+            const timeInDate = new Date(previousTimeIn.timestamp).toDateString();
+            const timeoutDate = new Date(currentEntry.timestamp).toDateString();
+            
+            if (timeInDate !== timeoutDate) {
+              // This is a night shift timeout - don't add it as a separate entry for display
+              // It will be handled by the grouping logic
+              console.log(`Filtering out night shift early timeout: ${currentEntry.formatted_timestamp} on ${timeoutDate}`);
+              continue;
+            }
+          }
+        }
+      }
+      
+      // Add the entry to filtered results
+      filteredEntries.push(currentEntry);
+    }
+    
+    return filteredEntries;
+  };
+
+  // ENHANCED: Calculate total hours from time entries
+  const calculateTotalHours = (entries) => {
+    if (!entries || entries.length === 0) return 0;
+    
+    const sortedEntries = entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const timeInEntries = sortedEntries.filter(e => e.entry_type === 'time_in');
+    const timeOutEntries = sortedEntries.filter(e => e.entry_type === 'time_out');
+    
+    let totalHours = 0;
+    for (let i = 0; i < Math.min(timeInEntries.length, timeOutEntries.length); i++) {
+      const timeIn = new Date(timeInEntries[i].timestamp);
+      const timeOut = new Date(timeOutEntries[i].timestamp);
+      const duration = (timeOut - timeIn) / (1000 * 60 * 60);
+      totalHours += duration;
+    }
+    
+    return totalHours;
   };
 
   return (
@@ -571,8 +728,42 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
           </div>
         )}
 
-        {/* NEW: Time Status Display */}
+        {/* Toggle Button for Status Cards */}
         {todaySchedule && !scheduleError && (
+          <div className="flex justify-center mb-3">
+            <button
+              onClick={() => setShowStatusDetails(!showStatusDetails)}
+              className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors mobile-btn"
+            >
+              <span>{showStatusDetails ? '▼' : '▶'}</span>
+              <span>{showStatusDetails ? 'Hide Details' : 'Show Details'}</span>
+            </button>
+          </div>
+        )}
+
+        {/* Compact Status Summary (when details are hidden) */}
+        {todaySchedule && !scheduleError && !showStatusDetails && (
+          <div className="mobile-compact-status p-4 mobile-card">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="text-blue-600 text-xl">📋</div>
+                <div>
+                  <p className="text-gray-800 font-semibold text-base mobile-text">Quick Status</p>
+                  <p className="text-gray-600 text-sm mobile-text-small">
+                    Schedule: {todaySchedule.scheduled_time_in} - {todaySchedule.scheduled_time_out}
+                    {todaySchedule.is_night_shift && <span className="ml-2 text-purple-600">🌙</span>}
+                  </p>
+                </div>
+              </div>
+              <div className="text-green-600 text-sm font-medium">
+                ✅ Ready
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* NEW: Time Status Display */}
+        {todaySchedule && !scheduleError && showStatusDetails && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mobile-card">
             <div className="flex items-start space-x-3">
               <div className="text-blue-600 text-xl">⏰</div>
@@ -584,20 +775,48 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
                     try {
                       const now = new Date();
                       const scheduledTimeStr = todaySchedule.scheduled_time_in;
-                      const [hours, minutes] = scheduledTimeStr.split(':').map(Number);
+                      
+                      // Handle different time formats (HH:MM or HH:MM:SS)
+                      let hours, minutes;
+                      if (scheduledTimeStr.includes(':')) {
+                        const timeParts = scheduledTimeStr.split(':');
+                        hours = parseInt(timeParts[0], 10);
+                        minutes = parseInt(timeParts[1], 10);
+                        
+                        // Validate parsed values
+                        if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+                          console.error('Invalid time format:', scheduledTimeStr, 'Parsed:', { hours, minutes });
+                          return <p className="text-red-600">⚠️ Invalid schedule time format</p>;
+                        }
+                      } else {
+                        console.error('Unexpected time format:', scheduledTimeStr);
+                        return <p className="text-red-600">⚠️ Unexpected time format</p>;
+                      }
+                      
                       const scheduledTime = new Date(now);
                       scheduledTime.setHours(hours, minutes, 0, 0);
                       const timeDiffHours = (scheduledTime.getTime() - now.getTime()) / (1000 * 60 * 60);
                       
+                      console.log('MobileDashboard display time validation debug:', {
+                        now: now.toLocaleTimeString(),
+                        scheduledTimeStr,
+                        parsed: { hours, minutes },
+                        scheduledTime: scheduledTime.toLocaleTimeString(),
+                        timeDiffHours: timeDiffHours.toFixed(2)
+                      });
+                      
                       if (timeDiffHours > 1) {
-                        return <p className="text-orange-600">⏳ You can clock in starting at {(scheduledTime.getTime() - 60 * 60 * 1000).toLocaleTimeString()}</p>;
+                        const earliestTime = new Date(scheduledTime.getTime() - 60 * 60 * 1000);
+                        return <p className="text-orange-600">⏳ You can clock in starting at {earliestTime.toLocaleTimeString()}</p>;
                       } else if (timeDiffHours > 0) {
                         return <p className="text-green-600">✅ You can clock in now (within 1 hour of schedule)</p>;
                       } else {
                         return <p className="text-green-600">✅ You can clock in now</p>;
                       }
                     } catch (error) {
-                      return <p>Time validation unavailable</p>;
+                      console.error('MobileDashboard display time validation error:', error);
+                      console.error('Schedule data:', todaySchedule);
+                      return <p className="text-red-600">⚠️ Time validation error: {error.message}</p>;
                     }
                   })()}
                 </div>
@@ -660,7 +879,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
         )}
 
         {/* NEW: Schedule Information Display */}
-        {todaySchedule && !scheduleError && (
+        {todaySchedule && !scheduleError && showStatusDetails && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 mobile-card">
             <div className="flex items-start space-x-3">
               <div className="text-green-600 text-xl">✅</div>
