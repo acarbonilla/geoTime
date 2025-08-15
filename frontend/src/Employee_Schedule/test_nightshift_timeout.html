@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nightshift Timeout Test Case</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-case {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-case h3 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .scenario {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #3498db;
+        }
+        .validation-step {
+            background: #fff3cd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+        }
+        .error-step {
+            background: #f8d7da;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #dc3545;
+        }
+        .success-step {
+            background: #d4edda;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+        }
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .time-display {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #2c3e50;
+            text-align: center;
+            padding: 10px;
+            background: #e8f4fd;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .status-indicator {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            font-weight: bold;
+            margin: 5px;
+        }
+        .status-success { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .status-warning { background: #fff3cd; color: #856404; }
+        .status-info { background: #d1ecf1; color: #0c5460; }
+        .test-results {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .button:hover {
+            background: #2980b9;
+        }
+        .button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .button.danger {
+            background: #e74c3c;
+        }
+        .button.danger:hover {
+            background: #c0392b;
+        }
+        .button.success {
+            background: #27ae60;
+        }
+        .button.success:hover {
+            background: #229954;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌙 Nightshift Timeout Test Case</h1>
+    <p>This test demonstrates the current validation logic and the issue with nightshift timeouts on the next day.</p>
+
+    <div class="test-case">
+        <h3>📋 Test Scenario: Nightshift Worker Clock In/Out</h3>
+        
+        <div class="scenario">
+            <h4>🕐 Schedule Details</h4>
+            <ul>
+                <li><strong>Date:</strong> <span id="scheduleDate">August 20, 2025</span></li>
+                <li><strong>Start Time:</strong> 8:00 PM (20:00)</li>
+                <li><strong>End Time:</strong> 5:00 AM (05:00) - Next Day</li>
+                <li><strong>Shift Type:</strong> Nightshift (crosses midnight)</li>
+                <li><strong>Duration:</strong> 9 hours</li>
+            </ul>
+        </div>
+
+        <div class="scenario">
+            <h4>👤 Worker Actions</h4>
+            <ul>
+                <li><strong>Clock In:</strong> August 20, 2025 at 8:00 PM</li>
+                <li><strong>Clock Out:</strong> August 21, 2025 at 4:00 AM (next day)</li>
+                <li><strong>Actual Work Time:</strong> 8 hours (with 1 hour break)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h3>🔍 Current Validation Logic Analysis</h3>
+        
+        <div class="validation-step">
+            <h4>✅ Step 1: Clock In Validation (August 20, 8:00 PM)</h4>
+            <ul>
+                <li>System checks for schedule on August 20 ✅</li>
+                <li>Schedule found: 8:00 PM - 5:00 AM ✅</li>
+                <li>Current time (8:00 PM) is within allowed window ✅</li>
+                <li>Clock in allowed ✅</li>
+            </ul>
+        </div>
+
+        <div class="validation-step">
+            <h4>⚠️ Step 2: Clock Out Attempt (August 21, 4:00 AM)</h4>
+            <ul>
+                <li>System checks for schedule on August 21 ❌</li>
+                <li>No schedule found for August 21 ❌</li>
+                <li>Backend validation fails with "Schedule required" error ❌</li>
+                <li>Clock out blocked ❌</li>
+            </ul>
+        </div>
+
+        <div class="error-step">
+            <h4>🚨 The Problem</h4>
+            <p>The current validation logic requires a schedule to exist on the <strong>same calendar day</strong> as the time operation. For nightshifts that cross midnight, this creates a gap where workers cannot clock out on the next day.</p>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h3>💻 Frontend Validation Logic (Current Implementation)</h3>
+        
+        <div class="code-block">
+// Current validateSchedule function from EmployeeDashboard.js
+const validateSchedule = useCallback(() => {
+  // Check if schedule query failed (error state)
+  if (scheduleQueryError) {
+    const errorMsg = 'Failed to load schedule. Please contact your supervisor.';
+    setScheduleError(errorMsg);
+    return false;
+  }
+  
+  // Check if schedule data is still loading
+  if (todaySchedule === undefined) {
+    setScheduleError(null);
+    return false;
+  }
+  
+  // Check if schedule exists for today
+  if (!todaySchedule || Object.keys(todaySchedule).length === 0) {
+    const today = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    const errorMsg = `No work schedule found for today (${today}). Please contact your supervisor to set up your schedule before clocking in/out.`;
+    setScheduleError(errorMsg);
+    return false;
+  }
+  
+  // Check if schedule has required fields
+  if (!todaySchedule.scheduled_time_in || !todaySchedule.scheduled_time_out) {
+    const errorMsg = 'Your schedule is incomplete. Please contact your supervisor to complete your schedule before clocking in/out.';
+    setScheduleError(errorMsg);
+    return false;
+  }
+  
+  setScheduleError(null);
+  return true;
+}, [todaySchedule, scheduleQueryError]);
+        </div>
+
+        <div class="validation-step">
+            <h4>🔍 Frontend Validation Analysis</h4>
+            <ul>
+                <li><strong>Schedule Loading:</strong> ✅ Handles loading states properly</li>
+                <li><strong>Schedule Existence:</strong> ✅ Checks if schedule exists for current day</li>
+                <li><strong>Schedule Completeness:</strong> ✅ Validates required time fields</li>
+                <li><strong>Nightshift Handling:</strong> ❌ <strong>NO LOGIC</strong> for cross-midnight scenarios</li>
+                <li><strong>Next-Day Timeout:</strong> ❌ <strong>NO LOGIC</strong> for next-day schedule lookup</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h3>🐍 Backend Validation Logic (Current Implementation)</h3>
+        
+        <div class="code-block">
+# Current backend validation from TimeInOutAPIView
+def post(self, request, action):
+    # ... authentication and basic validation ...
+    
+    # NEW: ENFORCE SCHEDULE COMPLIANCE - Block if no schedule exists
+    from datetime import date
+    today = date.today()
+    schedule = EmployeeSchedule.objects.filter(employee=employee, date=today).first()
+    
+    if not schedule:
+        return Response({
+            'error': 'Schedule required',
+            'details': 'No schedule found for today. Please contact your supervisor to set up your schedule before clocking in/out.',
+            'date': today.isoformat()
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not schedule.scheduled_time_in or not schedule.scheduled_time_out:
+        return Response({
+            'error': 'Incomplete schedule',
+            'details': 'Your schedule for today is incomplete. Please contact your supervisor to complete your schedule before clocking in/out.',
+            'date': today.isoformat()
+        }, status=status.HTTP_400_BAD_REQUEST)
+        </div>
+
+        <div class="validation-step">
+            <h4>🔍 Backend Validation Analysis</h4>
+            <ul>
+                <li><strong>Schedule Lookup:</strong> ❌ Only looks for schedule on <code>date.today()</code></li>
+                <li><strong>Cross-Midnight Logic:</strong> ❌ <strong>NO LOGIC</strong> for nightshift scenarios</li>
+                <li><strong>Next-Day Handling:</strong> ❌ <strong>NO LOGIC</strong> for next-day schedule lookup</li>
+                <li><strong>Validation Rigidity:</strong> ❌ <strong>UNCONDITIONAL</strong> schedule requirement</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h3>🧪 Interactive Test Simulation</h3>
+        
+        <div class="time-display">
+            <div>🕐 Current Time: <span id="currentTime">Loading...</span></div>
+            <div>📅 Current Date: <span id="currentDate">Loading...</span></div>
+        </div>
+
+        <div class="test-results">
+            <h4>📊 Test Results</h4>
+            <div id="testResults">
+                <p>Click the buttons below to simulate the nightshift scenario:</p>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin: 20px 0;">
+            <button class="button success" onclick="simulateClockIn()">🕐 Simulate Clock In (8:00 PM)</button>
+            <button class="button danger" onclick="simulateClockOut()">🚪 Simulate Clock Out (4:00 AM Next Day)</button>
+            <button class="button" onclick="resetTest()">🔄 Reset Test</button>
+        </div>
+
+        <div id="simulationLog" style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; max-height: 300px; overflow-y: auto;">
+            <h4>📝 Simulation Log</h4>
+            <div id="logContent">
+                <p>Simulation log will appear here...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h3>🔧 Proposed Solutions</h3>
+        
+        <div class="validation-step">
+            <h4>✅ Solution 1: Enhanced Frontend Logic</h4>
+            <div class="code-block">
+// Enhanced validateSchedule for nightshift scenarios
+const validateSchedule = useCallback(() => {
+  // ... existing validation logic ...
+  
+  // NEW: Nightshift next-day timeout handling
+  if (action === 'time-out' && todaySchedule) {
+    const scheduledEndTime = new Date(todaySchedule.scheduled_time_out);
+    const scheduledStartTime = new Date(todaySchedule.scheduled_time_in);
+    
+    // Check if this is a nightshift (crosses midnight)
+    if (scheduledEndTime < scheduledStartTime) {
+      // This is a nightshift - allow timeout on next day
+      const nextDay = new Date();
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      // Check if current time is within reasonable window after scheduled end
+      const currentTime = new Date();
+      const timeDiffHours = (currentTime - scheduledEndTime) / (1000 * 60 * 60);
+      
+      if (timeDiffHours <= 4) { // Allow up to 4 hours after scheduled end
+        return true; // Allow timeout
+      }
+    }
+  }
+  
+  return true;
+}, [todaySchedule, scheduleQueryError, action]);
+            </div>
+        </div>
+
+        <div class="validation-step">
+            <h4>✅ Solution 2: Enhanced Backend Logic</h4>
+            <div class="code-block">
+# Enhanced backend validation for nightshift scenarios
+def _validate_schedule_compliance(self, employee, action, current_time):
+    today = current_time.date()
+    
+    # Primary schedule lookup
+    schedule = EmployeeSchedule.objects.filter(employee=employee, date=today).first()
+    
+    # If no schedule found and this is a timeout operation, check for nightshift
+    if not schedule and action == 'time-out':
+        # Look for schedule from previous day that might be a nightshift
+        yesterday = today - timedelta(days=1)
+        yesterday_schedule = EmployeeSchedule.objects.filter(
+            employee=employee, date=yesterday
+        ).first()
+        
+        if yesterday_schedule and yesterday_schedule.scheduled_time_out:
+            # Check if this is a nightshift (end time < start time)
+            if yesterday_schedule.scheduled_time_out < yesterday_schedule.scheduled_time_in:
+                # Allow timeout within reasonable window after scheduled end
+                scheduled_end = datetime.combine(yesterday, yesterday_schedule.scheduled_time_out)
+                if scheduled_end < datetime.combine(yesterday, yesterday_schedule.scheduled_time_in):
+                    scheduled_end += timedelta(days=1)  # Add 24 hours for nightshift
+                
+                time_diff = current_time - scheduled_end
+                if time_diff.total_seconds() <= 14400:  # 4 hours = 14400 seconds
+                    return True, None  # Allow timeout
+    
+    # ... rest of existing validation logic ...
+            </div>
+        </div>
+
+        <div class="validation-step">
+            <h4>✅ Solution 3: Schedule Management Fix</h4>
+            <ul>
+                <li><strong>Create Next-Day Schedule:</strong> Automatically create a schedule entry for the next day when creating nightshift schedules</li>
+                <li><strong>Cross-Midnight Detection:</strong> Detect when schedules cross midnight and handle accordingly</li>
+                <li><strong>Flexible Time Windows:</strong> Allow reasonable time windows for nightshift timeouts</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h3>📋 Test Summary</h3>
+        
+        <div class="test-results">
+            <h4>🎯 Current System Behavior</h4>
+            <ul>
+                <li>✅ <strong>Clock In:</strong> Works correctly for nightshift start</li>
+                <li>❌ <strong>Clock Out:</strong> Blocked due to missing next-day schedule</li>
+                <li>❌ <strong>Validation Logic:</strong> No handling for cross-midnight scenarios</li>
+                <li>❌ <strong>User Experience:</strong> Workers cannot complete their shifts</li>
+            </ul>
+
+            <h4>🔧 Required Changes</h4>
+            <ul>
+                <li><strong>Frontend:</strong> Enhanced schedule validation for nightshift scenarios</li>
+                <li><strong>Backend:</strong> Cross-midnight schedule lookup and validation</li>
+                <li><strong>Database:</strong> Automatic next-day schedule creation for nightshifts</li>
+                <li><strong>Business Logic:</strong> Flexible time windows for nightshift operations</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Test simulation variables
+        let clockInTime = null;
+        let clockOutTime = null;
+        let testStep = 0;
+
+        // Update current time display
+        function updateTimeDisplay() {
+            const now = new Date();
+            document.getElementById('currentTime').textContent = now.toLocaleTimeString();
+            document.getElementById('currentDate').textContent = now.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+
+        // Log function for simulation
+        function log(message, type = 'info') {
+            const logContent = document.getElementById('logContent');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span style="color: #666;">[${timestamp}]</span> ${message}`;
+            
+            if (type === 'error') {
+                logEntry.style.color = '#dc3545';
+            } else if (type === 'success') {
+                logEntry.style.color = '#28a745';
+            } else if (type === 'warning') {
+                logEntry.style.color = '#ffc107';
+            }
+            
+            logContent.appendChild(logEntry);
+            logContent.scrollTop = logContent.scrollHeight;
+        }
+
+        // Simulate clock in
+        function simulateClockIn() {
+            testStep = 1;
+            clockInTime = new Date('2025-08-20T20:00:00');
+            
+            log('🕐 <strong>CLOCK IN SIMULATION STARTED</strong>', 'success');
+            log('📅 Date: August 20, 2025', 'info');
+            log('🕐 Time: 8:00 PM (20:00)', 'info');
+            log('✅ <strong>Step 1:</strong> Checking schedule for August 20, 2025', 'info');
+            log('✅ <strong>Step 2:</strong> Schedule found: 8:00 PM - 5:00 AM (next day)', 'success');
+            log('✅ <strong>Step 3:</strong> Current time (8:00 PM) is within allowed window', 'success');
+            log('✅ <strong>Step 4:</strong> Clock in operation allowed', 'success');
+            log('🎉 <strong>CLOCK IN SUCCESSFUL!</strong>', 'success');
+            
+            document.getElementById('testResults').innerHTML = `
+                <div class="status-indicator status-success">✅ Clock In: SUCCESS</div>
+                <p>Worker successfully clocked in at 8:00 PM on August 20, 2025.</p>
+                <p>The system found the schedule and allowed the operation.</p>
+            `;
+        }
+
+        // Simulate clock out
+        function simulateClockOut() {
+            if (testStep < 1) {
+                log('❌ <strong>ERROR:</strong> Must clock in first!', 'error');
+                return;
+            }
+            
+            testStep = 2;
+            clockOutTime = new Date('2025-08-21T04:00:00');
+            
+            log('🚪 <strong>CLOCK OUT SIMULATION STARTED</strong>', 'warning');
+            log('📅 Date: August 21, 2025 (next day)', 'info');
+            log('🕐 Time: 4:00 AM (04:00)', 'info');
+            log('❌ <strong>Step 1:</strong> Checking schedule for August 21, 2025', 'error');
+            log('❌ <strong>Step 2:</strong> NO SCHEDULE FOUND for August 21', 'error');
+            log('❌ <strong>Step 3:</strong> Backend validation fails with "Schedule required" error', 'error');
+            log('❌ <strong>Step 4:</strong> Clock out operation blocked', 'error');
+            log('🚫 <strong>CLOCK OUT FAILED!</strong>', 'error');
+            log('💡 <strong>REASON:</strong> System requires schedule on same calendar day', 'info');
+            
+            document.getElementById('testResults').innerHTML = `
+                <div class="status-indicator status-error">❌ Clock Out: FAILED</div>
+                <p>Worker cannot clock out at 4:00 AM on August 21, 2025.</p>
+                <p><strong>Root Cause:</strong> No schedule exists for August 21, 2025.</p>
+                <p><strong>System Error:</strong> "Schedule required" - No schedule found for today.</p>
+                <p><strong>Business Impact:</strong> Nightshift workers cannot complete their shifts!</p>
+            `;
+        }
+
+        // Reset test
+        function resetTest() {
+            testStep = 0;
+            clockInTime = null;
+            clockOutTime = null;
+            
+            log('🔄 <strong>TEST RESET</strong>', 'info');
+            log('All simulation data cleared. Ready for new test run.', 'info');
+            
+            document.getElementById('testResults').innerHTML = `
+                <p>Click the buttons above to simulate the nightshift scenario:</p>
+            `;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTimeDisplay();
+            setInterval(updateTimeDisplay, 1000);
+            
+            log('🌙 <strong>Nightshift Timeout Test Case Loaded</strong>', 'info');
+            log('This test demonstrates the current validation logic and the issue with nightshift timeouts.', 'info');
+            log('Click "Simulate Clock In" to start the test sequence.', 'info');
+        });
+    </script>
+</body>
+</html>

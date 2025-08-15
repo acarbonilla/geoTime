@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Fix for Night Shift Calculations</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+</head>
+<body>
+    <h1>Test Fix for Night Shift Calculations</h1>
+    <div id="results"></div>
+
+    <script>
+        // Copy the fixed functions from ScheduleReport.js
+        const calculateBilledHours = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
+            if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
+                return 0;
+            }
+            
+            if (!scheduledIn || !scheduledOut || scheduledIn === '-' || scheduledOut === '-') {
+                return 0;
+            }
+
+            try {
+                const baseDate = moment(recordDate, 'YYYY-MM-DD');
+                if (!baseDate.isValid()) {
+                    return 0;
+                }
+
+                // Parse actual time worked (time out - time in)
+                const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
+                let timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
+                
+                // Parse scheduled times for abuse prevention
+                const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+                const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
+                
+                if (!timeInMoment.isValid() || !timeOutMoment.isValid() || 
+                    !scheduledInMoment.isValid() || !scheduledOutMoment.isValid()) {
+                    return 0;
+                }
+
+                // Handle night shifts that span midnight
+                if (timeOutMoment.isBefore(timeInMoment)) {
+                    timeOutMoment = moment(timeOutMoment).add(1, 'day');
+                }
+                if (scheduledOutMoment.isBefore(scheduledInMoment)) {
+                    scheduledOutMoment.add(1, 'day');
+                }
+
+                // ABUSE PREVENTION: Cap actual times to scheduled times
+                let effectiveTimeIn = timeInMoment;
+                let effectiveTimeOut = timeOutMoment;
+                
+                // If user clocked in early, cap to scheduled time
+                if (timeInMoment.isBefore(scheduledInMoment)) {
+                    effectiveTimeIn = scheduledInMoment.clone();
+                }
+                
+                // FIXED: For early clock-out, use actual time out (don't cap to scheduled time)
+                // This ensures undertime is calculated correctly
+                // Only cap to scheduled time if user clocks out late (to prevent abuse)
+                if (timeOutMoment.isAfter(scheduledOutMoment)) {
+                    effectiveTimeOut = scheduledOutMoment.clone();
+                }
+
+                // Calculate effective duration worked in minutes
+                let durationMinutes = effectiveTimeOut.diff(effectiveTimeIn, 'minutes');
+                
+                // Ensure duration is positive
+                if (durationMinutes < 0) {
+                    return 0;
+                }
+
+                // Apply break deduction based on shift duration
+                let breakDeduction = 0;
+                if (durationMinutes >= 480) { // 8 hours or more
+                    breakDeduction = 60; // 1 hour break
+                    durationMinutes -= 60;
+                } else if (durationMinutes >= 240) { // 4 hours or more
+                    breakDeduction = 30; // 30 minutes break
+                    durationMinutes -= 30;
+                }
+
+                return Math.max(0, durationMinutes);
+            } catch (error) {
+                console.error('Error calculating billed hours:', error);
+                return 0;
+            }
+        };
+
+        const calculateNightDifferential = (timeIn, timeOut, recordDate) => {
+            if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
+                return 0;
+            }
+            
+            const baseDate = moment(recordDate, 'YYYY-MM-DD');
+            if (!baseDate.isValid()) {
+                return 0;
+            }
+            
+            // Parse time strings using the record's date as context
+            const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
+            let timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
+            
+            if (!timeInMoment.isValid() || !timeOutMoment.isValid()) {
+                return 0;
+            }
+            
+            // If time out is before time in, it means the shift spans midnight
+            if (timeOutMoment.isBefore(timeInMoment)) {
+                timeOutMoment = moment(timeOutMoment).add(1, 'day');
+            }
+            
+            let ndHours = 0;
+            
+            // ND period: 10:00 PM (22:00) to 6:00 AM (06:00) of the next day
+            // Always start ND period at 10 PM of the base date
+            const ndStart = moment(baseDate).set({ hour: 22, minute: 0, second: 0 });
+            
+            // Always end ND period at 6 AM of the next day
+            const ndEnd = moment(baseDate).add(1, 'day').set({ hour: 6, minute: 0, second: 0 });
+            
+            // Find the effective start time for ND calculation
+            let effectiveNDStart = ndStart;
+            if (timeInMoment.isAfter(ndStart)) {
+                effectiveNDStart = timeInMoment.clone();
+            }
+            
+            // Find the effective end time for ND calculation
+            // FIXED: Use actual time out for ND calculation, not scheduled time
+            // This ensures ND reflects actual hours worked during ND period
+            let effectiveNDEnd = ndEnd;
+            if (timeOutMoment.isBefore(ndEnd)) {
+                effectiveNDEnd = timeOutMoment.clone();
+            }
+            
+            // Calculate ND hours only if there's overlap with ND period
+            if (effectiveNDStart.isBefore(effectiveNDEnd)) {
+                const duration = moment.duration(effectiveNDEnd.diff(effectiveNDStart));
+                ndHours = duration.asHours();
+            } else {
+                return 0;
+            }
+            
+            // Apply break deduction based on total shift duration
+            const totalShiftDuration = timeOutMoment.diff(timeInMoment, 'hours');
+            let breakDeduction = 0;
+            
+            if (totalShiftDuration >= 8) {
+                breakDeduction = 1; // 1 hour break for 8+ hour shifts
+            } else if (totalShiftDuration >= 4) {
+                breakDeduction = 0.5; // 30 minutes break for 4+ hour shifts
+            }
+            
+            // Apply break deduction to ND hours
+            ndHours = Math.max(0, ndHours - breakDeduction);
+            
+            // Round to 2 decimal places
+            const finalND = Math.round(ndHours * 100) / 100;
+            
+            return finalND;
+        };
+
+        const calculateUndertimeMinutes = (timeIn, timeOut, scheduledIn, scheduledOut, recordDate) => {
+            if (!timeIn || !timeOut || !scheduledIn || !scheduledOut || 
+                timeIn === '-' || timeOut === '-' || scheduledIn === '-' || scheduledOut === '-') {
+                return 0;
+            }
+            
+            const baseDate = moment(recordDate, 'YYYY-MM-DD');
+            if (!baseDate.isValid()) {
+                return 0;
+            }
+            
+            // Parse scheduled times for UT calculation
+            const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+            const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
+            
+            if (!scheduledInMoment.isValid() || !scheduledOutMoment.isValid()) {
+                return 0;
+            }
+            
+            // Handle scheduled times that span midnight
+            if (scheduledOutMoment.isBefore(scheduledInMoment)) {
+                scheduledOutMoment.add(1, 'day');
+            }
+            
+            // Calculate scheduled duration (gross - before break deduction)
+            const scheduledDuration = moment.duration(scheduledOutMoment.diff(scheduledInMoment));
+            const scheduledMinutes = scheduledDuration.asMinutes();
+            
+            // Calculate scheduled break deduction based on scheduled duration
+            let scheduledBreakMinutes = 0;
+            if (scheduledMinutes >= 480) { // 8 hours or more
+                scheduledBreakMinutes = 60; // 1 hour break
+            } else if (scheduledMinutes >= 240) { // 4 hours or more
+                scheduledBreakMinutes = 30; // 30 minutes break
+            }
+            
+            // Calculate net scheduled time (after break deduction)
+            const netScheduledMinutes = scheduledMinutes - scheduledBreakMinutes;
+            
+            // NEW: Use the dynamic BH calculation (actual time worked)
+            const dynamicBHMinutes = calculateBilledHours(timeIn, timeOut, scheduledIn, scheduledOut, recordDate);
+            
+            // RULE: UT = (Net Scheduled Hours - Dynamic BH)
+            // This represents actual undertime after accounting for scheduled breaks
+            const undertimeMinutes = Math.max(0, netScheduledMinutes - dynamicBHMinutes);
+            
+            console.log(`UT calculation for ${recordDate}: Gross Scheduled ${scheduledMinutes}min - Break ${scheduledBreakMinutes}min = Net Scheduled ${netScheduledMinutes}min - Dynamic BH ${dynamicBHMinutes}min = UT ${undertimeMinutes}min`);
+            
+            return Math.round(undertimeMinutes);
+        };
+
+        // Test Case 3: Early Departure Night Shift
+        const testCase = {
+            name: "Test Case 3: Early Departure Night Shift",
+            schedule: { in: "19:00", out: "04:00" },
+            actual: { in: "19:00", out: "02:00" },
+            date: "2024-08-14",
+            expected: {
+                bh: 390, // 7h (19:00-02:00) - 30m break = 6h 30m = 390 min (using actual time out)
+                nd: 3.5, // 4h (22:00-02:00) - 30m break = 3h 30m = 3.5h
+                ut: 90 // 9h scheduled - 60m break = 8h net - 6h 30m actual = 1h 30m = 90 min
+            }
+        };
+
+        // Run the test
+        console.log(`🚀 Testing: ${testCase.name}`);
+        console.log(`   Schedule: ${testCase.schedule.in} - ${testCase.schedule.out}`);
+        console.log(`   Actual: ${testCase.actual.in} - ${testCase.actual.out}`);
+        console.log(`   Date: ${testCase.date}`);
+
+        const actualBH = calculateBilledHours(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
+        const actualND = calculateNightDifferential(testCase.actual.in, testCase.actual.out, testCase.date);
+        const actualUT = calculateUndertimeMinutes(testCase.actual.in, testCase.actual.out, testCase.schedule.in, testCase.schedule.out, testCase.date);
+
+        console.log(`\n   Results:`);
+        console.log(`   BH: Expected ${testCase.expected.bh}min, Got ${actualBH}min`);
+        console.log(`   ND: Expected ${testCase.expected.nd}h, Got ${actualND}h`);
+        console.log(`   UT: Expected ${testCase.expected.ut}min, Got ${actualUT}min`);
+
+        // Display results on page
+        const resultsDiv = document.getElementById('results');
+        resultsDiv.innerHTML = `
+            <h2>Test Results</h2>
+            <p><strong>Test Case:</strong> ${testCase.name}</p>
+            <p><strong>Schedule:</strong> ${testCase.schedule.in} - ${testCase.schedule.out}</p>
+            <p><strong>Actual:</strong> ${testCase.actual.in} - ${testCase.actual.out}</p>
+            <p><strong>Date:</strong> ${testCase.date}</p>
+            <h3>Results:</h3>
+            <p><strong>BH:</strong> Expected ${testCase.expected.bh}min, Got ${actualBH}min</p>
+            <p><strong>ND:</strong> Expected ${testCase.expected.nd}h, Got ${actualND}h</p>
+            <p><strong>UT:</strong> Expected ${testCase.expected.ut}min, Got ${actualUT}min</p>
+        `;
+    </script>
+</body>
+</html>
