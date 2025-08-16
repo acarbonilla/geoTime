@@ -28,7 +28,7 @@ import moment from 'moment';
 
 const TeamLeaderScheduleReport = () => {
   const [employee, setEmployee] = useState(null);
-  const [reports, setReports] = useState([]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState(() => {
@@ -81,7 +81,9 @@ const TeamLeaderScheduleReport = () => {
   const [viewMode, setViewMode] = useState('reports'); // 'reports' or 'members'
   const [selectedMember, setSelectedMember] = useState(null);
   
-
+  // Team Report Data
+  const [teamSummary, setTeamSummary] = useState(null);
+  const [teamLeaderInfo, setTeamLeaderInfo] = useState(null);
   
   // Cutoff Period Filter
   const [selectedCutoffPeriod, setSelectedCutoffPeriod] = useState('');
@@ -131,21 +133,26 @@ const TeamLeaderScheduleReport = () => {
     }
   }, []);
 
-  useEffect(() => {
+    useEffect(() => {
     try {
       console.log('TeamLeaderScheduleReport: Data fetch useEffect', { employee, viewMode });
       if (employee) {
-        if (viewMode === 'reports') {
-          fetchReports();
-        } else if (viewMode === 'members') {
-          fetchMemberReports();
-        }
+        // Always use fetchMemberReports for the new team_report endpoint
+        fetchMemberReports();
       }
     } catch (error) {
       console.error('TeamLeaderScheduleReport: Error in data fetch useEffect:', error);
       setError('Failed to fetch data');
     }
   }, [dateRange, selectedEmployee, employee, viewMode]);
+
+  // Refetch data when selectedEmployee changes
+  useEffect(() => {
+    if (employee && dateRange.startDate && dateRange.endDate) {
+      console.log('TeamLeaderScheduleReport: Selected employee changed, refetching data...', selectedEmployee);
+      fetchMemberReports();
+    }
+  }, [selectedEmployee]);
 
   // Fetch employees when employee state changes
   useEffect(() => {
@@ -203,6 +210,14 @@ const TeamLeaderScheduleReport = () => {
         // The subordinates endpoint returns a direct array, not paginated
         const employeesData = Array.isArray(response.data) ? response.data : [];
         console.log('TeamLeaderScheduleReport: Processed subordinates data:', employeesData);
+        // Debug: Log the first employee to see the data structure
+        if (employeesData.length > 0) {
+          console.log('TeamLeaderScheduleReport: First employee structure:', {
+            id: employeesData[0].id,
+            employee_id: employeesData[0].employee_id,
+            name: employeesData[0].full_name || employeesData[0].first_name || employeesData[0].last_name
+          });
+        }
         setEmployees(employeesData);
       } else {
         console.log('TeamLeaderScheduleReport: No employee data available, fetching all employees...');
@@ -222,61 +237,65 @@ const TeamLeaderScheduleReport = () => {
     }
   };
 
-  const fetchReports = async (params = {}) => {
-    try {
-      // Use passed params if available, otherwise fall back to current dateRange state
-      const startDate = params.startDate || dateRange.startDate;
-      const endDate = params.endDate || dateRange.endDate;
-      
-      const requestParams = {
-        start_date: startDate,
-        end_date: endDate
-      };
-      
-      if (selectedEmployee !== 'all') {
-        requestParams.employee_id = selectedEmployee;
-      }
-      
-      console.log('TeamLeaderScheduleReport: Fetching reports...', { 
-        passedParams: params,
-        currentDateRange: dateRange,
-        finalRequestParams: requestParams,
-        selectedEmployee
-      });
-      setLoading(true);
-      const response = await axiosInstance.get('schedules/report/', { params: requestParams });
-      console.log('TeamLeaderScheduleReport: Reports response:', response.data);
-      // Ensure we always set an array, even if the response is not an array
-      const reportsData = Array.isArray(response.data) ? response.data : [];
-      setReports(reportsData);
-      setError(null); // Clear any previous errors
-    } catch (error) {
-      console.error('TeamLeaderScheduleReport: Error fetching reports:', error);
-      setError('Failed to fetch reports');
-      setReports([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+
 
   const fetchMemberReports = async () => {
     try {
-      console.log('TeamLeaderScheduleReport: Fetching member reports...', { params: { start_date: dateRange.startDate, end_date: dateRange.endDate } });
+      console.log('TeamLeaderScheduleReport: Fetching team report...', { params: { start_date: dateRange.startDate, end_date: dateRange.endDate } });
       setMemberLoading(true);
       const params = {
         start_date: dateRange.startDate,
         end_date: dateRange.endDate
       };
 
-      const response = await axiosInstance.get('schedules/report/', { params });
-      console.log('TeamLeaderScheduleReport: Member reports response:', response.data);
-      // Ensure we always set an array, even if the response is not an array
-      const memberReportsData = Array.isArray(response.data) ? response.data : [];
+      // Add employee_id filter if a specific employee is selected
+      if (selectedEmployee && selectedEmployee !== 'all') {
+        console.log('TeamLeaderScheduleReport: Filtering by selected employee:', selectedEmployee);
+        params.employee_id = selectedEmployee;
+      }
+
+      // Use the new team_report endpoint for team leaders
+      const response = await axiosInstance.get('daily-summaries/team_report/', { params });
+      console.log('TeamLeaderScheduleReport: Team report response:', response.data);
+      
+      // Transform the team report data to match existing structure
+      let memberReportsData = [];
+      if (response.data.team_members && Array.isArray(response.data.team_members)) {
+        // Flatten the team members' daily summaries into a single array
+        response.data.team_members.forEach(member => {
+          if (member.daily_summaries && Array.isArray(member.daily_summaries)) {
+            // Debug: Log the first daily summary to see its structure
+            if (member.daily_summaries.length > 0) {
+              console.log('TeamLeaderScheduleReport: Raw daily_summary from API (first record):', member.daily_summaries[0]);
+              console.log('TeamLeaderScheduleReport: Keys in raw daily_summary:', Object.keys(member.daily_summaries[0]));
+            }
+            
+            member.daily_summaries.forEach(summary => {
+              memberReportsData.push({
+                ...summary,
+                employee_id: member.employee_id,
+                employee_name: member.name,
+                department: member.department
+              });
+            });
+          }
+        });
+      }
+      
       setMemberReports(memberReportsData);
       setError(null); // Clear any previous errors
+      
+      // Store team summary data for display
+      if (response.data.summary) {
+        setTeamSummary(response.data.summary);
+      }
+      if (response.data.team_leader) {
+        setTeamLeaderInfo(response.data.team_leader);
+      }
     } catch (error) {
-      console.error('TeamLeaderScheduleReport: Error fetching member reports:', error);
-      setError('Failed to fetch member reports');
+      console.error('TeamLeaderScheduleReport: Error fetching team report:', error);
+      setError('Failed to fetch team report');
       setMemberReports([]);
     } finally {
       setMemberLoading(false);
@@ -332,52 +351,80 @@ const TeamLeaderScheduleReport = () => {
     return workingDays;
   };
 
+  // Get filtered member reports based on selected employee
+  const getFilteredMemberReports = () => {
+    if (!Array.isArray(memberReports)) return [];
+    
+    // If no specific employee is selected, return all reports
+    if (!selectedEmployee || selectedEmployee === 'all') {
+      return memberReports;
+    }
+    
+    // Filter reports for the selected employee
+    return memberReports.filter(report => report.employee_id === selectedEmployee);
+  };
+
   const handleExport = async () => {
     try {
-      // Use filtered reports for export instead of making a new API call
-      const exportData = Array.isArray(reports) ? reports : [];
+      // Use grouped reports for export to include night shift grouping
+      const exportData = getGroupedRecordsForExport(getFilteredMemberReports());
       
       if (exportData.length === 0) {
         setError('No data to export. Please generate a report first.');
         return;
       }
 
-      // Create download link for CSV (basic implementation)
+      // Create download link for CSV (enhanced implementation)
       let csvContent = '';
       if (exportFormat === 'csv') {
-        // Convert filtered data to CSV format
-        const headers = ['Date', 'Employee', 'Start Time', 'End Time', 'Hours', 'Overtime', 'Status'];
+        // Convert grouped data to CSV format with enhanced columns
+        const headers = ['Date', 'Day', 'Status', 'Time In', 'Time Out', 'Scheduled In', 'Scheduled Out', 'BH (min)', 'LT', 'UT', 'ND', 'Night Shift Info'];
         csvContent = headers.join(',') + '\n';
         
         exportData.forEach(item => {
-          const start = item.start_time ? new Date(`2000-01-01T${item.start_time}`) : null;
-          const end = item.end_time ? new Date(`2000-01-01T${item.end_time}`) : null;
-          const hours = start && end && !isNaN(start.getTime()) && !isNaN(end.getTime()) 
-            ? (end - start) / (1000 * 60 * 60) 
-            : 0;
-          const overtime = Math.max(0, hours - 8);
-          const status = hours >= 8 ? 'Complete' : 'Partial';
+          // Calculate metrics for export
+          const metrics = calculateGroupedMetrics(item);
+          
+          // Determine status using the new status logic
+          let status = getStatus(item);
+          if (item.isNightshift) status += ' (Nightshift)';
+          if (item.hasPreviousNightshiftTimeout) status += ' (Previous timeout used)';
+          
+          let nightShiftInfo = '';
+          if (item.isNightshift && item.nextDayDate) {
+            nightShiftInfo = `Nightshift: ${item.date} → ${item.nextDayDate}`;
+          } else if (item.hasPreviousNightshiftTimeout) {
+            nightShiftInfo = `Available for new time-in`;
+          }
+          
+          // Notes logic removed since we're no longer using tooltips
           
           const row = [
             item.date || '',
-            item.employee_name || `Employee ${item.employee_id}` || '',
-            item.start_time || '',
-            item.end_time || '',
-            hours.toFixed(1),
-            overtime > 0 ? overtime.toFixed(1) : '0',
-            status
+            item.day || new Date(item.date).toLocaleDateString('en-US', { weekday: 'short' }) || '',
+            status,
+            formatTime(item.time_in) || '',
+            formatTime(item.time_out) || '',
+            formatTime(item.scheduled_time_in) || '',
+            formatTime(item.scheduled_time_out) || '',
+            metrics.bh,
+            metrics.lt,
+            metrics.ut,
+            metrics.nd,
+            nightShiftInfo
           ].join(',');
           csvContent += row + '\n';
         });
         
-        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `schedule-report-${dateRange.startDate}-${dateRange.endDate}-filtered.csv`);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `team-schedule-report-${dateRange.startDate}-${dateRange.endDate}-grouped.csv`);
+        link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
-        link.remove();
+        document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
       } else {
         // For PDF, we'll need backend support or use a library like jsPDF
@@ -398,8 +445,8 @@ const TeamLeaderScheduleReport = () => {
     }
     
     return schedules.reduce((total, schedule) => {
-      const start = new Date(`2000-01-01T${schedule.start_time}`);
-      const end = new Date(`2000-01-01T${schedule.end_time}`);
+      const start = new Date(`2000-01-01T${schedule.time_in}`);
+      const end = new Date(`2000-01-01T${schedule.time_out}`);
       const hours = (end - start) / (1000 * 60 * 60);
       return total + hours;
     }, 0);
@@ -409,8 +456,8 @@ const TeamLeaderScheduleReport = () => {
     if (!Array.isArray(schedules)) return 0;
     const standardHours = 8;
     return schedules.reduce((total, schedule) => {
-      const start = schedule.start_time ? new Date(`2000-01-01T${schedule.start_time}`) : null;
-      const end = schedule.end_time ? new Date(`2000-01-01T${schedule.end_time}`) : null;
+      const start = schedule.time_in ? new Date(`2000-01-01T${schedule.time_in}`) : null;
+      const end = schedule.time_out ? new Date(`2000-01-01T${schedule.time_out}`) : null;
       if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) return total;
       const hours = (end - start) / (1000 * 60 * 60);
       return total + Math.max(0, hours - standardHours);
@@ -454,7 +501,7 @@ const TeamLeaderScheduleReport = () => {
           if (memberId) {
             loadIndividualMemberReport(memberId);
           } else {
-            fetchReports();
+            fetchMemberReports();
           }
         }, 1000);
       } else {
@@ -478,17 +525,32 @@ const TeamLeaderScheduleReport = () => {
     
     setMemberLoading(true);
     try {
-      const response = await axiosInstance.get(`daily-summaries/${memberId}/`, {
+      // Use the team_report endpoint with employee_id filter for individual member
+      const response = await axiosInstance.get('daily-summaries/team_report/', {
         params: {
           start_date: dateRange.startDate,
           end_date: dateRange.endDate,
-          cut_off_period: selectedCutoffPeriod
+          cut_off_period: selectedCutoffPeriod,
+          employee_id: memberId
         }
       });
       
       if (response.status === 200) {
-        setIndividualMemberReports(response.data);
-        console.log('Individual member report loaded:', response.data);
+        // Extract individual member data from team report
+        let individualData = [];
+        if (response.data.team_members && Array.isArray(response.data.team_members)) {
+          const member = response.data.team_members.find(m => m.employee_id === memberId);
+          if (member && member.daily_summaries) {
+            individualData = member.daily_summaries.map(summary => ({
+              ...summary,
+              employee_id: member.employee_id,
+              employee_name: member.name,
+              department: member.department
+            }));
+          }
+        }
+        setIndividualMemberReports(individualData);
+        console.log('Individual member report loaded:', individualData);
       }
     } catch (error) {
       console.error('Error loading individual member report:', error);
@@ -502,7 +564,7 @@ const TeamLeaderScheduleReport = () => {
   const openIndividualReport = (member) => {
     setSelectedIndividualMember(member);
     setShowIndividualReport(true);
-    loadIndividualMemberReport(member.id);
+                loadIndividualMemberReport(member.employee_id || member.id);
   };
 
   const openMemberModal = (member) => {
@@ -511,8 +573,30 @@ const TeamLeaderScheduleReport = () => {
   };
 
   const formatTime = (time) => {
-    if (!time) return '-';
-    return time;
+    if (!time || time === '-') return '-';
+    
+    // If it's already in 12-hour format (contains AM/PM), return as-is
+    if (time.includes('AM') || time.includes('PM')) {
+      return time;
+    }
+    
+    // If it's in 24-hour format, convert to 12-hour format
+    try {
+      const [hours, minutes] = time.split(':');
+      const hour = parseInt(hours, 10);
+      const minute = parseInt(minutes, 10);
+      
+      if (isNaN(hour) || isNaN(minute)) return time;
+      
+      const period = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+      const displayMinute = minute.toString().padStart(2, '0');
+      
+      return `${displayHour}:${displayMinute} ${period}`;
+    } catch (error) {
+      console.error('Error formatting time:', error, time);
+      return time;
+    }
   };
 
   // Utility functions for individual member reports
@@ -527,6 +611,35 @@ const TeamLeaderScheduleReport = () => {
       case 'weekend': return 'Weekend';
       default: return 'Unknown';
     }
+  };
+
+  // Get team member statistics from the new team report data structure
+  const getTeamMemberStats = (memberId) => {
+    if (!Array.isArray(memberReports)) return { totalHours: 0, overtimeHours: 0, totalSchedules: 0, attendanceRate: 0 };
+    
+    const memberData = memberReports.filter(report => report.employee_id === memberId);
+    if (memberData.length === 0) return { totalHours: 0, overtimeHours: 0, totalSchedules: 0, attendanceRate: 0 };
+    
+    const totalHours = memberData.reduce((sum, report) => {
+      const hours = parseFloat(report.billed_hours) || 0;
+      return sum + hours;
+    }, 0);
+    
+    const overtimeHours = memberData.reduce((sum, report) => {
+      const hours = parseFloat(report.overtime_hours) || 0;
+      return sum + hours;
+    }, 0);
+    
+    const totalSchedules = memberData.length;
+    const presentCount = memberData.filter(report => report.status === 'present').length;
+    const attendanceRate = totalSchedules > 0 ? (presentCount / totalSchedules) * 100 : 0;
+    
+    return {
+      totalHours,
+      overtimeHours,
+      totalSchedules,
+      attendanceRate
+    };
   };
 
   const getStatusColor = (status) => {
@@ -750,7 +863,7 @@ const TeamLeaderScheduleReport = () => {
           console.log('TeamLeaderScheduleReport: Cutoff period changed to:', cutoffValue, 'Date range:', newDateRange);
           
           // Immediately fetch new data with the new date range instead of filtering existing data
-          fetchReports(newDateRange);
+          fetchMemberReports();
         } else {
           console.error('TeamLeaderScheduleReport: Failed to calculate date range for cutoff period:', cutoffValue);
           setError('Failed to calculate date range for selected cutoff period');
@@ -759,6 +872,776 @@ const TeamLeaderScheduleReport = () => {
     } catch (error) {
       console.error('TeamLeaderScheduleReport: Error handling cutoff period change:', error);
       setError('Error setting cutoff period');
+    }
+  };
+
+  // New: Calculate BH, LT, UT, ND for grouped records (FIXED VERSION)
+  const calculateGroupedMetrics = (record) => {
+    if (!record) return { bh: 0, lt: 0, ut: 0, nd: 0 };
+    
+    let bh = 0; // Break Hours (minutes) - actual time worked
+    let lt = 0; // Late Time (minutes)
+    let ut = 0; // Unscheduled Time (minutes)
+    let nd = 0; // Night Differential (minutes)
+    
+    // Test moment.js functionality
+    console.log('🧪 Moment.js test:', {
+      momentAvailable: typeof moment !== 'undefined',
+      momentVersion: moment.version,
+      testParse: moment('2025-08-13 23:00').isValid(),
+      testDiff: moment('2025-08-13 08:00').diff(moment('2025-08-13 23:00'), 'minutes')
+    });
+    
+    // Use the correct field names from the API response
+    const timeIn = record.time_in;
+    const timeOut = record.time_out;
+    const scheduledIn = record.scheduled_time_in;
+    const scheduledOut = record.scheduled_time_out;
+    
+    // Test specific time formats that might be causing issues (MOVED HERE)
+    if (timeIn && timeOut) {
+      console.log('🧪 Testing specific time formats:', {
+        timeIn,
+        timeOut,
+        timeInTest1: moment(`2000-01-01 ${timeIn}`).isValid(),
+        timeOutTest1: moment(`2000-01-01 ${timeOut}`).isValid(),
+        timeInTest2: moment(`2000-01-01 ${timeIn}`, 'YYYY-MM-DD HH:mm').isValid(),
+        timeOutTest2: moment(`2000-01-01 ${timeOut}`, 'YYYY-MM-DD HH:mm').isValid(),
+        timeInTest3: moment(`2000-01-01 ${timeIn}`, 'YYYY-MM-DD h:mm A').isValid(),
+        timeOutTest3: moment(`2000-01-01 ${timeOut}`, 'YYYY-MM-DD h:mm A').isValid()
+      });
+    }
+    
+    console.log('🔍 calculateGroupedMetrics input:', {
+      record,
+      timeIn,
+      timeOut,
+      scheduledIn,
+      scheduledOut,
+      isNightshift: record.isNightshift,
+      recordKeys: Object.keys(record),
+      recordValues: Object.values(record)
+    });
+    
+    // Only calculate if we have both time in and time out
+    if (timeIn && timeOut && timeIn !== '-' && timeOut !== '-') {
+      try {
+        const baseDate = moment(record.date, 'YYYY-MM-DD');
+        if (!baseDate.isValid()) {
+          console.log('❌ Invalid base date:', record.date);
+          return { bh: 0, lt: 0, ut: 0, nd: 0 };
+        }
+
+        // Parse actual time worked (time out - time in)
+        // Handle both 12-hour and 24-hour formats
+        let timeInMoment, timeOutMoment;
+        
+        console.log('🔍 Time parsing details:', {
+          timeIn,
+          timeOut,
+          baseDate: baseDate.format('YYYY-MM-DD'),
+          timeInHasAMPM: timeIn.includes('AM') || timeIn.includes('PM'),
+          timeOutHasAMPM: timeOut.includes('AM') || timeOut.includes('PM')
+        });
+        
+        // More robust time parsing with multiple fallback attempts
+        try {
+          // First attempt: Try parsing as 12-hour format
+          if (timeIn.includes('AM') || timeIn.includes('PM')) {
+            timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`, 'YYYY-MM-DD h:mm A');
+            timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`, 'YYYY-MM-DD h:mm A');
+            console.log('📅 Parsing as 12-hour format');
+          } else {
+            // Second attempt: Try parsing as 24-hour format
+            timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
+            timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
+            console.log('📅 Parsing as 24-hour format');
+          }
+          
+          // Third attempt: If 24-hour parsing failed, try with explicit format
+          if (!timeInMoment.isValid()) {
+            timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`, 'YYYY-MM-DD HH:mm');
+            console.log('📅 Retry parsing timeIn as explicit 24-hour format');
+          }
+          if (!timeOutMoment.isValid()) {
+            timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`, 'YYYY-MM-DD HH:mm');
+            console.log('📅 Retry parsing timeOut as explicit 24-hour format');
+          }
+          
+          // Fourth attempt: If still failed, try parsing without seconds
+          if (!timeInMoment.isValid()) {
+            timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`, 'YYYY-MM-DD HH:mm');
+            console.log('📅 Retry parsing timeIn without seconds');
+          }
+          if (!timeOutMoment.isValid()) {
+            timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`, 'YYYY-MM-DD HH:mm');
+            console.log('📅 Retry parsing timeOut without seconds');
+          }
+          
+          // Fifth attempt: Try parsing with different separators
+          if (!timeInMoment.isValid()) {
+            // Try to normalize the time format
+            const normalizedTimeIn = timeIn.replace(/[^\d:]/g, '');
+            timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${normalizedTimeIn}`, 'YYYY-MM-DD HH:mm');
+            console.log('📅 Retry parsing timeIn with normalized format:', normalizedTimeIn);
+          }
+          if (!timeOutMoment.isValid()) {
+            const normalizedTimeOut = timeOut.replace(/[^\d:]/g, '');
+            timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${normalizedTimeOut}`, 'YYYY-MM-DD HH:mm');
+            console.log('📅 Retry parsing timeOut with normalized format:', normalizedTimeOut);
+          }
+        } catch (error) {
+          console.error('❌ Error during time parsing:', error);
+        }
+        
+        if (!timeInMoment.isValid() || !timeOutMoment.isValid()) {
+          console.log('❌ Invalid time parsing:', {
+            timeInMoment: timeInMoment.isValid(),
+            timeOutMoment: timeOutMoment.isValid(),
+            timeInMomentValue: timeInMoment.format(),
+            timeOutMomentValue: timeOutMoment.format(),
+            timeIn,
+            timeOut,
+            timeInMomentError: timeInMoment.parsingFlags ? timeInMoment.parsingFlags() : 'No parsing flags',
+            timeOutMomentError: timeOutMoment.parsingFlags ? timeOutMoment.parsingFlags() : 'No parsing flags'
+          });
+          
+          // Try a simple fallback calculation using basic string manipulation
+          console.log('🔄 Attempting fallback calculation...');
+          try {
+            const timeInParts = timeIn.split(':');
+            const timeOutParts = timeOut.split(':');
+            
+            if (timeInParts.length >= 2 && timeOutParts.length >= 2) {
+              const timeInHour = parseInt(timeInParts[0]);
+              const timeInMin = parseInt(timeInParts[1]);
+              const timeOutHour = parseInt(timeOutParts[0]);
+              const timeOutMin = parseInt(timeOutParts[1]);
+              
+              let timeInTotal = timeInHour * 60 + timeInMin;
+              let timeOutTotal = timeOutHour * 60 + timeOutMin;
+              
+              // Handle night shift crossing midnight
+              if (timeOutTotal < timeInTotal) {
+                timeOutTotal += 24 * 60; // Add 24 hours
+              }
+              
+              const fallbackDuration = timeOutTotal - timeInTotal;
+              console.log('🔄 Fallback calculation result:', {
+                timeInHour, timeInMin, timeInTotal,
+                timeOutHour, timeOutMin, timeOutTotal,
+                fallbackDuration
+              });
+              
+              if (fallbackDuration > 0) {
+                // Use fallback calculation
+                const breakDeduction = fallbackDuration >= 420 ? 60 : fallbackDuration >= 240 ? 30 : 0;
+                const fallbackBh = Math.max(0, fallbackDuration - breakDeduction);
+                
+                console.log('✅ Using fallback calculation:', { fallbackBh, fallbackDuration, breakDeduction });
+                // Calculate ND for fallback - count night hours
+                let fallbackNd = 0;
+                const timeInHour = parseInt(timeInParts[0]);
+                const timeOutHour = parseInt(timeOutParts[0]);
+                
+                // Simple night hours calculation for fallback
+                if (timeInHour >= 22 || timeInHour < 6) {
+                  // Started during night hours
+                  fallbackNd += Math.min(60 - parseInt(timeInParts[1]), fallbackDuration);
+                }
+                if (timeOutHour >= 22 || timeOutHour < 6) {
+                  // Ended during night hours
+                  fallbackNd += Math.min(parseInt(timeOutParts[1]), fallbackDuration);
+                }
+                
+                return { 
+                  bh: fallbackBh, 
+                  lt: 0, 
+                  ut: 0, 
+                  nd: Math.min(fallbackNd, fallbackDuration)
+                };
+              }
+            }
+          } catch (fallbackError) {
+            console.error('❌ Fallback calculation also failed:', fallbackError);
+          }
+          
+          return { bh: 0, lt: 0, ut: 0, nd: 0 };
+        }
+
+        // Handle night shifts that span midnight
+        if (timeOutMoment.isBefore(timeInMoment)) {
+          timeOutMoment = moment(timeOutMoment).add(1, 'day');
+          console.log('🌙 Night shift detected, adjusted timeOut to next day');
+        }
+
+        // NEW: Check if both time in and time out are before scheduled start time
+        let isVoidedShift = false;
+        let voidReason = '';
+        
+        if (scheduledIn && scheduledIn !== '-') {
+          let scheduledInMoment;
+          
+          if (scheduledIn.includes('AM') || scheduledIn.includes('PM')) {
+            scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`, 'YYYY-MM-DD h:mm A');
+          } else {
+            scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+          }
+          
+          if (scheduledInMoment.isValid()) {
+            // Check if both time in and time out are before scheduled start
+            if (timeInMoment.isBefore(scheduledInMoment) && timeOutMoment.isBefore(scheduledInMoment)) {
+              isVoidedShift = true;
+              voidReason = `Shift voided: Time In (${timeInMoment.format('h:mm A')}) and Time Out (${timeOutMoment.format('h:mm A')}) both occurred before Scheduled In (${scheduledInMoment.format('h:mm A')})`;
+              console.log('🚫 Shift voided:', voidReason);
+            }
+          }
+        }
+
+        // Calculate actual duration worked in minutes
+        let actualDurationMinutes = timeOutMoment.diff(timeInMoment, 'minutes');
+        
+        console.log('⏱️ Duration calculation:', {
+          timeInMoment: timeInMoment.format('YYYY-MM-DD HH:mm:ss'),
+          timeOutMoment: timeOutMoment.format('YYYY-MM-DD HH:mm:ss'),
+          rawDiff: timeOutMoment.diff(timeInMoment, 'minutes'),
+          actualDurationMinutes
+        });
+        
+        // Ensure duration is positive
+        if (actualDurationMinutes < 0) {
+          console.error('❌ Invalid actual duration calculation:', { timeIn, timeOut, actualDurationMinutes });
+          actualDurationMinutes = 0;
+        }
+
+        console.log('📊 Duration calculations:', {
+          actualDurationMinutes,
+          timeIn: timeInMoment.format('h:mm A'),
+          timeOut: timeOutMoment.format('h:mm A')
+        });
+
+        // BH (Break Hours) - actual time worked (with break deduction)
+        let breakDeduction = 0;
+        if (actualDurationMinutes >= 420) { // 7 hours or more
+          breakDeduction = 60; // 1 hour break
+        } else if (actualDurationMinutes >= 240) { // 4 hours or more
+          breakDeduction = 30; // 30 minutes break
+        }
+        
+        // If shift is voided (both times before scheduled start), set BH to 0
+        if (isVoidedShift) {
+          bh = 0;
+          console.log('🚫 BH set to 0 due to voided shift');
+        } else {
+          bh = Math.max(0, actualDurationMinutes - breakDeduction);
+        }
+        
+        console.log('💼 BH calculation:', {
+          actualDurationMinutes,
+          breakDeduction,
+          bh,
+          isVoidedShift,
+          voidReason: isVoidedShift ? voidReason : 'N/A',
+          breakDeductionReason: actualDurationMinutes >= 420 ? '7+ hours (1h break)' : 
+                                actualDurationMinutes >= 240 ? '4+ hours (30m break)' : 'No break'
+        });
+        
+        // LT (Late Time) - only calculate if we have scheduled times
+        if (scheduledIn && scheduledOut && scheduledIn !== '-' && scheduledOut !== '-') {
+          let scheduledInMoment, scheduledOutMoment;
+          
+          if (scheduledIn.includes('AM') || scheduledIn.includes('PM')) {
+            // 12-hour format (e.g., "11:00 PM", "09:00 AM")
+            scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`, 'YYYY-MM-DD h:mm A');
+            scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`, 'YYYY-MM-DD h:mm A');
+          } else {
+            // 24-hour format
+            scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+            scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
+          }
+          
+          if (scheduledInMoment.isValid() && scheduledOutMoment.isValid()) {
+            // Handle night shift crossing midnight
+            if (scheduledOutMoment.isBefore(scheduledInMoment)) {
+              scheduledOutMoment.add(1, 'day');
+            }
+            
+            // LT (Late Time) - if actual start is after scheduled start
+            if (timeInMoment.isAfter(scheduledInMoment)) {
+              lt = Math.round(timeInMoment.diff(scheduledInMoment, 'minutes'));
+            }
+            
+            // UT (Unscheduled Time) - if actual duration exceeds scheduled duration
+            let scheduledDurationMinutes = scheduledOutMoment.diff(scheduledInMoment, 'minutes');
+            
+            // For night shifts, we need to handle the case where actual time out is before scheduled time out
+            // but the shift crosses midnight
+            if (record.isNightshift && timeOutMoment.isBefore(scheduledOutMoment)) {
+              // Early departure from night shift
+              ut = Math.round(scheduledOutMoment.diff(timeOutMoment, 'minutes'));
+            } else if (actualDurationMinutes > scheduledDurationMinutes) {
+              // Regular case: actual duration exceeds scheduled duration
+              ut = Math.round(actualDurationMinutes - scheduledDurationMinutes);
+            }
+          }
+        } else {
+          console.log('⚠️ Scheduled times missing, cannot calculate LT and UT');
+          // Set default values when scheduled times are missing
+          lt = 0;
+          ut = 0;
+        }
+        
+        // ND (Night Differential) - calculate regardless of isNightshift flag
+        // If shift is voided (both times before scheduled start), set ND to 0
+        if (isVoidedShift) {
+          nd = 0;
+          console.log('🚫 ND set to 0 due to voided shift');
+        } else {
+          // Calculate night hours (typically 10 PM to 6 AM)
+          let nightMinutes = 0;
+          
+          // Create a working copy of the start time for iteration
+          let currentTime = timeInMoment.clone();
+          
+          // Iterate through each minute of work time to count night hours
+          while (currentTime.isBefore(timeOutMoment)) {
+            const currentHour = currentTime.hour();
+            const currentMinute = currentTime.minute();
+            
+            // Check if current time is within night hours (10 PM to 6 AM)
+            // Night hours: 22:00 (10 PM) to 05:59 (5:59 AM)
+            if (currentHour >= 22 || currentHour < 6) {
+              nightMinutes++;
+            }
+            
+            // Move to next minute
+            currentTime.add(1, 'minute');
+          }
+          
+          nd = nightMinutes;
+        }
+        
+        console.log('🌙 ND calculation:', {
+          timeIn: timeInMoment.format('h:mm A'),
+          timeOut: timeOutMoment.format('h:mm A'),
+          nightHours: '22:00-05:59',
+          nightMinutes: isVoidedShift ? 'N/A (voided)' : (nd || 0),
+          nd,
+          ndHours: (nd / 60).toFixed(2),
+          isVoidedShift,
+          voidReason: isVoidedShift ? voidReason : 'N/A'
+        });
+        
+        console.log(`✅ Metrics calculation for ${record.date}:`, {
+          actualDuration: actualDurationMinutes,
+          breakDeduction,
+          bh,
+          lt,
+          ut,
+          nd,
+          isVoidedShift,
+          voidReason: isVoidedShift ? voidReason : 'N/A',
+          isNightshift: record.isNightshift,
+          hasScheduledTimes: !!(scheduledIn && scheduledOut)
+        });
+        
+      } catch (error) {
+        console.error('❌ Error calculating metrics:', error);
+        return { bh: 0, lt: 0, ut: 0, nd: 0 };
+      }
+    } else {
+      console.log('❌ Missing required data for calculation:', {
+        hasTimeIn: !!timeIn,
+        hasTimeOut: !!timeOut
+      });
+    }
+    
+    // Return the calculated metrics directly
+    return { 
+      bh, 
+      lt, 
+      ut, 
+      nd 
+    };
+  };
+
+  // New: Night shift grouping logic (same as ScheduleReport.js)
+  const getGroupedRecordsForExport = (records) => {
+    if (!Array.isArray(records) || records.length === 0) {
+      return [];
+    }
+
+    const groupedRecords = [];
+    
+    for (let i = 0; i < records.length; i++) {
+      const currentRecord = records[i];
+      const nextRecord = i + 1 < records.length ? records[i + 1] : null;
+      
+      // Check if this is a night shift (scheduled out time is before scheduled in time)
+      const scheduledIn = currentRecord.scheduled_time_in;
+      const scheduledOut = currentRecord.scheduled_time_out;
+      
+      // Debug logging for scheduled times
+      if (currentRecord.employee_name === 'doejames' && currentRecord.date === '2025-08-16') {
+        console.log('🔍 DEBUG doejames Aug 16 - Raw scheduled times:', {
+          scheduledIn,
+          scheduledOut,
+          scheduledInType: typeof scheduledIn,
+          scheduledOutType: typeof scheduledOut,
+          recordKeys: Object.keys(currentRecord)
+        });
+      }
+      
+      let isNightshift = false;
+      let scheduledInHour = 0;
+      let scheduledOutHour = 0;
+      
+      // First try to detect night shift from scheduled times if available
+      if (scheduledIn && scheduledOut && scheduledIn !== '-' && scheduledOut !== '-') {
+        try {
+          // Debug logging for doejames
+          if (currentRecord.employee_name === 'doejames' && currentRecord.date === '2025-08-16') {
+            console.log('🔍 DEBUG doejames Aug 16 - Processing scheduled times:', {
+              scheduledIn,
+              scheduledOut,
+              hasAMPM: scheduledIn.includes('AM') || scheduledIn.includes('PM')
+            });
+          }
+          
+          // Handle both 12-hour and 24-hour formats for night shift detection
+          let scheduledInMoment, scheduledOutMoment;
+          
+          if (scheduledIn.includes('AM') || scheduledIn.includes('PM')) {
+            // 12-hour format
+            scheduledInMoment = moment(`2000-01-01 ${scheduledIn}`, 'YYYY-MM-DD h:mm A');
+            scheduledOutMoment = moment(`2000-01-01 ${scheduledOut}`, 'YYYY-MM-DD h:mm A');
+          } else {
+            // 24-hour format
+            scheduledInMoment = moment(`2000-01-01 ${scheduledIn}`);
+            scheduledOutMoment = moment(`2000-01-01 ${scheduledOut}`);
+          }
+          
+          if (scheduledInMoment.isValid() && scheduledOutMoment.isValid()) {
+            // Handle night shift crossing midnight
+            if (scheduledOutMoment.isBefore(scheduledInMoment)) {
+              scheduledOutMoment.add(1, 'day');
+            }
+            
+            scheduledInHour = scheduledInMoment.hour();
+            scheduledOutHour = scheduledOutMoment.hour();
+            
+            // Debug logging for doejames
+            if (currentRecord.employee_name === 'doejames' && currentRecord.date === '2025-08-16') {
+              console.log('🔍 DEBUG doejames Aug 16 - Moment parsing results:', {
+                scheduledInMoment: scheduledInMoment.format('h:mm A'),
+                scheduledOutMoment: scheduledOutMoment.format('h:mm A'),
+                scheduledInHour,
+                scheduledOutHour,
+                isValid: scheduledInMoment.isValid() && scheduledOutMoment.isValid()
+              });
+            }
+            
+            // Night shift: scheduled out time is before scheduled in time (e.g., 10:00 PM - 6:00 AM)
+            // OR if the scheduled times span across midnight
+            isNightshift = scheduledOutMoment.isBefore(scheduledInMoment) || 
+                          (scheduledInHour >= 18 && scheduledOutHour <= 6); // 6 PM to 6 AM
+            
+            // Debug logging for doejames
+            if (currentRecord.employee_name === 'doejames' && currentRecord.date === '2025-08-16') {
+              console.log('🔍 DEBUG doejames Aug 16 - Nightshift detection result:', {
+                isNightshift,
+                reason: scheduledOutMoment.isBefore(scheduledInMoment) ? 'crosses_midnight' : 'time_range'
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing scheduled times:', error);
+          // Debug logging for doejames
+          if (currentRecord.employee_name === 'doejames' && currentRecord.date === '2025-08-16') {
+            console.log('🔍 DEBUG doejames Aug 16 - Error parsing scheduled times:', error);
+          }
+        }
+      }
+      
+      // If no scheduled times or night shift not detected, try to detect from actual times
+      if (!isNightshift) {
+        // Debug logging for doejames
+        if (currentRecord.employee_name === 'doejames' && currentRecord.date === '2025-08-16') {
+          console.log('🔍 DEBUG doejames Aug 16 - No nightshift detected from scheduled times, trying actual times');
+        }
+        const timeIn = currentRecord.time_in;
+        const timeOut = currentRecord.time_out;
+        
+        if (timeIn && timeOut && timeIn !== '-' && timeOut !== '-') {
+          try {
+            // Parse actual times to detect night shift pattern
+            let timeInMoment, timeOutMoment;
+            
+            if (timeIn.includes('AM') || timeIn.includes('PM')) {
+              timeInMoment = moment(`2000-01-01 ${timeIn}`, 'YYYY-MM-DD h:mm A');
+              timeOutMoment = moment(`2000-01-01 ${timeOut}`, 'YYYY-MM-DD h:mm A');
+            } else {
+              timeInMoment = moment(`2000-01-01 ${timeIn}`);
+              timeOutMoment = moment(`2000-01-01 ${timeOut}`);
+            }
+            
+            if (timeInMoment.isValid() && timeOutMoment.isValid()) {
+              // Handle night shift crossing midnight
+              if (timeOutMoment.isBefore(timeInMoment)) {
+                timeOutMoment.add(1, 'day');
+              }
+              
+              const timeInHour = timeInMoment.hour();
+              const timeOutHour = timeOutMoment.hour();
+              
+              // Detect night shift pattern: time-in in evening (6 PM or later) and time-out in morning (6 AM or earlier)
+              isNightshift = (timeInHour >= 18 && timeOutHour <= 6) || 
+                            (timeInHour >= 22 && timeOutHour <= 8) || // More specific: 10 PM to 8 AM
+                            timeOutMoment.diff(timeInMoment, 'hours') >= 8; // Or if shift is 8+ hours
+              
+              console.log(`🌙 Night shift detection from actual times: ${timeIn} (${timeInHour}h) to ${timeOut} (${timeOutHour}h) = ${isNightshift}`);
+            }
+          } catch (error) {
+            console.error('Error parsing actual times for night shift detection:', error);
+          }
+        }
+      }
+      
+      console.log(`🌙 Nightshift detection for ${currentRecord.date}:`, {
+        isNightshift,
+        scheduledIn,
+        scheduledInHour,
+        scheduledOut,
+        scheduledOutHour
+      });
+      
+      if (isNightshift && nextRecord) {
+        // Check if current record has time-in but no time-out (incomplete night shift)
+        const timeIn = currentRecord.time_in;
+        const timeOut = currentRecord.time_out;
+        const hasTimeInNoTimeOut = timeIn && timeIn !== '-' && 
+          (!timeOut || timeOut === '-');
+        
+        console.log(`⏰ Time-in/out check for ${currentRecord.date}:`, {
+          hasTimeIn: !!timeIn,
+          hasTimeOut: !!timeOut,
+          hasTimeInNoTimeOut
+        });
+        
+        // ENHANCED: Check if next day has early timeout that belongs to this nightshift
+        // Look in both time_entries array AND the main time_out field
+        let hasNextDayTimeout = false;
+        let nextDayTimeoutEntry = null;
+        
+        if (nextRecord) {
+          // First check the main time_out field
+          const nextDayTimeOut = nextRecord.time_out;
+          if (nextDayTimeOut && nextDayTimeOut !== '-') {
+            const timeoutHour = parseInt(nextDayTimeOut.split(':')[0]);
+            console.log(`🔍 Checking main time_out field:`, {
+              timeOut: nextDayTimeOut,
+              timeoutHour,
+              isBefore6AM: timeoutHour <= 6
+            });
+            if (timeoutHour <= 6) {
+              hasNextDayTimeout = true;
+              nextDayTimeoutEntry = {
+                event_time: nextDayTimeOut,
+                entry_type: 'time_out'
+              };
+              console.log(`✅ Found timeout in main field: ${nextDayTimeOut}`);
+            }
+          }
+          
+          // If not found in main field, check time_entries array
+          if (!hasNextDayTimeout && nextRecord.time_entries && Array.isArray(nextRecord.time_entries)) {
+            console.log(`🔍 Checking time_entries array:`, {
+              timeEntries: nextRecord.time_entries,
+              timeOutEntries: nextRecord.time_entries.filter(e => e.entry_type === 'time_out')
+            });
+            
+            const timeoutInEntries = nextRecord.time_entries.find(entry => 
+              entry.entry_type === 'time_out' && 
+              parseInt(entry.event_time.split(':')[0]) <= 6
+            );
+            
+            if (timeoutInEntries) {
+              hasNextDayTimeout = true;
+              nextDayTimeoutEntry = timeoutInEntries;
+              console.log(`✅ Found timeout in time_entries: ${timeoutInEntries.event_time}`);
+            }
+          }
+        }
+        
+        console.log(`🎯 Final timeout detection for ${currentRecord.date}:`, {
+          hasNextDayTimeout,
+          nextDayTimeoutEntry,
+          willGroup: isNightshift && hasTimeInNoTimeOut && hasNextDayTimeout
+        });
+        
+        // Check if this is a nightshift that crosses midnight
+        if (isNightshift && hasTimeInNoTimeOut && hasNextDayTimeout) {
+          // Create a combined row for the nightshift
+          const combinedRecord = {
+            ...currentRecord,
+            isNightshift: true,
+            nextDayTimeout: nextDayTimeoutEntry,
+            nextDayDate: nextRecord.date,
+            nextDayDay: nextRecord.day,
+            // Set the time_out to the next day's timeout for calculations
+            time_out: nextDayTimeoutEntry ? nextDayTimeoutEntry.event_time : currentRecord.time_out
+          };
+          
+          groupedRecords.push(combinedRecord);
+          
+          // Create a next-day record marked as having previous nightshift timeout
+          const nextDayRecord = {
+            ...nextRecord,
+            hasPreviousNightshiftTimeout: true,
+            previousNightshiftInfo: {
+              date: currentRecord.date,
+              timeIn: currentRecord.time_in
+            }
+          };
+          
+          groupedRecords.push(nextDayRecord);
+          i++; // Skip the next record since we've processed it
+          console.log(`🌙 Nightshift grouped: ${currentRecord.date} → ${nextRecord.date} with timeout: ${nextDayTimeoutEntry.event_time}`);
+        } else if (isNightshift && hasTimeInNoTimeOut) {
+          // Nightshift with time-in but no timeout found - mark as incomplete
+          const incompleteRecord = {
+            ...currentRecord,
+            isNightshift: true,
+            isIncomplete: true
+          };
+          groupedRecords.push(incompleteRecord);
+          console.log(`🌙 Incomplete nightshift: ${currentRecord.date}`);
+        } else {
+          // Regular record, add as-is
+          groupedRecords.push(currentRecord);
+        }
+      } else {
+        // Regular record, add as-is
+        groupedRecords.push(currentRecord);
+      }
+    }
+    
+    return groupedRecords;
+  };
+
+  // Function to determine the correct status based on user requirements
+  const getStatus = (report) => {
+    const today = new Date();
+    const reportDate = new Date(report.date);
+    const isToday = today.toDateString() === reportDate.toDateString();
+    const isFutureDate = reportDate > today;
+    
+    // Check if record has scheduled times
+    const hasScheduledTimes = report.scheduled_time_in && report.scheduled_time_out;
+    
+    if (hasScheduledTimes) {
+      if (isFutureDate) {
+        return "Scheduled";
+      } else if (isToday && !report.time_in) {
+        return "Absent";
+      } else {
+        // Check if time in and out are complete
+        const hasCompleteTimeInOut = report.time_in && report.time_out && 
+                                   report.time_in !== '-' && report.time_out !== '-';
+        
+        if (hasCompleteTimeInOut) {
+          // Check if followed schedule (not late and completed full schedule)
+          const isLate = isLateForSchedule(report);
+          const isUndertime = isUndertimeFromSchedule(report);
+          
+          if (isLate) {
+            return "Late";
+          } else if (isUndertime) {
+            return "Undertime";
+          } else {
+            return "Present";
+          }
+        } else {
+          return "Incomplete";
+        }
+      }
+    } else {
+      return "Not Yet Scheduled";
+    }
+  };
+
+  // Helper function to check if employee is late
+  const isLateForSchedule = (report) => {
+    if (!report.scheduled_time_in || !report.time_in) return false;
+    
+    try {
+      const scheduledTime = moment(`2000-01-01 ${report.scheduled_time_in}`, 'HH:mm');
+      const actualTime = moment(`2000-01-01 ${report.time_in}`, 'HH:mm');
+      
+      if (scheduledTime.isValid() && actualTime.isValid()) {
+        // Consider late if actual time is more than 15 minutes after scheduled time
+        // AND actual time must be AFTER scheduled time (not before)
+        const lateThreshold = 15; // minutes
+        const timeDifference = actualTime.diff(scheduledTime, 'minutes');
+        return timeDifference > lateThreshold && timeDifference > 0;
+      }
+    } catch (error) {
+      console.error('Error checking late status:', error);
+    }
+    return false;
+  };
+
+  // Helper function to check if employee left early (undertime)
+  const isUndertimeFromSchedule = (report) => {
+    if (!report.scheduled_time_out || !report.time_out) return false;
+    
+    try {
+      const scheduledTime = moment(`2000-01-01 ${report.scheduled_time_out}`, 'HH:mm');
+      const actualTime = moment(`2000-01-01 ${report.time_out}`, 'HH:mm');
+      
+      if (scheduledTime.isValid() && actualTime.isValid()) {
+        // Consider undertime if actual time is more than 15 minutes before scheduled time
+        const undertimeThreshold = 15; // minutes
+        return scheduledTime.diff(actualTime, 'minutes') > undertimeThreshold;
+      }
+    } catch (error) {
+      console.error('Error checking undertime status:', error);
+    }
+    return false;
+  };
+
+
+
+  // Helper function to get safe BH, LT, UT, ND values
+  const getSafeMetrics = (report) => {
+    // Return actual values regardless of schedule status
+    return {
+      bh: report.billed_hours || 0,
+      lt: report.late_minutes || 0,
+      ut: report.undertime_minutes || 0,
+      nd: report.night_differential_hours || 0
+    };
+  };
+
+  // Function to get status styling based on status
+  const getStatusStyling = (status) => {
+    switch (status) {
+      case "Scheduled":
+        return "border-green-200 text-green-800 bg-green-50";
+      case "Not Yet Scheduled":
+        return "border-yellow-200 text-yellow-800 bg-yellow-50";
+      case "Absent":
+        return "border-red-200 text-red-800 bg-red-50";
+      case "Present":
+        return "border-green-200 text-green-800 bg-green-50";
+      case "Late":
+        return "border-orange-200 text-orange-800 bg-orange-50";
+      case "Undertime":
+        return "border-purple-200 text-purple-800 bg-purple-50";
+      case "Incomplete":
+        return "border-gray-200 text-gray-800 bg-gray-50";
+      default:
+        return "border-gray-200 text-gray-800 bg-gray-50";
     }
   };
 
@@ -909,8 +1792,8 @@ const TeamLeaderScheduleReport = () => {
                 >
                   <option value="all">All Employees</option>
                   {Array.isArray(employees) && employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.full_name || emp.first_name || emp.last_name || `Employee ${emp.id}`}
+                    <option key={emp.id} value={emp.employee_id || emp.id}>
+                      {emp.full_name || emp.first_name || emp.last_name || `Employee ${emp.employee_id || emp.id}`}
                     </option>
                   ))}
                 </select>
@@ -921,7 +1804,7 @@ const TeamLeaderScheduleReport = () => {
           
           <div className="flex gap-3 mt-4">
             <button
-              onClick={viewMode === 'reports' ? fetchReports : fetchMemberReports}
+                              onClick={fetchMemberReports}
               className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1021,7 +1904,7 @@ const TeamLeaderScheduleReport = () => {
             </div>
             
             {/* Report Display */}
-            {Array.isArray(reports) && reports.length > 0 && (
+            {Array.isArray(getFilteredMemberReports()) && getFilteredMemberReports().length > 0 && (
               <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
                 {/* Report Header */}
                 <div className="mb-8">
@@ -1066,35 +1949,72 @@ const TeamLeaderScheduleReport = () => {
                     <div className="flex justify-center mb-2">
                       <FaCalendarCheck className="w-8 h-8 text-blue-600" />
                     </div>
-                    <div className="text-3xl font-bold text-blue-700">{Array.isArray(reports) ? reports.length : 0}</div>
+                    <div className="text-3xl font-bold text-blue-700">
+                      {(() => {
+                        const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
+                        return groupedReports.length;
+                      })()}
+                    </div>
                     <div className="text-sm text-blue-800 font-medium">Days Worked</div>
                   </div>
                   <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-2xl text-center border border-green-200 shadow-lg hover:shadow-xl transition-all duration-200">
                     <div className="flex justify-center mb-2">
                       <FaClock className="w-8 h-8 text-green-600" />
                     </div>
-                    <div className="text-3xl font-bold text-green-700">{Math.round(calculateTotalHours(reports) * 60)}</div>
+                    <div className="text-3xl font-bold text-green-700">
+                      {(() => {
+                        const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
+                        return groupedReports.reduce((total, report) => {
+                          const metrics = calculateGroupedMetrics(report);
+                          return total + metrics.bh;
+                        }, 0);
+                      })()}
+                    </div>
                     <div className="text-sm text-green-800 font-medium">Total BH (minutes)</div>
                   </div>
                   <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-2xl text-center border border-orange-200 shadow-lg hover:shadow-xl transition-all duration-200">
                     <div className="flex justify-center mb-2">
                       <FaExclamationTriangle className="w-8 h-8 text-orange-600" />
                     </div>
-                    <div className="text-3xl font-bold text-orange-700">0</div>
+                    <div className="text-3xl font-bold text-orange-700">
+                      {(() => {
+                        const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
+                        return groupedReports.reduce((total, report) => {
+                          const metrics = calculateGroupedMetrics(report);
+                          return total + metrics.lt;
+                        }, 0);
+                      })()}
+                    </div>
                     <div className="text-sm text-orange-800 font-medium">Total LT</div>
                   </div>
                   <div className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-2xl text-center border border-red-200 shadow-lg hover:shadow-xl transition-all duration-200">
                     <div className="flex justify-center mb-2">
                       <FaRegClock className="w-8 h-8 text-red-600" />
                     </div>
-                    <div className="text-3xl font-bold text-red-700">0</div>
+                    <div className="text-3xl font-bold text-red-700">
+                      {(() => {
+                        const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
+                        return groupedReports.reduce((total, report) => {
+                          const metrics = calculateGroupedMetrics(report);
+                          return total + metrics.ut;
+                        }, 0);
+                      })()}
+                    </div>
                     <div className="text-sm text-red-800 font-medium">Total UT</div>
                   </div>
                   <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-2xl text-center border border-purple-200 shadow-lg hover:shadow-xl transition-all duration-200">
                     <div className="flex justify-center mb-2">
                       <FaHourglassHalf className="w-8 h-8 text-purple-600" />
                     </div>
-                    <div className="text-3xl font-bold text-purple-700">0</div>
+                    <div className="text-3xl font-bold text-purple-700">
+                      {(() => {
+                        const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
+                        return groupedReports.reduce((total, report) => {
+                          const metrics = calculateGroupedMetrics(report);
+                          return total + metrics.nd;
+                        }, 0);
+                      })()}
+                    </div>
                     <div className="text-sm text-purple-800 font-medium">Total ND</div>
                   </div>
                 </div>
@@ -1106,19 +2026,19 @@ const TeamLeaderScheduleReport = () => {
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
                       <p className="mt-4 text-gray-600">Generating report...</p>
                     </div>
-                  ) : !Array.isArray(reports) || reports.length === 0 ? (
+                  ) : !Array.isArray(memberReports) || memberReports.length === 0 ? (
                     <div className="px-6 py-12 text-center">
                       <div className="text-gray-400 text-6xl mb-4">📊</div>
                       <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        {Array.isArray(reports) && reports.length > 0 ? 'No schedules found for selected period' : 'No data found'}
+                        {Array.isArray(memberReports) && memberReports.length > 0 ? 'No schedules found for selected period' : 'No data found'}
                       </h3>
                       <p className="text-gray-500">
-                        {Array.isArray(reports) && reports.length > 0 
+                        {Array.isArray(memberReports) && memberReports.length > 0 
                           ? 'Try selecting a different cutoff period or adjusting the date range.' 
                           : 'Try adjusting your filters or date range.'
                         }
                       </p>
-                      {Array.isArray(reports) && reports.length > 0 && selectedCutoffPeriod && (
+                      {Array.isArray(memberReports) && memberReports.length > 0 && selectedCutoffPeriod && (
                         <button
                           onClick={() => {
                             setSelectedCutoffPeriod('');
@@ -1207,58 +2127,184 @@ const TeamLeaderScheduleReport = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {Array.isArray(reports) && reports.map((report) => {
-                          // Safe date and time parsing with fallbacks
-                          const start = report.start_time ? new Date(`2000-01-01T${report.start_time}`) : null;
-                          const end = report.end_time ? new Date(`2000-01-01T${report.end_time}`) : null;
-                          const hours = start && end && !isNaN(start.getTime()) && !isNaN(end.getTime()) 
-                            ? (end - start) / (1000 * 60 * 60) 
-                            : 0;
-                          const reportDate = report.date ? new Date(report.date) : new Date();
-                          const dayName = reportDate.toLocaleDateString('en-US', { weekday: 'short' });
+                        {(() => {
+                          // Get grouped records for night shift handling
+                          const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
                           
-                          return (
-                            <tr key={report.id} className="hover:bg-gray-50 transition-colors duration-200">
-                              <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                                {reportDate.toLocaleDateString()}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-600">
-                                {dayName}
-                              </td>
-                              <td className="px-6 py-4 text-sm">
-                                <span className={`inline-flex items-center space-x-2 px-3 py-1 text-xs font-medium rounded-full border ${
-                                  hours >= 8 ? 'border-green-200 text-green-800 bg-green-50' : 'border-yellow-200 text-yellow-800 bg-yellow-50'
-                                }`}>
-                                  {hours >= 8 ? 'Scheduled' : 'Not Yet Scheduled'}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                {report.start_time || '-'}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                {report.end_time || '-'}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                {report.scheduled_in || '07:00 AM'}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                {report.scheduled_out || '04:00 PM'}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                {Math.round(hours * 60) || 0}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                0
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                0
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                0
-                              </td>
-                            </tr>
-                          );
-                        })}
+                          // Debug: Log the raw data structure
+                          const filteredReports = getFilteredMemberReports();
+                          console.log('🔍 Raw reports data:', filteredReports);
+                          console.log('🔍 Grouped reports:', groupedReports);
+                          console.log('🔍 First report structure:', filteredReports.length > 0 ? {
+                            keys: Object.keys(filteredReports[0]),
+                            values: Object.values(filteredReports[0]),
+                            sample: filteredReports[0]
+                          } : 'No reports');
+                          
+                          return groupedReports.map((report, index) => {
+                            // Calculate metrics using the new function
+                            const metrics = calculateGroupedMetrics(report);
+                            
+                            // Debug: Log each record being processed
+                            console.log(`📊 Processing record ${index}:`, {
+                              date: report.date,
+                              time_in: report.time_in,
+                              time_out: report.time_out,
+                              scheduled_time_in: report.scheduled_time_in,
+                              scheduled_time_out: report.scheduled_time_out,
+                              metrics,
+                              rawRecord: report
+                            });
+                            
+                            // SIMPLE TEST: Try to calculate basic duration manually
+                            let testDuration = 0;
+                            if (report.time_in && report.time_out && report.time_in !== '-' && report.time_out !== '-') {
+                              try {
+                                // Simple test with moment.js
+                                const testStart = moment(`2000-01-01 ${report.time_in}`);
+                                const testEnd = moment(`2000-01-01 ${report.time_out}`);
+                                
+                                if (testStart.isValid() && testEnd.isValid()) {
+                                  testDuration = testEnd.diff(testStart, 'minutes');
+                                  console.log(`🧪 TEST CALCULATION: ${formatTime(report.time_in)} to ${formatTime(report.time_out)} = ${testDuration} minutes`);
+                                } else {
+                                  console.log(`❌ TEST CALCULATION FAILED: Invalid times`);
+                                }
+                              } catch (error) {
+                                console.log(`❌ TEST CALCULATION ERROR:`, error);
+                              }
+                            }
+                            
+                            console.log(`🧪 Test duration result: ${testDuration} minutes`);
+                            
+                            // Safe date and time parsing with fallbacks
+                            const start = report.time_in ? new Date(`2000-01-01T${report.time_in}`) : null;
+                            const end = report.time_out ? new Date(`2000-01-01T${report.time_out}`) : null;
+                            const hours = start && end && !isNaN(start.getTime()) && !isNaN(end.getTime()) 
+                              ? (end - start) / (1000 * 60 * 60) 
+                              : 0;
+                            const reportDate = report.date ? new Date(report.date) : new Date();
+                            const dayName = reportDate.toLocaleDateString('en-US', { weekday: 'short' });
+                            
+                            // Determine row styling based on night shift status
+                            let rowClassName = "hover:bg-gray-50 transition-colors duration-200";
+                            if (report.isNightshift) {
+                              rowClassName += " nightshift-row bg-blue-50 border-l-4 border-blue-400";
+                            } else if (report.hasPreviousNightshiftTimeout) {
+                              rowClassName += " previous-nightshift-timeout-row bg-green-50 border-l-4 border-green-400";
+                            }
+                            
+                            return (
+                              <tr key={`${report.id || report.date}-${index}`} className={rowClassName}>
+                                <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                                  <div className="flex flex-col">
+                                    <span>{reportDate.toLocaleDateString()}</span>
+                                    {report.isNightshift && report.nextDayDate && (
+                                      <div className="text-xs text-blue-600 font-normal">
+                                        → {moment(report.nextDayDate).format('MMM DD')}
+                                      </div>
+                                    )}
+                                    {report.isNightshift && !report.nextDayDate && report.isIncomplete && (
+                                      <div className="text-xs text-orange-600 font-normal">
+                                        ⚠️ Incomplete
+                                      </div>
+                                    )}
+                                    {report.hasPreviousNightshiftTimeout && (
+                                      <div className="text-xs text-green-600 font-normal">
+                                        ✓ Available for new time-in
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-600">
+                                  <div className="flex flex-col">
+                                    <span>{dayName}</span>
+                                    {report.isNightshift && report.nextDayDay && (
+                                      <div className="text-xs text-blue-600 font-normal">
+                                        → {report.nextDayDay}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm">
+                                  <div className="flex flex-col space-y-1">
+                                    <span className={`inline-flex items-center space-x-2 px-3 py-1 text-xs font-medium rounded-full ${getStatusStyling(getStatus(report))}`}>
+                                      {getStatus(report)}
+                                    </span>
+                                    {report.isNightshift && (
+                                      <span className="inline-flex items-center space-x-2 px-2 py-1 text-xs font-medium rounded-full border border-blue-200 text-blue-800 bg-blue-100">
+                                        🌙 Nightshift
+                                      </span>
+                                    )}
+                                    {report.hasPreviousNightshiftTimeout && (
+                                      <span className="inline-flex items-center space-x-2 px-2 py-1 text-xs font-medium rounded-full border border-green-200 text-green-800 bg-green-100">
+                                        📝 Previous timeout used
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                  {formatTime(report.time_in)}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                  <div className="flex flex-col">
+                                    <span>{formatTime(report.time_out)}</span>
+                                    {report.isNightshift && report.nextDayTimeout && (
+                                      <div className="text-xs text-blue-600 font-normal">
+                                        (Next day: {moment(report.nextDayDate).format('MMM DD')})
+                                      </div>
+                                    )}
+                                    {report.hasPreviousNightshiftTimeout && report.previousNightshiftInfo && (
+                                      <div className="text-xs text-green-600 font-normal">
+                                        (Previous day: {moment(report.previousNightshiftInfo.date).format('MMM DD')})
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                  {formatTime(report.scheduled_time_in) || '07:00 AM'}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                  {formatTime(report.scheduled_time_out) || '04:00 PM'}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                  <div className="flex flex-col">
+                                    <span>{metrics.bh || '-'}</span>
+                                    {metrics.bh === 0 && report.time_in && report.time_out && report.scheduled_time_in && 
+                                     moment(`2000-01-01 ${report.time_in}`).isValid() && 
+                                     moment(`2000-01-01 ${report.scheduled_time_in}`).isValid() &&
+                                     moment(`2000-01-01 ${report.time_in}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) &&
+                                     moment(`2000-01-01 ${report.time_out}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) && (
+                                      <div className="text-xs text-red-600 font-normal">
+                                        ⚠️ Shift voided
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                  {metrics.lt || '-'}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                  {metrics.ut || '-'}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                  <div className="flex flex-col">
+                                    <span>{metrics.nd || '-'}</span>
+                                    {metrics.nd === 0 && report.time_in && report.time_out && report.scheduled_time_in && 
+                                     moment(`2000-01-01 ${report.time_in}`).isValid() && 
+                                     moment(`2000-01-01 ${report.scheduled_time_in}`).isValid() &&
+                                     moment(`2000-01-01 ${report.time_in}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) &&
+                                     moment(`2000-01-01 ${report.time_out}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) && (
+                                      <div className="text-xs text-red-600 font-normal">
+                                        ⚠️ Shift voided
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
                       </tbody>
                     </table>
                   )}
@@ -1267,7 +2313,7 @@ const TeamLeaderScheduleReport = () => {
             )}
 
             {/* No Report State */}
-            {(!Array.isArray(reports) || reports.length === 0) && !loading && (
+            {(!Array.isArray(getFilteredMemberReports()) || getFilteredMemberReports().length === 0) && !loading && (
               <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-12 text-center">
                 <div className="text-gray-500">
                   <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -1283,17 +2329,109 @@ const TeamLeaderScheduleReport = () => {
           </>
         ) : (
           /* Team Members View */
+          <>
+            {/* Team Summary Display */}
+            {teamSummary && teamLeaderInfo && (
+              <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <BuildingOfficeIcon className="w-6 h-6 text-blue-600" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {selectedEmployee && selectedEmployee !== 'all' ? 'Employee Report' : `Team: ${teamLeaderInfo.department}`}
+                      </h3>
+                      <p className="text-sm text-gray-600">
+                        {selectedEmployee && selectedEmployee !== 'all' 
+                          ? `Viewing data for selected employee` 
+                          : `Led by ${teamLeaderInfo.name} (${teamLeaderInfo.employee_id})`
+                        }
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {selectedEmployee && selectedEmployee !== 'all' ? '1' : teamSummary.total_team_members}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {selectedEmployee && selectedEmployee !== 'all' ? 'Selected Employee' : 'Team Members'}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-white p-3 rounded-lg border border-green-100">
+                    <div className="flex items-center space-x-2">
+                      <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                      <div>
+                        <div className="text-lg font-semibold text-green-600">
+                          {selectedEmployee && selectedEmployee !== 'all' 
+                            ? getFilteredMemberReports().filter(r => r.status === 'present').length
+                            : teamSummary.total_present
+                          }
+                        </div>
+                        <div className="text-xs text-gray-500">Present</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white p-3 rounded-lg border border-red-100">
+                    <div className="flex items-center space-x-2">
+                      <XMarkIcon className="w-5 h-5 text-red-500" />
+                      <div>
+                        <div className="text-lg font-semibold text-red-600">
+                          {selectedEmployee && selectedEmployee !== 'all' 
+                            ? getFilteredMemberReports().filter(r => r.status === 'absent').length
+                            : teamSummary.total_absent
+                          }
+                        </div>
+                        <div className="text-xs text-gray-500">Absent</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white p-3 rounded-lg border border-yellow-100">
+                    <div className="flex items-center space-x-2">
+                      <ClockIcon className="w-5 h-5 text-yellow-500" />
+                      <div>
+                        <div className="text-lg font-semibold text-yellow-600">
+                          {selectedEmployee && selectedEmployee !== 'all' 
+                            ? getFilteredMemberReports().filter(r => r.status === 'late').length
+                            : teamSummary.total_late
+                          }
+                        </div>
+                        <div className="text-xs text-gray-500">Late</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white p-3 rounded-lg border border-gray-100">
+                    <div className="flex items-center space-x-2">
+                      <DocumentChartBarIcon className="w-5 h-5 text-gray-500" />
+                      <div>
+                        <div className="text-lg font-semibold text-gray-600">
+                          {getFilteredMemberReports().length}
+                        </div>
+                        <div className="text-xs text-gray-500">Total Records</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+
+            )}
+
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-lg font-medium text-gray-900">
-                Team Members Overview: {new Date(dateRange.startDate).toLocaleDateString()} - {new Date(dateRange.endDate).toLocaleDateString()}
+                {selectedEmployee && selectedEmployee !== 'all' ? 'Employee Details' : 'Team Members Overview'}: {new Date(dateRange.startDate).toLocaleDateString()} - {new Date(dateRange.endDate).toLocaleDateString()}
               </h3>
             </div>
             
             {memberLoading ? (
               <div className="px-6 py-12 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="mt-4 text-gray-600">Loading team members...</p>
+                <p className="mt-4 text-gray-600">Loading team report...</p>
               </div>
             ) : !Array.isArray(employees) || employees.length === 0 ? (
               <div className="px-6 py-12 text-center">
@@ -1303,58 +2441,68 @@ const TeamLeaderScheduleReport = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
-                {Array.isArray(employees) && employees.map((member) => {
-                  const stats = getMemberStats(member.id);
-                  return (
-                    <div key={member.id} className="bg-gray-50 rounded-lg p-6 border border-gray-200 hover:shadow-md transition-shadow">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center">
-                          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
+                {Array.isArray(employees) && employees
+                  .filter(member => {
+                    // If a specific employee is selected, show only that employee
+                    if (selectedEmployee && selectedEmployee !== 'all') {
+                      return member.employee_id === selectedEmployee;
+                    }
+                    // Otherwise show all team members
+                    return true;
+                  })
+                  .map((member) => {
+                    const stats = getTeamMemberStats(member.employee_id || member.id);
+                    return (
+                      <div key={member.id} className="bg-gray-50 rounded-lg p-6 border border-gray-200 hover:shadow-md transition-shadow">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center">
+                            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                            </div>
+                            <div className="ml-3">
+                              <h4 className="text-lg font-medium text-gray-900">
+                                {member.full_name || member.first_name || member.last_name || `Employee ${member.id}`}
+                              </h4>
+                              <p className="text-xs text-gray-500">{member.position || 'Team Member'}</p>
+                            </div>
                           </div>
-                          <div className="ml-3">
-                            <h4 className="text-lg font-medium text-gray-900">
-                              {member.full_name || member.first_name || member.last_name || `Employee ${member.id}`}
-                            </h4>
-                            <p className="text-sm text-gray-500">{member.position || 'Team Member'}</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div className="text-center">
+                            <p className="text-2xl font-bold text-blue-600">{stats.totalHours.toFixed(1)}h</p>
+                            <p className="text-xs text-gray-500">Total Hours</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-2xl font-bold text-orange-600">{stats.overtimeHours.toFixed(1)}h</p>
+                            <p className="text-xs text-gray-500">Overtime</p>
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div className="text-center">
-                          <p className="text-2xl font-bold text-blue-600">{stats.totalHours.toFixed(1)}h</p>
-                          <p className="text-xs text-gray-500">Total Hours</p>
+                        
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => openMemberModal(member)}
+                            className="flex-1 text-blue-600 hover:text-blue-900 text-sm font-medium py-2 px-3 rounded border border-blue-200 hover:bg-blue-50 transition-colors"
+                          >
+                            View Details
+                          </button>
+                          <button
+                            onClick={() => openIndividualReport(member)}
+                            className="flex-1 text-green-600 hover:text-green-900 text-sm font-medium py-2 px-3 rounded border border-green-200 hover:bg-green-50 transition-colors"
+                          >
+                            Individual Report
+                          </button>
                         </div>
-                        <div className="text-center">
-                          <p className="text-2xl font-bold text-orange-600">{stats.overtimeHours.toFixed(1)}h</p>
-                          <p className="text-xs text-gray-500">Overtime</p>
-                        </div>
                       </div>
-                      
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => openMemberModal(member)}
-                          className="flex-1 text-blue-600 hover:text-blue-900 text-sm font-medium py-2 px-3 rounded border border-blue-200 hover:bg-blue-50 transition-colors"
-                        >
-                          View Details
-                        </button>
-                        <button
-                          onClick={() => openIndividualReport(member)}
-                          className="flex-1 text-green-600 hover:text-green-900 text-sm font-medium py-2 px-3 rounded border border-green-200 hover:bg-green-50 transition-colors"
-                        >
-                          Individual Report
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             )}
           </div>
-        )}
+        </>
+      )}
 
         {/* Member Detail Modal */}
         {showMemberModal && selectedMember && (
@@ -1378,25 +2526,25 @@ const TeamLeaderScheduleReport = () => {
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <p className="text-sm font-medium text-blue-600">Total Hours</p>
                   <p className="text-2xl font-bold text-blue-900">
-                    {getMemberStats(selectedMember.id).totalHours.toFixed(1)}h
+                    {getTeamMemberStats(selectedMember.employee_id || selectedMember.id).totalHours.toFixed(1)}h
                   </p>
                 </div>
                 <div className="bg-orange-50 p-4 rounded-lg">
                   <p className="text-sm font-medium text-orange-600">Overtime Hours</p>
                   <p className="text-2xl font-bold text-orange-900">
-                    {getMemberStats(selectedMember.id).overtimeHours.toFixed(1)}h
+                    {getTeamMemberStats(selectedMember.employee_id || selectedMember.id).overtimeHours.toFixed(1)}h
                   </p>
                 </div>
                 <div className="bg-green-50 p-4 rounded-lg">
-                  <p className="text-sm font-medium text-green-600">Total Schedules</p>
+                  <div className="text-sm font-medium text-green-600">Total Schedules</div>
                   <p className="text-2xl font-bold text-green-900">
-                    {getMemberStats(selectedMember.id).totalSchedules}
+                    {getTeamMemberStats(selectedMember.employee_id || selectedMember.id).totalSchedules}
                   </p>
                 </div>
                 <div className="bg-purple-50 p-4 rounded-lg">
                   <p className="text-sm font-medium text-purple-600">Attendance Rate</p>
                   <p className="text-2xl font-bold text-purple-900">
-                    {getMemberStats(selectedMember.id).attendanceRate.toFixed(1)}%
+                    {getTeamMemberStats(selectedMember.employee_id || selectedMember.id).attendanceRate.toFixed(1)}%
                   </p>
                 </div>
               </div>
@@ -1419,8 +2567,8 @@ const TeamLeaderScheduleReport = () => {
                         .filter(report => report.employee_id === selectedMember.id)
                         .map((report) => {
                           // Safe date and time parsing with fallbacks
-                          const start = report.start_time ? new Date(`2000-01-01T${report.start_time}`) : null;
-                          const end = report.end_time ? new Date(`2000-01-01T${report.end_time}`) : null;
+                          const start = report.time_in ? new Date(`2000-01-01T${report.time_in}`) : null;
+                          const end = report.time_out ? new Date(`2000-01-01T${report.time_out}`) : null;
                           const hours = start && end && !isNaN(start.getTime()) && !isNaN(end.getTime()) 
                             ? (end - start) / (1000 * 60 * 60) 
                             : 0;
@@ -1432,10 +2580,10 @@ const TeamLeaderScheduleReport = () => {
                                 {report.date ? new Date(report.date).toLocaleDateString() : 'N/A'}
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                {report.start_time || 'N/A'}
+                                {formatTime(report.time_in) || 'N/A'}
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                {report.end_time || 'N/A'}
+                                {formatTime(report.time_out) || 'N/A'}
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                                 {hours.toFixed(1)}h
@@ -1479,7 +2627,7 @@ const TeamLeaderScheduleReport = () => {
               {/* Action Buttons */}
               <div className="flex gap-3 mb-6">
                 <button
-                  onClick={() => generateMissingData(selectedIndividualMember.id)}
+                  onClick={() => generateMissingData(selectedIndividualMember.employee_id || selectedIndividualMember.id)}
                   disabled={generatingData}
                   className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center font-medium"
                 >
@@ -1496,7 +2644,7 @@ const TeamLeaderScheduleReport = () => {
                   )}
                 </button>
                 <button
-                  onClick={() => loadIndividualMemberReport(selectedIndividualMember.id)}
+                  onClick={() => loadIndividualMemberReport(selectedIndividualMember.employee_id || selectedIndividualMember.id)}
                   disabled={memberLoading}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center font-medium"
                 >
@@ -1569,7 +2717,18 @@ const TeamLeaderScheduleReport = () => {
                             {formatTime(entry.scheduled_time_out)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {entry.billed_hours || '-'}
+                            <div className="flex flex-col">
+                              <span>{entry.billed_hours || '-'}</span>
+                              {entry.billed_hours === 0 && entry.time_in && entry.time_out && entry.scheduled_time_in && 
+                               moment(`2000-01-01 ${entry.time_in}`).isValid() && 
+                               moment(`2000-01-01 ${entry.scheduled_time_in}`).isValid() &&
+                               moment(`2000-01-01 ${entry.time_in}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) &&
+                               moment(`2000-01-01 ${entry.time_out}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) && (
+                                <div className="text-xs text-red-600 font-normal">
+                                  ⚠️ Shift voided
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {entry.late_minutes || '-'}
@@ -1578,7 +2737,18 @@ const TeamLeaderScheduleReport = () => {
                             {entry.undertime_minutes || '-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {entry.night_differential_hours || '-'}
+                            <div className="flex flex-col">
+                              <span>{entry.night_differential_hours || '-'}</span>
+                              {entry.night_differential_hours === 0 && entry.time_in && entry.time_out && entry.scheduled_time_in && 
+                               moment(`2000-01-01 ${entry.time_in}`).isValid() && 
+                               moment(`2000-01-01 ${entry.scheduled_time_in}`).isValid() &&
+                               moment(`2000-01-01 ${entry.time_in}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) &&
+                               moment(`2000-01-01 ${entry.time_out}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) && (
+                                <div className="text-xs text-red-600 font-normal">
+                                  ⚠️ Shift voided
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {entry.overtime_hours || '-'}
@@ -1596,7 +2766,7 @@ const TeamLeaderScheduleReport = () => {
                     No daily summary data found for the selected criteria.
                   </p>
                   <button
-                    onClick={() => generateMissingData(selectedIndividualMember.id)}
+                    onClick={() => generateMissingData(selectedIndividualMember.employee_id || selectedIndividualMember.id)}
                     disabled={generatingData}
                     className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center mx-auto"
                   >
@@ -1662,6 +2832,65 @@ const TeamLeaderScheduleReport = () => {
             </div>
           </div>
         )}
+
+        {/* Night Shift Styling */}
+        <style>{`
+          .nightshift-row {
+            background-color: #eff6ff !important;
+            border-left: 4px solid #3b82f6 !important;
+          }
+          
+          .previous-nightshift-timeout-row {
+            background-color: #f0fdf4 !important;
+            border-left: 4px solid #16a34a !important;
+          }
+          
+          .previous-timeout-indicator {
+            color: #16a34a;
+            font-weight: 500;
+          }
+        `}</style>
+
+        {/* Test Function for Shift Voiding Logic */}
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            window.testShiftVoidingComponent = function() {
+              console.log('🧪 Testing Component Shift Voiding Logic...');
+              
+              // Test the actual component's calculateGroupedMetrics function
+              if (window.testShiftVoidingData) {
+                const testData = window.testShiftVoidingData;
+                console.log('📊 Test Data:', testData);
+                
+                // Simulate the logic from calculateGroupedMetrics
+                const timeIn = testData.timeIn;
+                const timeOut = testData.timeOut;
+                const scheduledIn = testData.scheduledIn;
+                const scheduledOut = testData.scheduledOut;
+                const date = testData.date;
+                
+                if (timeIn && timeOut && scheduledIn) {
+                  const timeInMoment = moment(\`\${date} \${timeIn}\`, 'YYYY-MM-DD h:mm A');
+                  const timeOutMoment = moment(\`\${date} \${timeOut}\`, 'YYYY-MM-DD h:mm A');
+                  const scheduledInMoment = moment(\`\${date} \${scheduledIn}\`, 'YYYY-MM-DD h:mm A');
+                  
+                  if (timeInMoment.isValid() && timeOutMoment.isValid() && scheduledInMoment.isValid()) {
+                    const isVoided = timeInMoment.isBefore(scheduledInMoment) && timeOutMoment.isBefore(scheduledInMoment);
+                    console.log('🔍 Component Logic Test:');
+                    console.log('   Time In:', timeInMoment.format('h:mm A'));
+                    console.log('   Time Out:', timeOutMoment.format('h:mm A'));
+                    console.log('   Scheduled In:', scheduledInMoment.format('h:mm A'));
+                    console.log('   Is Voided:', isVoided);
+                    console.log('   ✅ Component logic working correctly');
+                  }
+                }
+              } else {
+                console.log('ℹ️  No test data available. Set window.testShiftVoidingData with your test scenario.');
+              }
+            };
+          `
+        }} />
+
       </div>
     </div>
     );

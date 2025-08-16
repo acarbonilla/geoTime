@@ -82,6 +82,7 @@ const ScheduleReport = () => {
   const [hasAutoDetected, setHasAutoDetected] = useState(false);
 
   const [currentEmployeeId, setCurrentEmployeeId] = useState('');
+  const [groupNightshifts, setGroupNightshifts] = useState(true);
 
   useEffect(() => {
     // Get current user's employee ID from localStorage
@@ -1717,6 +1718,62 @@ const ScheduleReport = () => {
             </div>
           </div>
 
+          {/* Nightshift Grouping Toggle */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center space-x-2">
+              <ClockIcon className="w-4 h-4 text-blue-600" />
+              <span>Nightshift Display Options</span>
+            </label>
+            <div className="flex items-center space-x-3">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="nightshiftGrouping"
+                  value="grouped"
+                  checked={groupNightshifts}
+                  onChange={() => setGroupNightshifts(true)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">Grouped View (Recommended)</span>
+                <span className="text-xs text-gray-500">Shows complete nightshifts on start date</span>
+              </label>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="nightshiftGrouping"
+                  value="ungrouped"
+                  checked={!groupNightshifts}
+                  onChange={() => setGroupNightshifts(false)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">Separate Days View</span>
+                <span className="text-xs text-gray-500">Shows each day separately with individual time entries</span>
+              </label>
+            </div>
+            <div className="mt-2 text-xs text-gray-500">
+              {groupNightshifts 
+                ? "Nightshifts spanning midnight will be grouped on the start date for easier reading."
+                : "Each day will show its own time entries, including August 16th time-in for nightshifts."
+              }
+            </div>
+            {!groupNightshifts && (
+              <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                <div className="flex items-start space-x-2">
+                  <InformationCircleIcon className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-purple-700">
+                    <div className="font-medium mb-1">Separate Days View Active</div>
+                    <div>When viewing nightshifts separately:</div>
+                    <ul className="list-disc list-inside mt-1 space-y-1">
+                      <li>August 15th will show the time-in (e.g., 9:41 PM)</li>
+                      <li>August 16th will show as a separate row with the timeout (e.g., 1:47 AM)</li>
+                      <li>Purple rows indicate timeout-only entries from previous nightshifts</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Manual Date Picker Toggle */}
           <div className="mb-4">
             <button
@@ -2191,6 +2248,7 @@ const ScheduleReport = () => {
                         
                         // Check if this is a nightshift that crosses midnight
                         if (isNightshift && hasTimeInNoTimeOut && hasNextDayTimeout) {
+                          if (groupNightshifts) {
                           // Create a combined row for the nightshift
                           const combinedRecord = {
                             ...currentRecord,
@@ -2205,6 +2263,28 @@ const ScheduleReport = () => {
                           groupedRecords.push(combinedRecord);
                           i++; // Skip the next record since we've combined it
                           console.log(`🌙 Nightshift grouped: ${currentRecord.date} → ${nextRecord.date} with timeout: ${nextDayTimeoutEntry.event_time}`);
+                          } else {
+                            // Add current record as-is (will show time-in)
+                            groupedRecords.push(currentRecord);
+                            console.log(`🌙 Nightshift ungrouped: ${currentRecord.date} with time-in only`);
+                            
+                            // Also add the next day record with the timeout
+                            if (nextRecord && nextDayTimeoutEntry) {
+                              const nextDayRecord = {
+                                ...nextRecord,
+                                isNightshiftTimeout: true,
+                                previousDayDate: currentRecord.date,
+                                previousDayDay: currentRecord.day,
+                                // Clear time-in since this is just showing the timeout from previous nightshift
+                                time_in: '-',
+                                // Set the timeout from the nightshift
+                                time_out: nextDayTimeoutEntry.event_time
+                              };
+                              groupedRecords.push(nextDayRecord);
+                              i++; // Skip the next record since we've added it manually
+                              console.log(`🌙 Added next day record for timeout: ${nextRecord.date} with timeout: ${nextDayTimeoutEntry.event_time}`);
+                            }
+                          }
                         } else if (isNightshift && hasTimeInNoTimeOut) {
                           // Nightshift with time-in but no timeout found - mark as incomplete
                           const incompleteRecord = {
@@ -2223,6 +2303,7 @@ const ScheduleReport = () => {
                       return groupedRecords.map((record, index) => (
                         <tr key={index} className={`hover:bg-gray-50 transition-colors duration-200 ${
                           record.isNightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : 
+                          record.isNightshiftTimeout ? 'nightshift-timeout-row bg-purple-50 border-l-4 border-purple-400' :
                           record.hasPreviousNightshiftTimeout ? 'previous-nightshift-timeout-row bg-green-50 border-l-4 border-green-400' : ''
                         }`}>
                           <td className="px-6 py-4 text-sm font-medium text-gray-900">
@@ -2231,6 +2312,11 @@ const ScheduleReport = () => {
                               {record.isNightshift && record.nextDayDate && (
                                 <div className="text-xs text-blue-600 font-normal">
                                   → {moment(record.nextDayDate).format('MMM DD')}
+                                </div>
+                              )}
+                              {record.isNightshiftTimeout && record.previousDayDate && (
+                                <div className="text-xs text-purple-600 font-normal">
+                                  ← {moment(record.previousDayDate).format('MMM DD')}
                                 </div>
                               )}
                               {record.isNightshift && !record.nextDayDate && record.isIncomplete && (
@@ -2253,6 +2339,11 @@ const ScheduleReport = () => {
                                   → {record.nextDayDay}
                                 </div>
                               )}
+                              {record.isNightshiftTimeout && record.previousDayDay && (
+                                <div className="text-xs text-purple-600 font-normal">
+                                  ← {record.previousDayDay}
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td className="px-6 py-4 text-sm">
@@ -2265,6 +2356,11 @@ const ScheduleReport = () => {
                                 🌙 Nightshift
                               </div>
                             )}
+                            {record.isNightshiftTimeout && (
+                              <div className="nightshift-timeout-indicator text-xs text-purple-600 font-medium mt-1">
+                                🕐 Nightshift Timeout
+                              </div>
+                            )}
                             {record.hasPreviousNightshiftTimeout && (
                               <div className="previous-timeout-indicator text-xs text-green-600 font-medium mt-1">
                                 📝 Previous timeout used
@@ -2272,7 +2368,16 @@ const ScheduleReport = () => {
                             )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {formatTime(record.time_in)}
+                            {record.isNightshiftTimeout ? (
+                              <div className="text-purple-600 text-xs">
+                                <span className="font-medium">No time-in</span>
+                                <div className="text-purple-500">
+                                  (Timeout from previous nightshift)
+                                </div>
+                              </div>
+                            ) : (
+                              formatTime(record.time_in)
+                            )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                             {(() => {
@@ -2285,6 +2390,18 @@ const ScheduleReport = () => {
                                     <span className="font-medium">{formatTime(record.nextDayTimeout.event_time)}</span>
                                     <div className="text-xs text-blue-500">
                                       (Next day: {moment(record.nextDayDate).format('MMM DD')})
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              
+                              // 1.5. Handle nightshift timeout records (showing timeout from previous nightshift)
+                              if (record.isNightshiftTimeout && record.time_out && record.time_out !== '-') {
+                                return (
+                                  <div className="text-purple-600">
+                                    <span className="font-medium">{formatTime(record.time_out)}</span>
+                                    <div className="text-xs text-purple-500">
+                                      (From previous nightshift)
                                     </div>
                                   </div>
                                 );
@@ -2373,10 +2490,28 @@ const ScheduleReport = () => {
                             })()}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {formatTime(record.scheduled_in)}
+                            {record.isNightshiftTimeout ? (
+                              <div className="text-purple-600 text-xs">
+                                <span className="font-medium">No schedule</span>
+                                <div className="text-purple-500">
+                                  (Timeout only)
+                                </div>
+                              </div>
+                            ) : (
+                              formatTime(record.scheduled_in)
+                            )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {formatTime(record.scheduled_out)}
+                            {record.isNightshiftTimeout ? (
+                              <div className="text-purple-600 text-xs">
+                                <span className="font-medium">No schedule</span>
+                                <div className="text-purple-500">
+                                  (Timeout only)
+                                </div>
+                              </div>
+                            ) : (
+                              formatTime(record.scheduled_out)
+                            )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                             {(() => {
@@ -2392,6 +2527,17 @@ const ScheduleReport = () => {
                                 hasScheduledIn: !!record.scheduled_in,
                                 hasScheduledOut: !!record.scheduled_out
                               });
+                              
+                              if (record.isNightshiftTimeout) {
+                                return (
+                                  <div className="text-purple-600 text-xs">
+                                    <span className="font-medium">N/A</span>
+                                    <div className="text-purple-500">
+                                      (Timeout only)
+                                    </div>
+                                  </div>
+                                );
+                              }
                               
                               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
                                 const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
@@ -2412,6 +2558,17 @@ const ScheduleReport = () => {
                                 hasTimeIn: !!record.time_in,
                                 hasScheduledIn: !!record.scheduled_in
                               });
+                              
+                              if (record.isNightshiftTimeout) {
+                                return (
+                                  <div className="text-purple-600 text-xs">
+                                    <span className="font-medium">N/A</span>
+                                    <div className="text-purple-500">
+                                      (Timeout only)
+                                    </div>
+                                  </div>
+                                );
+                              }
                               
                               if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
                                 const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
@@ -2436,6 +2593,17 @@ const ScheduleReport = () => {
                                 hasScheduledIn: !!record.scheduled_in,
                                 hasScheduledOut: !!record.scheduled_out
                               });
+                              
+                              if (record.isNightshiftTimeout) {
+                                return (
+                                  <div className="text-purple-600 text-xs">
+                                    <span className="font-medium">N/A</span>
+                                    <div className="text-purple-500">
+                                      (Timeout only)
+                                    </div>
+                                  </div>
+                                );
+                              }
                               
                               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
                                   record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
@@ -2620,6 +2788,21 @@ const ScheduleReport = () => {
           
           .previous-timeout-indicator {
             color: #15803d;
+            font-size: 0.75rem;
+            margin-top: 0.25rem;
+          }
+          
+          .nightshift-timeout-row {
+            background-color: #f3e8ff !important;
+            border-left: 4px solid #9333ea !important;
+          }
+          
+          .nightshift-timeout-row:hover {
+            background-color: #e9d5ff !important;
+          }
+          
+          .nightshift-timeout-indicator {
+            color: #7c3aed;
             font-size: 0.75rem;
             margin-top: 0.25rem;
           }
