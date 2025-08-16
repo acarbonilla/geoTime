@@ -3645,3 +3645,264 @@ class DailyTimeSummaryViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=False, methods=['get'])
+    def team_report(self, request):
+        """Get team report for Team Leaders - shows daily summaries for all team members"""
+        from datetime import date
+        
+        # Check if user is a team leader
+        if not hasattr(request.user, 'employee_profile') or request.user.employee_profile.role != 'team_leader':
+            return Response(
+                {'error': 'Access denied. Only Team Leaders can view team reports.'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get required parameters
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if not start_date or not end_date:
+            return Response(
+                {'error': 'start_date and end_date are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            start_date = date.fromisoformat(start_date)
+            end_date = date.fromisoformat(end_date)
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            team_leader = request.user.employee_profile
+            
+            # Get team members (subordinates)
+            team_members = team_leader.get_subordinates()
+            
+            # Filter by specific employee if provided
+            employee_id_filter = request.query_params.get('employee_id')
+            if employee_id_filter:
+                team_members = team_members.filter(employee_id=employee_id_filter)
+                if not team_members.exists():
+                    return Response({
+                        'error': f'Employee {employee_id_filter} not found in your team or you do not have access to their data.'
+                    }, status=status.HTTP_404_NOT_FOUND)
+            
+            if not team_members.exists():
+                return Response({
+                    'team_leader': {
+                        'id': team_leader.id,
+                        'employee_id': team_leader.employee_id,
+                        'name': team_leader.full_name,
+                        'department': team_leader.department.name
+                    },
+                    'team_members': [],
+                    'summary': {
+                        'total_team_members': 0,
+                        'total_present': 0,
+                        'total_absent': 0,
+                        'total_late': 0
+                    }
+                })
+            
+            # Get daily summaries for all team members
+            team_summaries = DailyTimeSummary.objects.filter(
+                employee__in=team_members,
+                date__gte=start_date,
+                date__lte=end_date
+            ).select_related('employee', 'employee__department')
+            
+            # Group summaries by employee
+            employee_summaries = {}
+            for summary in team_summaries:
+                emp_id = summary.employee.employee_id
+                if emp_id not in employee_summaries:
+                    employee_summaries[emp_id] = {
+                        'employee_id': emp_id,
+                        'name': summary.employee.full_name,
+                        'department': summary.employee.department.name,
+                        'daily_summaries': []
+                    }
+                employee_summaries[emp_id]['daily_summaries'].append({
+                    'id': summary.id,
+                    'date': summary.date.isoformat(),
+                    'time_in': summary.time_in.isoformat() if summary.time_in else None,
+                    'time_out': summary.time_out.isoformat() if summary.time_out else None,
+                    'scheduled_time_in': summary.scheduled_time_in.isoformat() if summary.scheduled_time_in else None,
+                    'scheduled_time_out': summary.scheduled_time_out.isoformat() if summary.scheduled_time_out else None,
+                    'status': summary.status,
+                    'billed_hours': str(summary.billed_hours),
+                    'late_minutes': summary.late_minutes,
+                    'undertime_minutes': summary.undertime_minutes,
+                    'night_differential_hours': str(summary.night_differential_hours),
+                    'overtime_hours': str(summary.overtime_hours)
+                })
+            
+            # Calculate summary statistics
+            total_present = sum(1 for s in team_summaries if s.status == 'present')
+            total_absent = sum(1 for s in team_summaries if s.status == 'absent')
+            total_late = sum(1 for s in team_summaries if s.status == 'late')
+            
+            response_data = {
+                'team_leader': {
+                    'id': team_leader.id,
+                    'employee_id': team_leader.employee_id,
+                    'name': team_leader.full_name,
+                    'department': team_leader.department.name
+                },
+                'team_members': list(employee_summaries.values()),
+                'summary': {
+                    'total_team_members': len(team_members),
+                    'total_present': total_present,
+                    'total_absent': total_absent,
+                    'total_late': total_late
+                }
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to generate team report: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def hr_report(self, request):
+        """Get company-wide report for HR and Management roles"""
+        from datetime import date
+        
+        # Check if user has HR/Management permissions
+        if not hasattr(request.user, 'employee_profile'):
+            return Response(
+                {'error': 'Access denied. Employee profile not found.'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        user_role = request.user.employee_profile.role
+        if user_role not in ['hr', 'management', 'supervisor', 'it_support']:
+            return Response(
+                {'error': 'Access denied. Insufficient permissions for HR report.'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get required parameters
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if not start_date or not end_date:
+            return Response(
+                {'error': 'start_date and end_date are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            start_date = date.fromisoformat(start_date)
+            end_date = date.fromisoformat(end_date)
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get optional filters
+            department_id = request.query_params.get('department_id')
+            employee_id = request.query_params.get('employee_id')
+            status_filter = request.query_params.get('status')
+            
+            # Base queryset for daily summaries
+            summaries_queryset = DailyTimeSummary.objects.filter(
+                date__gte=start_date,
+                date__lte=end_date
+            ).select_related('employee', 'employee__department')
+            
+            # Apply filters
+            if department_id:
+                summaries_queryset = summaries_queryset.filter(employee__department_id=department_id)
+            
+            if employee_id:
+                summaries_queryset = summaries_queryset.filter(employee__employee_id=employee_id)
+            
+            if status_filter:
+                summaries_queryset = summaries_queryset.filter(status=status_filter)
+            
+            # Get all employees for summary
+            employees_queryset = Employee.objects.filter(employment_status='active')
+            if department_id:
+                employees_queryset = employees_queryset.filter(department_id=department_id)
+            
+            # Calculate company-wide statistics
+            total_employees = employees_queryset.count()
+            total_present = summaries_queryset.filter(status='present').count()
+            total_absent = summaries_queryset.filter(status='absent').count()
+            total_late = summaries_queryset.filter(status='late').count()
+            total_overtime = sum(float(s.overtime_hours) for s in summaries_queryset if s.overtime_hours)
+            
+            # Get department summary
+            departments = Department.objects.all()
+            department_summary = []
+            for dept in departments:
+                dept_employees = employees_queryset.filter(department=dept)
+                dept_summaries = summaries_queryset.filter(employee__department=dept)
+                
+                department_summary.append({
+                    'id': dept.id,
+                    'name': dept.name,
+                    'employee_count': dept_employees.count(),
+                    'present_count': dept_summaries.filter(status='present').count(),
+                    'absent_count': dept_summaries.filter(status='absent').count()
+                })
+            
+            # Get employee details with summaries
+            employees_data = []
+            for emp in employees_queryset[:100]:  # Limit to first 100 for performance
+                emp_summaries = summaries_queryset.filter(employee=emp)
+                emp_summaries_data = []
+                
+                for summary in emp_summaries:
+                    emp_summaries_data.append({
+                        'id': summary.id,
+                        'date': summary.date.isoformat(),
+                        'time_in': summary.time_in.isoformat() if summary.time_in else None,
+                        'time_out': summary.time_out.isoformat() if summary.time_out else None,
+                        'scheduled_time_in': summary.scheduled_time_in.isoformat() if summary.scheduled_time_in else None,
+                        'scheduled_time_out': summary.scheduled_time_out.isoformat() if summary.scheduled_time_out else None,
+                        'status': summary.status,
+                        'billed_hours': str(summary.billed_hours),
+                        'late_minutes': summary.late_minutes,
+                        'undertime_minutes': summary.undertime_minutes,
+                        'night_differential_hours': str(summary.night_differential_hours),
+                        'overtime_hours': str(summary.overtime_hours)
+                    })
+                
+                employees_data.append({
+                    'employee_id': emp.employee_id,
+                    'name': emp.full_name,
+                    'department': emp.department.name,
+                    'daily_summaries': emp_summaries_data
+                })
+            
+            response_data = {
+                'company_summary': {
+                    'total_employees': total_employees,
+                    'total_present': total_present,
+                    'total_absent': total_absent,
+                    'total_late': total_late,
+                    'total_overtime_hours': round(total_overtime, 2)
+                },
+                'departments': department_summary,
+                'employees': employees_data
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to generate HR report: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
