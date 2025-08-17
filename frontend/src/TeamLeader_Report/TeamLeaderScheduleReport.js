@@ -656,7 +656,10 @@ const TeamLeaderScheduleReport = () => {
   };
 
   const getStatusIcon = (status) => {
-    switch (status) {
+    // Convert status to lowercase and replace spaces with underscores for icon lookup
+    const statusKey = status.toLowerCase().replace(/\s+/g, '_');
+    
+    switch (statusKey) {
       case 'present':
         return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
       case 'absent':
@@ -671,6 +674,10 @@ const TeamLeaderScheduleReport = () => {
         return <CalendarIcon className="h-5 w-5 text-purple-500" />;
       case 'weekend':
         return <CalendarIcon className="h-5 w-5 text-gray-500" />;
+      case 'suspicious_shift':
+        return <ExclamationTriangleIcon className="h-5 w-5 text-red-600" />; // Warning icon for suspicious shifts
+      case 'shift_void':
+        return <XMarkIcon className="h-5 w-5 text-red-700" />; // X mark for voided shifts
       default:
         return <InformationCircleIcon className="h-5 w-5 text-gray-500" />;
     }
@@ -878,6 +885,17 @@ const TeamLeaderScheduleReport = () => {
   // New: Calculate BH, LT, UT, ND for grouped records (FIXED VERSION)
   const calculateGroupedMetrics = (record) => {
     if (!record) return { bh: 0, lt: 0, ut: 0, nd: 0 };
+    
+    // CRITICAL FIX: Check backend status first - if backend says incomplete/shift_void, use those metrics
+    if (record.status === 'incomplete' || record.status === 'shift_void') {
+      console.log('🚫 Backend status is', record.status, '- using backend metrics instead of recalculating');
+      return {
+        bh: record.billed_hours || 0,
+        lt: record.late_minutes || 0,
+        ut: record.undertime_minutes || 0,
+        nd: record.night_differential || 0
+      };
+    }
     
     let bh = 0; // Break Hours (minutes) - actual time worked
     let lt = 0; // Late Time (minutes)
@@ -1191,6 +1209,13 @@ const TeamLeaderScheduleReport = () => {
           ut = 0;
         }
         
+        // If shift is voided, zero out LT and UT
+        if (isVoidedShift) {
+          lt = 0;
+          ut = 0;
+          console.log('🚫 LT and UT set to 0 due to voided shift');
+        }
+        
         // ND (Night Differential) - calculate regardless of isNightshift flag
         // If shift is voided (both times before scheduled start), set ND to 0
         if (isVoidedShift) {
@@ -1219,6 +1244,26 @@ const TeamLeaderScheduleReport = () => {
           }
           
           nd = nightMinutes;
+        }
+        
+        // FINAL CHECK: Ensure all metrics are 0 if shift is voided
+        if (isVoidedShift) {
+          bh = 0;
+          lt = 0;
+          ut = 0;
+          nd = 0;
+          console.log('🚫 FINAL CHECK: All metrics zeroed for voided shift:', { bh, lt, ut, nd });
+        }
+        
+        // FINAL CHECK: Also zero out metrics for suspiciously short shifts (less than 15 minutes)
+        if (actualDurationMinutes < 15) {
+          bh = 0;
+          lt = 0;
+          ut = 0;
+          nd = 0;
+          console.log('🚫 FINAL CHECK: All metrics zeroed for suspiciously short shift (< 15 min):', { 
+            actualDurationMinutes, bh, lt, ut, nd 
+          });
         }
         
         console.log('🌙 ND calculation:', {
@@ -1297,7 +1342,7 @@ const TeamLeaderScheduleReport = () => {
       let scheduledOutHour = 0;
       
       // First try to detect night shift from scheduled times if available
-      if (scheduledIn && scheduledOut && scheduledIn !== '-' && scheduledOut !== '-') {
+      if (scheduledIn && scheduledOut && scheduledIn !== '-') {
         try {
           // Debug logging for doejames
           if (currentRecord.employee_name === 'doejames' && currentRecord.date === '2025-08-16') {
@@ -1531,6 +1576,43 @@ const TeamLeaderScheduleReport = () => {
 
   // Function to determine the correct status based on user requirements
   const getStatus = (report) => {
+    // CRITICAL FIX: Respect backend status first - if backend has already determined status, use it
+    if (report.status && report.status !== 'not_scheduled' && report.status !== 'weekend') {
+      console.log('✅ Using backend status:', report.status, 'for', report.date);
+      
+      // Map backend status to display status
+      switch (report.status) {
+        case 'incomplete':
+          // Special case: Check if this is a suspiciously short shift
+          if (report.time_in && report.time_out && 
+              report.time_in !== '-' && report.time_out !== '-') {
+            const isSuspiciouslyShort = isSuspiciouslyShortShift(report);
+            if (isSuspiciouslyShort) {
+              console.log('🚫 Backend incomplete + suspiciously short = Suspicious Shift');
+              return "Suspicious Shift";
+            }
+          }
+          return "Incomplete";
+        case 'shift_void':
+          return "Shift Void";
+        case 'present':
+          return "Present";
+        case 'late':
+          return "Late";
+        case 'undertime':
+          return "UnderTime";
+        case 'absent':
+          return "Absent";
+        case 'scheduled':
+          return "Scheduled";
+        case 'not_yet_scheduled':
+          return "Not Yet Scheduled";
+        default:
+          // Fall through to frontend logic for unknown statuses
+          break;
+      }
+    }
+    
     const today = new Date();
     const reportDate = new Date(report.date);
     const isToday = today.toDateString() === reportDate.toDateString();
@@ -1538,6 +1620,21 @@ const TeamLeaderScheduleReport = () => {
     
     // Check if record has scheduled times
     const hasScheduledTimes = report.scheduled_time_in && report.scheduled_time_out;
+    
+    // Check for suspiciously short shifts FIRST (highest priority after shift void)
+    if (hasScheduledTimes && report.time_in && report.time_out && 
+        report.time_in !== '-' && report.time_out !== '-') {
+      // Check for suspiciously short shifts (less than 15 minutes)
+      const isSuspiciouslyShort = isSuspiciouslyShortShift(report);
+      if (isSuspiciouslyShort) {
+        return "Suspicious Shift"; // Special status for very short shifts
+      }
+      
+      // Then check for shift void conditions
+      if (isShiftVoided(report)) {
+        return "Shift Void";
+      }
+    }
     
     if (hasScheduledTimes) {
       if (isFutureDate) {
@@ -1557,7 +1654,7 @@ const TeamLeaderScheduleReport = () => {
           if (isLate) {
             return "Late";
           } else if (isUndertime) {
-            return "Undertime";
+            return "UnderTime";
           } else {
             return "Present";
           }
@@ -1610,6 +1707,53 @@ const TeamLeaderScheduleReport = () => {
     return false;
   };
 
+  // Helper function to check if shift is suspiciously short (less than 15 minutes)
+  const isSuspiciouslyShortShift = (report) => {
+    if (!report.time_in || !report.time_out || 
+        report.time_in === '-' || report.time_out === '-') return false;
+    
+    try {
+      const timeIn = moment(`2000-01-01 ${report.time_in}`);
+      const timeOut = moment(`2000-01-01 ${report.time_out}`);
+      
+      if (timeIn.isValid() && timeOut.isValid()) {
+        // Handle night shifts crossing midnight
+        if (timeOut.isBefore(timeIn)) {
+          timeOut.add(1, 'day');
+        }
+        
+        const durationMinutes = timeOut.diff(timeIn, 'minutes');
+        
+        // Consider suspicious if shift is less than 15 minutes
+        const suspiciousThreshold = 15; // minutes
+        return durationMinutes < suspiciousThreshold;
+      }
+    } catch (error) {
+      console.error('Error checking suspicious shift duration:', error);
+    }
+    return false;
+  };
+
+  // Helper function to check if shift should be voided
+  const isShiftVoided = (report) => {
+    if (!report.scheduled_time_in || !report.time_in || !report.time_out ||
+        report.time_in === '-' || report.time_out === '-') return false;
+    
+    try {
+      const scheduledIn = moment(`2000-01-01 ${report.scheduled_time_in}`);
+      const timeIn = moment(`2000-01-01 ${report.time_in}`);
+      const timeOut = moment(`2000-01-01 ${report.time_out}`);
+      
+      if (scheduledIn.isValid() && timeIn.isValid() && timeOut.isValid()) {
+        // Shift void: both time in and time out are before scheduled start time
+        return timeIn.isBefore(scheduledIn) && timeOut.isBefore(scheduledIn);
+      }
+    } catch (error) {
+      console.error('Error checking shift void conditions:', error);
+    }
+    return false;
+  };
+
 
 
   // Helper function to get safe BH, LT, UT, ND values
@@ -1636,10 +1780,14 @@ const TeamLeaderScheduleReport = () => {
         return "border-green-200 text-green-800 bg-green-50";
       case "Late":
         return "border-orange-200 text-orange-800 bg-orange-50";
-      case "Undertime":
+      case "UnderTime":
         return "border-purple-200 text-purple-800 bg-purple-50";
       case "Incomplete":
         return "border-gray-200 text-gray-800 bg-gray-50";
+      case "Suspicious Shift":
+        return "border-red-300 text-red-900 bg-red-100"; // Special styling for suspicious shifts
+      case "Shift Void":
+        return "border-red-300 text-red-900 bg-red-100";
       default:
         return "border-gray-200 text-gray-800 bg-gray-50";
     }

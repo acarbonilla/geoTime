@@ -749,30 +749,39 @@ const ScheduleReport = () => {
     let totalOvertime = 0;
 
     dailyRecords.forEach(record => {
-               // Calculate billed hours
-         if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-           const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-           totalBilledHours += bhMinutes;
-         }
+      // CRITICAL FIX: Check backend status first - if backend says incomplete/shift_void, use those metrics
+      if (record.status === 'incomplete' || record.status === 'shift_void') {
+        console.log('🚫 Backend status is', record.status, '- using backend metrics instead of recalculating for', record.date);
+        totalBilledHours += (record.billed_hours || 0);
+        totalLateMinutes += (record.late_minutes || 0);
+        totalUndertimeMinutes += (record.undertime_minutes || 0);
+        totalNightDifferential += (record.night_differential || 0);
+      } else {
+        // Calculate billed hours
+        if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+          const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+          totalBilledHours += bhMinutes;
+        }
 
-      // Calculate late minutes
-      if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
-        const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
-        totalLateMinutes += lateMinutes;
+        // Calculate late minutes
+        if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
+          const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
+          totalLateMinutes += lateMinutes;
+        }
+
+        // Calculate undertime minutes (now uses dynamic BH calculation with proper break consideration)
+        if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
+            record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
+          const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+          totalUndertimeMinutes += utMinutes;
+        }
+
+        // Calculate night differential
+        if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
+          const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+          totalNightDifferential += ndHours;
+        }
       }
-
-      // Calculate undertime minutes (now uses dynamic BH calculation with proper break consideration)
-      if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
-          record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
-        const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-        totalUndertimeMinutes += utMinutes;
-      }
-
-               // Calculate night differential
-         if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-           const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-           totalNightDifferential += ndHours;
-         }
 
          // Calculate overtime
          if (record.overtime_hours && record.overtime_hours > 0) {
@@ -1095,6 +1104,10 @@ const ScheduleReport = () => {
         'Scheduled In': formatTime(record.scheduled_in),
         'Scheduled Out': formatTime(record.scheduled_out),
         'BH (min)': (() => {
+          // CRITICAL FIX: Check backend status first
+          if (record.status === 'incomplete' || record.status === 'shift_void') {
+            return (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-';
+          }
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
             const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
             return bhMinutes > 0 ? bhMinutes : '-';
@@ -1102,6 +1115,10 @@ const ScheduleReport = () => {
           return '-';
         })(),
         'LT': (() => {
+          // CRITICAL FIX: Check backend status first
+          if (record.status === 'incomplete' || record.status === 'shift_void') {
+            return (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-';
+          }
           if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
             const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
             return lateMinutes > 0 ? lateMinutes : '-';
@@ -1109,6 +1126,10 @@ const ScheduleReport = () => {
           return '-';
         })(),
         'UT': (() => {
+          // CRITICAL FIX: Check backend status first
+          if (record.status === 'incomplete' || record.status === 'shift_void') {
+            return (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-';
+          }
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
               record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
             const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
@@ -1117,6 +1138,10 @@ const ScheduleReport = () => {
           return '-';
         })(),
         'ND': (() => {
+          // CRITICAL FIX: Check backend status first
+          if (record.status === 'incomplete' || record.status === 'shift_void') {
+            return (record.night_differential || 0) > 0 ? `${record.night_differential}h` : '-';
+          }
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
             const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
             return ndHours > 0 ? `${ndHours}h` : '-';
@@ -1214,6 +1239,10 @@ const ScheduleReport = () => {
         'Scheduled In': formatTime(record.scheduled_in),
         'Scheduled Out': formatTime(record.scheduled_out),
         'BH (min)': (() => {
+          // CRITICAL FIX: Check backend status first
+          if (record.status === 'incomplete' || record.status === 'shift_void') {
+            return (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-';
+          }
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
             const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
             return bhMinutes > 0 ? bhMinutes : '-';
@@ -1221,6 +1250,10 @@ const ScheduleReport = () => {
           return '-';
         })(),
         'LT': (() => {
+          // CRITICAL FIX: Check backend status first
+          if (record.status === 'incomplete' || record.status === 'shift_void') {
+            return (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-';
+          }
           if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
             const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
             return lateMinutes > 0 ? lateMinutes : '-';
@@ -1228,6 +1261,10 @@ const ScheduleReport = () => {
           return '-';
         })(),
         'UT': (() => {
+          // CRITICAL FIX: Check backend status first
+          if (record.status === 'incomplete' || record.status === 'shift_void') {
+            return (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-';
+          }
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
               record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
             const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
@@ -1236,6 +1273,10 @@ const ScheduleReport = () => {
           return '-';
         })(),
         'ND': (() => {
+          // CRITICAL FIX: Check backend status first
+          if (record.status === 'incomplete' || record.status === 'shift_void') {
+            return (record.night_differential || 0) > 0 ? `${record.night_differential}h` : '-';
+          }
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
             const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
             return ndHours > 0 ? `${ndHours}h` : '-';
@@ -1370,6 +1411,10 @@ const ScheduleReport = () => {
                   formatTime(record.scheduled_in) || '-',
                   formatTime(record.scheduled_out) || '-',
                   (() => {
+                    // CRITICAL FIX: Check backend status first
+                    if (record.status === 'incomplete' || record.status === 'shift_void') {
+                      return (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-';
+                    }
                     if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
                       const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
                       return bhMinutes > 0 ? bhMinutes : '-';
@@ -1377,6 +1422,10 @@ const ScheduleReport = () => {
                     return '-';
                   })(),
                   (() => {
+                    // CRITICAL FIX: Check backend status first
+                    if (record.status === 'incomplete' || record.status === 'shift_void') {
+                      return (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-';
+                    }
                     if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
                       const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
                       return lateMinutes > 0 ? lateMinutes : '-';
@@ -1384,6 +1433,10 @@ const ScheduleReport = () => {
                     return '-';
                   })(),
                   (() => {
+                    // CRITICAL FIX: Check backend status first
+                    if (record.status === 'incomplete' || record.status === 'shift_void') {
+                      return (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-';
+                    }
                     if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
                         record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
                       const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
@@ -1393,6 +1446,10 @@ const ScheduleReport = () => {
                   })(),
                   (() => {
                     try {
+                      // CRITICAL FIX: Check backend status first
+                      if (record.status === 'incomplete' || record.status === 'shift_void') {
+                        return (record.night_differential || 0) > 0 ? `${record.night_differential}h` : '-';
+                      }
                       if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
                         const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
                         return ndHours > 0 ? `${ndHours}h` : '-';
@@ -1576,6 +1633,10 @@ const ScheduleReport = () => {
             formatTime(record.scheduled_in) || '-',
             formatTime(record.scheduled_out) || '-',
             (() => {
+              // CRITICAL FIX: Check backend status first
+              if (record.status === 'incomplete' || record.status === 'shift_void') {
+                return (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-';
+              }
               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
                 const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
                 return bhMinutes > 0 ? bhMinutes : '-';
@@ -1583,6 +1644,10 @@ const ScheduleReport = () => {
               return '-';
             })(),
             (() => {
+              // CRITICAL FIX: Check backend status first
+              if (record.status === 'incomplete' || record.status === 'shift_void') {
+                return (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-';
+              }
               if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
                 const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
                 return lateMinutes > 0 ? lateMinutes : '-';
@@ -1590,6 +1655,10 @@ const ScheduleReport = () => {
               return '-';
             })(),
             (() => {
+              // CRITICAL FIX: Check backend status first
+              if (record.status === 'incomplete' || record.status === 'shift_void') {
+                return (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-';
+              }
               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
                   record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
                 const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
@@ -1599,6 +1668,10 @@ const ScheduleReport = () => {
             })(),
             (() => {
               try {
+                // CRITICAL FIX: Check backend status first
+                if (record.status === 'incomplete' || record.status === 'shift_void') {
+                  return (record.night_differential || 0) > 0 ? `${record.night_differential}h` : '-';
+                }
                 if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
                   const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
                   return ndHours > 0 ? `${ndHours}h` : '-';
@@ -2539,6 +2612,12 @@ const ScheduleReport = () => {
                                 );
                               }
                               
+                              // CRITICAL FIX: Check backend status first
+                              if (record.status === 'incomplete' || record.status === 'shift_void') {
+                                console.log(`🚫 Backend status is ${record.status} - using backend BH for ${record.date}:`, record.billed_hours);
+                                return (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-';
+                              }
+                              
                               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
                                 const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
                                 console.log(`✅ BH Result for ${record.date}:`, bhMinutes);
@@ -2568,6 +2647,12 @@ const ScheduleReport = () => {
                                     </div>
                                   </div>
                                 );
+                              }
+                              
+                              // CRITICAL FIX: Check backend status first
+                              if (record.status === 'incomplete' || record.status === 'shift_void') {
+                                console.log(`🚫 Backend status is ${record.status} - using backend LT for ${record.date}:`, record.late_minutes);
+                                return (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-';
                               }
                               
                               if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
@@ -2605,6 +2690,12 @@ const ScheduleReport = () => {
                                 );
                               }
                               
+                              // CRITICAL FIX: Check backend status first
+                              if (record.status === 'incomplete' || record.status === 'shift_void') {
+                                console.log(`🚫 Backend status is ${record.status} - using backend UT for ${record.date}:`, record.undertime_minutes);
+                                return (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-';
+                              }
+                              
                               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
                                   record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
                                 const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
@@ -2618,6 +2709,12 @@ const ScheduleReport = () => {
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                             {(() => {
                               // Clean ND calculation without excessive logging
+                              
+                              // CRITICAL FIX: Check backend status first
+                              if (record.status === 'incomplete' || record.status === 'shift_void') {
+                                console.log(`🚫 Backend status is ${record.status} - using backend ND for ${record.date}:`, record.night_differential);
+                                return (record.night_differential || 0) > 0 ? `${record.night_differential}h` : '-';
+                              }
                               
                               // Only calculate ND if we have both time in and time out on the same day
                               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {

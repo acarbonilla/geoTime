@@ -837,34 +837,8 @@ def generate_daily_time_summary_from_entries(employee, start_date, end_date=None
                 'is_future': current_date > today
             }
             
-            if time_in and time_out:
-                summary.status = 'present'
-                if schedule and time_in > schedule.scheduled_time_in and employee.require_schedule_compliance:
-                    # Check if within grace period
-                    from datetime import timedelta
-                    grace_period_end = schedule.scheduled_time_in + timedelta(minutes=employee.grace_period_minutes)
-                    if time_in > grace_period_end:
-                        summary.status = 'late'
-            elif time_in and not time_out:
-                summary.status = 'present'  # Still working - not half_day
-            elif not time_in and not time_out:
-                # No time entries - determine status based on date and schedule
-                if current_date > today:
-                    # Future date
-                    if schedule and summary.scheduled_time_in and summary.scheduled_time_out:
-                        summary.status = 'not_scheduled'  # Future date with schedule - scheduled but not yet worked
-                    else:
-                        summary.status = 'not_scheduled'  # Future date with no schedule
-                elif summary.is_weekend:
-                    summary.status = 'weekend'
-                else:
-                    # Current or past date - CRITICAL FIX HERE
-                    if schedule and summary.scheduled_time_in and summary.scheduled_time_out:
-                        # Has schedule but no time entries = absent
-                        summary.status = 'absent'
-                    else:
-                        # No schedule = not_scheduled (not absent!)
-                        summary.status = 'not_scheduled'
+            # Use the new comprehensive status calculation method
+            summary.calculate_comprehensive_status()
             
             # Detect breaks and set total_break_minutes before calculating metrics
             if time_in and time_out and len(time_entries) > 2:

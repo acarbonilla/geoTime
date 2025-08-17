@@ -604,8 +604,14 @@ class DailyTimeSummary(models.Model):
     
     STATUS_CHOICES = [
         ('present', 'Present'),
-        ('absent', 'Absent'),
         ('late', 'Late'),
+        ('undertime', 'UnderTime'),
+        ('incomplete', 'Incomplete'),
+        ('scheduled', 'Scheduled'),
+        ('absent', 'Absent'),
+        ('not_yet_scheduled', 'Not Yet Scheduled'),
+        ('shift_void', 'Shift Void'),
+        # Keep legacy statuses for backward compatibility
         ('half_day', 'Half Day'),
         ('leave', 'On Leave'),
         ('holiday', 'Holiday'),
@@ -1089,6 +1095,121 @@ class DailyTimeSummary(models.Model):
                 
         except Exception as e:
             print(f"Error creating emergency time-out request: {e}")
+
+    def calculate_comprehensive_status(self):
+        """
+        Calculate comprehensive status based on new business rules:
+        
+        Status:
+            Present → TimeIn is on or before ScheduleIn, TimeOut is on or after ScheduleOut
+            Late → TimeIn is after ScheduleIn
+            UnderTime → TimeOut is before ScheduleOut
+            Incomplete → TimeOut is missing or more than 1 hour late
+            Scheduled → ScheduleIn and ScheduleOut are set
+            Absent → ScheduleIn & ScheduleOut exist but no TimeIn (on today's date)
+            Not Yet Scheduled → ScheduleIn and ScheduleOut are missing (for past or future)
+            Shift Void → Anything not matching above
+        
+        If void all BH, UT, LT, and ND is 0(zero)
+        """
+        from datetime import datetime, date, time, timedelta
+        
+        today = date.today()
+        current_date = self.date
+        
+        # Check if record has scheduled times
+        has_scheduled_times = self.scheduled_time_in and self.scheduled_time_out
+        
+        if has_scheduled_times:
+            if current_date > today:
+                # Future date with schedule
+                new_status = 'scheduled'
+            elif current_date == today and not self.time_in:
+                # Today with schedule but no time in
+                new_status = 'absent'
+            else:
+                # Past or current date with schedule
+                if self.time_in and self.time_out and self.time_in != '-' and self.time_out != '-':
+                    # Both time in and time out exist
+                    try:
+                        # Parse times for comparison
+                        time_in_dt = datetime.combine(current_date, self.time_in)
+                        time_out_dt = datetime.combine(current_date, self.time_out)
+                        scheduled_in_dt = datetime.combine(current_date, self.scheduled_time_in)
+                        scheduled_out_dt = datetime.combine(current_date, self.scheduled_time_out)
+                        
+                        # Handle night shifts crossing midnight
+                        if time_out_dt < time_in_dt:
+                            time_out_dt += timedelta(days=1)
+                        if scheduled_out_dt < scheduled_in_dt:
+                            scheduled_out_dt += timedelta(days=1)
+                        
+                        # Calculate actual duration worked
+                        actual_duration_minutes = int((time_out_dt - time_in_dt).total_seconds() / 60)
+                        
+                        # Check for suspiciously short shifts (less than 15 minutes)
+                        if actual_duration_minutes < 15:
+                            new_status = 'incomplete'
+                        else:
+                            # Check if time in is late
+                            is_late = time_in_dt > scheduled_in_dt
+                            
+                            # Check if time out is early (undertime)
+                            is_undertime = time_out_dt < scheduled_out_dt
+                            
+                            if is_late:
+                                new_status = 'late'
+                            elif is_undertime:
+                                new_status = 'undertime'
+                            else:
+                                new_status = 'present'
+                                
+                    except (ValueError, TypeError):
+                        # If time parsing fails, default to present
+                        new_status = 'present'
+                elif self.time_in and (not self.time_out or self.time_out == '-'):
+                    # Has time in but no time out
+                    new_status = 'incomplete'
+                else:
+                    # No time entries
+                    new_status = 'absent'
+        else:
+            # No scheduled times
+            new_status = 'not_yet_scheduled'
+        
+        # Check for shift void conditions
+        is_shift_void = False
+        if self.time_in and self.time_out and self.scheduled_time_in:
+            try:
+                time_in_dt = datetime.combine(current_date, self.time_in)
+                scheduled_in_dt = datetime.combine(current_date, self.scheduled_time_in)
+                
+                # Shift void: both time in and time out are before scheduled start time
+                if time_in_dt < scheduled_in_dt:
+                    # Check if time out is also before scheduled start
+                    time_out_dt = datetime.combine(current_date, self.time_out)
+                    if time_out_dt < scheduled_in_dt:
+                        is_shift_void = True
+                        new_status = 'shift_void'
+                        
+            except (ValueError, TypeError):
+                pass
+        
+        # Update status
+        if self.status != new_status:
+            self.status = new_status
+        
+        # If shift is void, zero out all metrics
+        if is_shift_void:
+            self.billed_hours = 0
+            self.late_minutes = 0
+            self.undertime_minutes = 0
+            self.night_differential_hours = 0
+            self.overtime_hours = 0
+            self.total_break_minutes = 0
+            self.lunch_break_minutes = 0
+        
+        return new_status
 
 
 class EmergencyTimeOutRequest(models.Model):
