@@ -231,7 +231,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
             day: '2-digit', 
             year: 'numeric' 
           });
-          const errorMsg = `No work schedule found for today (${today}) and no active session. Please contact your supervisor to set up your schedule before clocking in/out.`;
+          const errorMsg = `No work schedule found for today (${today}) and no active session. If you're on a nightshift that started yesterday, please try refreshing your schedule or contact your supervisor.`;
           setScheduleError(errorMsg);
           return false;
         }
@@ -255,7 +255,42 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       return false;
     }
     
-    // NEW: Check if current time is within 1 hour of scheduled time in
+    // ENHANCED: Nightshift detection and validation for timeout operations
+    if (action === 'time-out' && todaySchedule) {
+      try {
+        // Parse scheduled times to detect nightshift
+        const scheduledStartTimeStr = todaySchedule.scheduled_time_in;
+        const scheduledEndTimeStr = todaySchedule.scheduled_time_out;
+        
+        // Handle different time formats (HH:MM or HH:MM:SS)
+        let startHours, startMinutes, endHours, endMinutes;
+        
+        if (scheduledStartTimeStr.includes(':')) {
+          const startTimeParts = scheduledStartTimeStr.split(':');
+          startHours = parseInt(startTimeParts[0], 10);
+          startMinutes = parseInt(startTimeParts[1], 10);
+        }
+        
+        if (scheduledEndTimeStr.includes(':')) {
+          const endTimeParts = scheduledEndTimeStr.split(':');
+          endHours = parseInt(endTimeParts[0], 10);
+          endMinutes = parseInt(endTimeParts[1], 10);
+        }
+        
+        // Check if this is a nightshift (crosses midnight)
+        if (!isNaN(startHours) && !isNaN(endHours) && endHours < startHours) {
+          console.log('Nightshift detected - allowing timeout operations');
+          // For nightshifts, we're more lenient with timeouts
+          setScheduleError(null);
+          return true;
+        }
+      } catch (nightshiftError) {
+        console.error('MobileDashboard Error detecting nightshift:', nightshiftError);
+        // If nightshift detection fails, continue with normal validation
+      }
+    }
+    
+    // NEW: Check if current time is within 1 hour of scheduled time in (for time-in operations only)
     try {
       const now = new Date();
       const currentTime = now.getTime();
@@ -347,19 +382,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       // Note: Late clock-ins are allowed (no restriction based on end time)
       // Users can clock in at any time after the earliest allowed time (1 hour before ScheduleIn)
       
-      // ENHANCED: Nightshift detection and validation
-      if (action === 'time-out' && todaySchedule) {
-        const scheduledStartTime = new Date(`2000-01-01T${todaySchedule.scheduled_time_in}`);
-        const scheduledEndTime = new Date(`2000-01-01T${todaySchedule.scheduled_time_out}`);
-        
-        // Check if this is a nightshift (crosses midnight)
-        if (scheduledEndTime < scheduledStartTime) {
-          console.log('Nightshift detected - allowing timeout operations');
-          // For nightshifts, we're more lenient with timeouts
-          setScheduleError(null);
-          return true;
-        }
-      }
+
       
     } catch (timeError) {
       console.error('MobileDashboard Error parsing scheduled time:', timeError);
@@ -855,6 +878,16 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
                       <span>Once scheduled, you can clock in/out</span>
                     </li>
                   </ul>
+                  
+                  {/* Nightshift-specific guidance */}
+                  {sessionResponse?.active_session && (
+                    <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded">
+                      <p className="text-blue-800 text-xs font-medium mobile-text-small">🌙 Nightshift Worker?</p>
+                      <p className="text-blue-700 text-xs mobile-text-small">
+                        If you're on a nightshift that started yesterday, try refreshing your schedule or contact your supervisor to ensure your schedule is properly configured.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 
                 {/* Contact Information */}
@@ -939,6 +972,16 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
               {getStatusText()}
             </div>
             <p className="text-gray-600 mt-2 mobile-text">Today's Total: {getTotalHoursToday()}</p>
+            
+            {/* Nightshift status indicator */}
+            {sessionResponse?.active_session && !todaySchedule && (
+              <div className="mt-3 p-2 bg-purple-50 border border-purple-200 rounded">
+                <p className="text-purple-800 text-sm font-medium mobile-text-small">🌙 Nightshift Active</p>
+                <p className="text-purple-700 text-xs mobile-text-small">
+                  You have an active session from a previous shift. You can clock out when your shift ends.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
