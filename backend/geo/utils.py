@@ -1,7 +1,167 @@
-from datetime import datetime, timedelta
+from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from typing import List, Dict, Tuple, Optional
 from django.utils import timezone
+from django.db.models import Q, Sum, Count, Avg, Min, Max
+from django.db import transaction
+import logging
+import math
+from decimal import Decimal, ROUND_HALF_UP
+
+logger = logging.getLogger(__name__)
+
+def adjust_nightshift_times(schedule_in, schedule_out, time_in=None, time_out=None, base_date=None):
+    """
+    Adjust nightshift times to handle cross-date schedules properly.
+    
+    This function implements the nightshift cross-date logic to solve the problem where:
+    - Night shift starts: 10:00 PM (same day)
+    - Night shift ends: 6:00 AM (next day)
+    - Problem: schedule_out.time() < schedule_in.time() (6:00 AM < 10:00 PM)
+    - Solution: Add 1 day to schedule_out for proper calculations
+    
+    Args:
+        schedule_in: Time object for scheduled start time
+        schedule_out: Time object for scheduled end time
+        time_in: Time object for actual start time (optional)
+        time_out: Time object for actual end time (optional)
+        base_date: Base date for calculations (defaults to today)
+    
+    Returns:
+        dict: Adjusted times with proper date handling
+    """
+    if not base_date:
+        base_date = timezone.now().date()
+    
+    # Convert to datetime for easier manipulation
+    schedule_in_dt = datetime.combine(base_date, schedule_in) if schedule_in else None
+    schedule_out_dt = datetime.combine(base_date, schedule_out) if schedule_out else None
+    time_in_dt = datetime.combine(base_date, time_in) if time_in else None
+    time_out_dt = datetime.combine(base_date, time_out) if time_out else None
+    
+    # Adjust night shift logic: if schedule_out is on next day, but should count for the current date
+    if schedule_in_dt and schedule_out_dt:
+        if schedule_out_dt.time() < schedule_in_dt.time():
+            # This is a night shift crossing midnight
+            schedule_out_dt = schedule_in_dt + timedelta(days=1)
+            logger.debug(f"Night shift detected: {schedule_in_dt.time()} - {schedule_out_dt.time()} (adjusted)")
+    
+    # Apply the same logic to actual time_out if time_out is earlier than time_in
+    if time_in_dt and time_out_dt and time_out_dt.time() < time_in_dt.time():
+        # Actual time out is on next day
+        time_out_dt = time_in_dt + timedelta(days=1)
+        logger.debug(f"Actual time out adjusted for next day: {time_in_dt.time()} - {time_out_dt.time()}")
+    
+    return {
+        'schedule_in_dt': schedule_in_dt,
+        'schedule_out_dt': schedule_out_dt,
+        'time_in_dt': time_in_dt,
+        'time_out_dt': time_out_dt,
+        'is_night_shift': schedule_in and schedule_out and schedule_out < schedule_in,
+        'base_date': base_date
+    }
+
+def calculate_nightshift_duration(schedule_in, schedule_out, time_in=None, time_out=None, base_date=None):
+    """
+    Calculate duration for night shifts with proper date handling.
+    
+    Args:
+        schedule_in: Time object for scheduled start time
+        schedule_out: Time object for scheduled end time
+        time_in: Time object for actual start time (optional)
+        time_out: Time object for actual end time (optional)
+        base_date: Base date for calculations
+    
+    Returns:
+        dict: Duration calculations with proper night shift handling
+    """
+    adjusted_times = adjust_nightshift_times(schedule_in, schedule_out, time_in, time_out, base_date)
+    
+    # Calculate scheduled duration
+    scheduled_duration = None
+    if adjusted_times['schedule_in_dt'] and adjusted_times['schedule_out_dt']:
+        scheduled_duration = adjusted_times['schedule_out_dt'] - adjusted_times['schedule_in_dt']
+    
+    # Calculate actual duration
+    actual_duration = None
+    if adjusted_times['time_in_dt'] and adjusted_times['time_out_dt']:
+        actual_duration = adjusted_times['time_out_dt'] - adjusted_times['time_in_dt']
+    
+    # Calculate night differential hours (10 PM to 6 AM)
+    night_differential_hours = 0
+    if adjusted_times['time_in_dt'] and adjusted_times['time_out_dt']:
+        night_start = datetime.combine(base_date, time(22, 0))  # 10:00 PM
+        night_end = datetime.combine(base_date + timedelta(days=1), time(6, 0))  # 6:00 AM next day
+        
+        # Find overlap with night period
+        effective_start = max(adjusted_times['time_in_dt'], night_start)
+        effective_end = min(adjusted_times['time_out_dt'], night_end)
+        
+        if effective_start < effective_end:
+            night_duration = effective_end - effective_start
+            night_differential_hours = night_duration.total_seconds() / 3600
+    
+    return {
+        'scheduled_duration': scheduled_duration,
+        'actual_duration': actual_duration,
+        'night_differential_hours': round(night_differential_hours, 2),
+        'is_night_shift': adjusted_times['is_night_shift'],
+        'adjusted_times': adjusted_times
+    }
+
+def get_attendance_status_enhanced(schedule_in, schedule_out, time_in, time_out, base_date=None):
+    """
+    Enhanced attendance status determination with night shift support.
+    
+    Args:
+        schedule_in: Time object for scheduled start time
+        schedule_out: Time object for scheduled end time
+        time_in: Time object for actual start time
+        time_out: Time object for actual end time
+        base_date: Base date for calculations
+    
+    Returns:
+        str: Attendance status
+    """
+    if not schedule_in and not schedule_out:
+        return "not_yet_scheduled"
+    
+    if schedule_in and schedule_out and not time_in and not time_out:
+        return "absent"
+    
+    if time_in and not time_out:
+        # Incomplete if no time-out after 1 hour
+        time_now = timezone.now()
+        if time_in:
+            time_in_dt = datetime.combine(base_date or timezone.now().date(), time_in)
+            diff = (time_now - time_in_dt).total_seconds() / 3600
+            return "incomplete" if diff > 1 else "waiting_timeout"
+    
+    if time_in and time_out:
+        # Use adjusted times for proper comparison
+        adjusted_times = adjust_nightshift_times(schedule_in, schedule_out, time_in, time_out, base_date)
+        
+        if adjusted_times['schedule_in_dt'] and adjusted_times['time_in_dt']:
+            late = adjusted_times['time_in_dt'] > adjusted_times['schedule_in_dt']
+        else:
+            late = False
+        
+        if adjusted_times['schedule_out_dt'] and adjusted_times['time_out_dt']:
+            undertime = adjusted_times['time_out_dt'] < adjusted_times['schedule_out_dt']
+        else:
+            undertime = False
+        
+        if not late and not undertime:
+            return "present"
+        elif late and undertime:
+            return "late_and_undertime"
+        elif late:
+            return "late"
+        elif undertime:
+            return "undertime"
+    
+    return "unknown"
+
 from .models import TimeEntry, WorkSession, Employee
 import logging
 

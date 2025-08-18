@@ -967,16 +967,37 @@ const ScheduleReport = () => {
       return [];
     }
 
-    const groupedRecords = [];
+    let groupedRecords = [];
     
-    for (let i = 0; i < dailyRecords.length; i++) {
+    if (groupNightshifts) {
+      // Use the new consecutive nightshift grouping function
+      groupedRecords = groupRecordsWithConsecutiveNightshifts(dailyRecords);
+    } else {
+      // Original grouping logic for individual days
+      for (let i = 0; i < dailyRecords.length; i++) {
       const currentRecord = dailyRecords[i];
       const nextRecord = dailyRecords[i + 1];
       
-      // Check if this is a nightshift (starts late, ends early next day)
-      const isNightshift = currentRecord.scheduled_in && currentRecord.scheduled_out && 
-        parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
-        parseInt(currentRecord.scheduled_out.split(':')[0]) < 12;
+      // ENHANCED: Check if this is a nightshift using comprehensive logic
+      const isNightshift = currentRecord.scheduled_in && currentRecord.scheduled_out && (
+        // Pattern 1: Traditional night shift (starts late, ends early next day)
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
+         parseInt(currentRecord.scheduled_out.split(':')[0]) < 12) ||
+        // Pattern 2: Early start night shift (starts at noon, ends early next day)
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 12 && 
+         parseInt(currentRecord.scheduled_out.split(':')[0]) < 12) ||
+        // Pattern 3: Late night shift (starts very late, ends early next day)
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 20 && 
+         parseInt(currentRecord.scheduled_out.split(':')[0]) < 8) ||
+        // Pattern 4: Cross-midnight detection (end time < start time) - MOST IMPORTANT!
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) > parseInt(currentRecord.scheduled_out.split(':')[0])) ||
+        // Pattern 5: Evening to morning pattern (8 PM - 5 AM, 9 PM - 6 AM, etc.)
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
+         parseInt(currentRecord.scheduled_out.split(':')[0]) <= 11) ||
+        // Pattern 6: Any shift that starts in PM and ends in AM
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 12 && 
+         parseInt(currentRecord.scheduled_out.split(':')[0]) < 12)
+      );
       
       // Check if current record has time-in but no time-out (incomplete night shift)
       const hasTimeInNoTimeOut = currentRecord.time_in && currentRecord.time_in !== '-' && 
@@ -990,7 +1011,8 @@ const ScheduleReport = () => {
         // First check the main time_out field
         if (nextRecord.time_out && nextRecord.time_out !== '-') {
           const timeoutHour = parseInt(nextRecord.time_out.split(':')[0]);
-          if (timeoutHour < 6) {
+          // More flexible timeout detection: before 12 PM (noon) for next day
+          if (timeoutHour < 12) {
             hasNextDayTimeout = true;
             nextDayTimeoutEntry = {
               event_time: nextRecord.time_out,
@@ -1003,7 +1025,7 @@ const ScheduleReport = () => {
         if (!hasNextDayTimeout && nextRecord.time_entries && Array.isArray(nextRecord.time_entries)) {
           const timeoutInEntries = nextRecord.time_entries.find(entry => 
             entry.entry_type === 'time_out' && 
-            parseInt(entry.event_time.split(':')[0]) < 6
+            parseInt(entry.event_time.split(':')[0]) < 12
           );
           
           if (timeoutInEntries) {
@@ -1069,6 +1091,7 @@ const ScheduleReport = () => {
         groupedRecords.push(regularRecord);
       }
     }
+    } // Close the else block
     
     return groupedRecords;
   };
@@ -1727,6 +1750,119 @@ const ScheduleReport = () => {
     }
   };
 
+  // Helper function to detect consecutive nightshifts
+  const detectConsecutiveNightshifts = (dailyRecords) => {
+    const consecutiveGroups = [];
+    let currentGroup = [];
+    
+    for (let i = 0; i < dailyRecords.length; i++) {
+      const currentRecord = dailyRecords[i];
+      const nextRecord = dailyRecords[i + 1];
+      
+      // Check if current record is a nightshift using the same logic
+      const isCurrentNightshift = currentRecord.scheduled_in && currentRecord.scheduled_out && (
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
+         parseInt(currentRecord.scheduled_out.split(':')[0]) < 12) ||
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 12 && 
+         parseInt(currentRecord.scheduled_out.split(':')[0]) < 12) ||
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 20 && 
+         parseInt(currentRecord.scheduled_out.split(':')[0]) < 8) ||
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) > parseInt(currentRecord.scheduled_out.split(':')[0])) ||
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
+         parseInt(currentRecord.scheduled_out.split(':')[0]) <= 11) ||
+        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 12 && 
+         parseInt(currentRecord.scheduled_out.split(':')[0]) < 12)
+      );
+      
+      // Check if next record is also a nightshift with similar times
+      const isNextNightshift = nextRecord && nextRecord.scheduled_in && nextRecord.scheduled_out && (
+        (parseInt(nextRecord.scheduled_in.split(':')[0]) >= 18 && 
+         parseInt(nextRecord.scheduled_out.split(':')[0]) < 12) ||
+        (parseInt(nextRecord.scheduled_in.split(':')[0]) >= 12 && 
+         parseInt(nextRecord.scheduled_out.split(':')[0]) < 12) ||
+        (parseInt(nextRecord.scheduled_in.split(':')[0]) >= 20 && 
+         parseInt(nextRecord.scheduled_out.split(':')[0]) < 8) ||
+        (parseInt(nextRecord.scheduled_in.split(':')[0]) > parseInt(nextRecord.scheduled_out.split(':')[0])) ||
+        (parseInt(nextRecord.scheduled_in.split(':')[0]) >= 18 && 
+         parseInt(nextRecord.scheduled_out.split(':')[0]) <= 11) ||
+        (parseInt(nextRecord.scheduled_in.split(':')[0]) >= 12 && 
+         parseInt(nextRecord.scheduled_out.split(':')[0]) < 12)
+      );
+      
+      // Check if times are similar (within 1 hour difference)
+      const isSimilarTimes = nextRecord && 
+        Math.abs(parseInt(currentRecord.scheduled_in.split(':')[0]) - parseInt(nextRecord.scheduled_in.split(':')[0])) <= 1 &&
+        Math.abs(parseInt(currentRecord.scheduled_out.split(':')[0]) - parseInt(nextRecord.scheduled_out.split(':')[0])) <= 1;
+      
+      if (isCurrentNightshift) {
+        if (isNextNightshift && isSimilarTimes) {
+          // Add to current group
+          currentGroup.push(currentRecord);
+        } else {
+          // End current group and start new one
+          if (currentGroup.length > 0) {
+            currentGroup.push(currentRecord);
+            consecutiveGroups.push([...currentGroup]);
+            currentGroup = [];
+          } else {
+            // Single nightshift
+            consecutiveGroups.push([currentRecord]);
+          }
+        }
+      } else {
+        // End current group if exists
+        if (currentGroup.length > 0) {
+          consecutiveGroups.push([...currentGroup]);
+          currentGroup = [];
+        }
+      }
+    }
+    
+    // Add any remaining group
+    if (currentGroup.length > 0) {
+      consecutiveGroups.push([...currentGroup]);
+    }
+    
+    return consecutiveGroups;
+  };
+
+  // Enhanced grouping function that handles consecutive nightshifts
+  const groupRecordsWithConsecutiveNightshifts = (dailyRecords) => {
+    const consecutiveGroups = detectConsecutiveNightshifts(dailyRecords);
+    const groupedRecords = [];
+    
+    // Process consecutive nightshift groups first
+    consecutiveGroups.forEach((group, groupIndex) => {
+      if (group.length > 1) {
+        // This is a consecutive nightshift group (e.g., Monday-Friday)
+        const firstRecord = group[0];
+        const lastRecord = group[group.length - 1];
+        
+        // Create a combined record for the entire group
+        const combinedRecord = {
+          ...firstRecord,
+          isConsecutiveNightshift: true,
+          consecutiveGroup: group,
+          groupSize: group.length,
+          startDate: firstRecord.date,
+          endDate: lastRecord.date,
+          displayDate: `${moment(firstRecord.date).format('MMM DD')} → ${moment(lastRecord.date).format('MMM DD')} (${group.length} days)`,
+          displayDay: `${firstRecord.day} → ${lastRecord.day}`,
+          scheduledTimeRange: `${firstRecord.scheduled_in} - ${firstRecord.scheduled_out}`,
+          isNightshift: true
+        };
+        
+        groupedRecords.push(combinedRecord);
+        console.log(`🌙 Consecutive nightshift group ${groupIndex + 1}: ${group.length} days from ${firstRecord.date} to ${lastRecord.date}`);
+      } else {
+        // Single nightshift, add as-is
+        groupedRecords.push(group[0]);
+      }
+    });
+    
+    return groupedRecords;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       <div className="max-w-7xl mx-auto p-6">
@@ -1825,7 +1961,7 @@ const ScheduleReport = () => {
             </div>
             <div className="mt-2 text-xs text-gray-500">
               {groupNightshifts 
-                ? "Nightshifts spanning midnight will be grouped on the start date for easier reading."
+                ? "Nightshifts spanning midnight will be grouped on the start date for easier reading. Consecutive nightshifts (e.g., Monday-Friday) will be grouped together."
                 : "Each day will show its own time entries, including August 16th time-in for nightshifts."
               }
             </div>
@@ -2246,10 +2382,26 @@ const ScheduleReport = () => {
                           });
                         }
                         
-                        // Check if this is a nightshift (starts late, ends early next day)
-                        const isNightshift = currentRecord.scheduled_in && currentRecord.scheduled_out && 
-                          parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
-                          parseInt(currentRecord.scheduled_out.split(':')[0]) < 12;
+                        // ENHANCED: Check if this is a nightshift using comprehensive logic
+                        const isNightshift = currentRecord.scheduled_in && currentRecord.scheduled_out && (
+                          // Pattern 1: Traditional night shift (starts late, ends early next day)
+                          (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
+                           parseInt(currentRecord.scheduled_out.split(':')[0]) < 12) ||
+                          // Pattern 2: Early start night shift (starts at noon, ends early next day)
+                          (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 12 && 
+                           parseInt(currentRecord.scheduled_out.split(':')[0]) < 12) ||
+                          // Pattern 3: Late night shift (starts very late, ends early next day)
+                          (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 20 && 
+                           parseInt(currentRecord.scheduled_out.split(':')[0]) < 8) ||
+                          // Pattern 4: Cross-midnight detection (end time < start time) - MOST IMPORTANT!
+                          (parseInt(currentRecord.scheduled_in.split(':')[0]) > parseInt(currentRecord.scheduled_out.split(':')[0])) ||
+                          // Pattern 5: Evening to morning pattern (8 PM - 5 AM, 9 PM - 6 AM, etc.)
+                          (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
+                           parseInt(currentRecord.scheduled_out.split(':')[0]) <= 11) ||
+                          // Pattern 6: Any shift that starts in PM and ends in AM
+                          (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 12 && 
+                           parseInt(currentRecord.scheduled_out.split(':')[0]) < 12)
+                        );
                         
                         console.log(`🌙 Nightshift detection for ${currentRecord.date}:`, {
                           scheduledIn: currentRecord.scheduled_in,
@@ -2281,9 +2433,9 @@ const ScheduleReport = () => {
                             console.log(`🔍 Checking main time_out field:`, {
                               timeOut: nextRecord.time_out,
                               timeoutHour,
-                              isBefore6AM: timeoutHour <= 6
+                              isBeforeNoon: timeoutHour < 12
                             });
-                            if (timeoutHour <= 6) {
+                            if (timeoutHour < 12) {
                               hasNextDayTimeout = true;
                               nextDayTimeoutEntry = {
                                 event_time: nextRecord.time_out,
@@ -2302,7 +2454,7 @@ const ScheduleReport = () => {
                             
                             const timeoutInEntries = nextRecord.time_entries.find(entry => 
                               entry.entry_type === 'time_out' && 
-                              parseInt(entry.event_time.split(':')[0]) <= 6
+                              parseInt(entry.event_time.split(':')[0]) < 12
                             );
                             
                             if (timeoutInEntries) {
@@ -2375,47 +2527,77 @@ const ScheduleReport = () => {
                       
                       return groupedRecords.map((record, index) => (
                         <tr key={index} className={`hover:bg-gray-50 transition-colors duration-200 ${
+                          record.isConsecutiveNightshift ? 'consecutive-nightshift-row bg-indigo-50 border-l-4 border-indigo-500' :
                           record.isNightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : 
                           record.isNightshiftTimeout ? 'nightshift-timeout-row bg-purple-50 border-l-4 border-purple-400' :
                           record.hasPreviousNightshiftTimeout ? 'previous-nightshift-timeout-row bg-green-50 border-l-4 border-green-400' : ''
                         }`}>
                           <td className="px-6 py-4 text-sm font-medium text-gray-900">
                             <div className="flex flex-col">
-                              <span>{moment(record.date).format('MMM DD')}</span>
-                              {record.isNightshift && record.nextDayDate && (
-                                <div className="text-xs text-blue-600 font-normal">
-                                  → {moment(record.nextDayDate).format('MMM DD')}
-                                </div>
-                              )}
-                              {record.isNightshiftTimeout && record.previousDayDate && (
-                                <div className="text-xs text-purple-600 font-normal">
-                                  ← {moment(record.previousDayDate).format('MMM DD')}
-                                </div>
-                              )}
-                              {record.isNightshift && !record.nextDayDate && record.isIncomplete && (
-                                <div className="text-xs text-orange-600 font-normal">
-                                  ⚠️ Incomplete
-                                </div>
-                              )}
-                              {record.hasPreviousNightshiftTimeout && (
-                                <div className="text-xs text-green-600 font-normal">
-                                  ✓ Available for new time-in
-                                </div>
+                              {record.isConsecutiveNightshift ? (
+                                <>
+                                  <span className="font-semibold text-indigo-700">
+                                    {record.displayDate}
+                                  </span>
+                                  <div className="text-xs text-indigo-600 font-normal">
+                                    🌙 {record.groupSize} consecutive nightshifts
+                                  </div>
+                                  <div className="text-xs text-indigo-500 font-normal">
+                                    {record.scheduledTimeRange}
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <span>{moment(record.date).format('MMM DD')}</span>
+                                  {record.isNightshift && record.nextDayDate && (
+                                    <div className="text-xs text-blue-600 font-normal">
+                                      → {moment(record.nextDayDate).format('MMM DD')}
+                                    </div>
+                                  )}
+                                  {record.isNightshiftTimeout && record.previousDayDate && (
+                                    <div className="text-xs text-purple-600 font-normal">
+                                      ← {moment(record.previousDayDate).format('MMM DD')}
+                                    </div>
+                                  )}
+                                  {record.isNightshift && !record.nextDayDate && record.isIncomplete && (
+                                    <div className="text-xs text-orange-600 font-normal">
+                                      ⚠️ Incomplete
+                                    </div>
+                                  )}
+                                  {record.hasPreviousNightshiftTimeout && (
+                                    <div className="text-xs text-green-600 font-normal">
+                                      ✓ Available for new time-in
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </div>
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600">
                             <div className="flex flex-col">
-                              <span>{record.day}</span>
-                              {record.isNightshift && record.nextDayDay && (
-                                <div className="text-xs text-blue-600 font-normal">
-                                  → {record.nextDayDay}
-                                </div>
+                              {record.isConsecutiveNightshift ? (
+                                <>
+                                  <span className="font-semibold text-indigo-700">
+                                    {record.displayDay}
+                                  </span>
+                                  <div className="text-xs text-indigo-600 font-normal">
+                                    {record.groupSize} consecutive days
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <span>{record.day}</span>
+                                  {record.isNightshift && record.nextDayDay && (
+                                    <div className="text-xs text-blue-600 font-normal">
+                                      → {record.nextDayDay}
+                                    </div>
                               )}
-                              {record.isNightshiftTimeout && record.previousDayDay && (
-                                <div className="text-xs text-purple-600 font-normal">
-                                  ← {record.previousDayDay}
-                                </div>
+                                  {record.isNightshiftTimeout && record.previousDayDay && (
+                                    <div className="text-xs text-purple-600 font-normal">
+                                      ← {record.previousDayDay}
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </div>
                           </td>

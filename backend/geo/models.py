@@ -569,6 +569,56 @@ class EmployeeSchedule(models.Model):
         duration = end_dt - start_dt
         return duration.total_seconds() / 3600
     
+    def detect_night_shift(self):
+        """Automatically detect if this is a night shift"""
+        if self.scheduled_time_in and self.scheduled_time_out:
+            # Night shift: starts late (after 6 PM) and ends early (before 12 PM)
+            start_hour = self.scheduled_time_in.hour
+            end_hour = self.scheduled_time_out.hour
+            
+            # Check if it's a night shift pattern
+            is_night = (
+                (start_hour >= 18 and end_hour < 12) or  # 6 PM to 12 PM
+                (start_hour >= 20 and end_hour < 8) or   # 8 PM to 8 AM
+                (start_hour >= 22 and end_hour < 6)      # 10 PM to 6 AM
+            )
+            
+            # Also check if end time is before start time (crosses midnight)
+            if self.scheduled_time_out < self.scheduled_time_in:
+                is_night = True
+            
+            # CRITICAL FIX: Don't call self.save() here to avoid recursion!
+            # Just set the field value, the parent save() method will handle it
+            self.is_night_shift = is_night
+            return is_night
+        
+        return False
+    
+    def get_adjusted_times(self):
+        """Get scheduled times adjusted for night shift cross-date logic"""
+        from .utils import adjust_nightshift_times
+        
+        adjusted = adjust_nightshift_times(
+            self.scheduled_time_in,
+            self.scheduled_time_out,
+            base_date=self.date
+        )
+        
+        return {
+            'schedule_in_dt': adjusted['schedule_in_dt'],
+            'schedule_out_dt': adjusted['schedule_out_dt'],
+            'is_night_shift': adjusted['is_night_shift'],
+            'duration_hours': adjusted['schedule_out_dt'].hour - adjusted['schedule_in_dt'].hour if adjusted['schedule_in_dt'] and adjusted['schedule_out_dt'] else 0
+        }
+    
+    def save(self, *args, **kwargs):
+        """Override save to automatically detect night shifts"""
+        # Auto-detect night shift before saving
+        if self.scheduled_time_in and self.scheduled_time_out:
+            self.detect_night_shift()
+        
+        super().save(*args, **kwargs)
+    
     def is_weekday(self):
         """Check if this is a weekday (Monday-Friday)"""
         return self.date.weekday() < 5  # Monday = 0, Friday = 4
@@ -714,6 +764,149 @@ class DailyTimeSummary(models.Model):
             return self.scheduled_time_out.strftime('%H:%M') if self.scheduled_time_out else '-'
         except (AttributeError, ValueError):
             return '-'
+    
+    @property
+    def is_night_shift_schedule(self):
+        """Check if this schedule is a night shift (crosses midnight)"""
+        if self.scheduled_time_in and self.scheduled_time_out:
+            return self.scheduled_time_out < self.scheduled_time_in
+        return False
+    
+    @property
+    def adjusted_scheduled_times(self):
+        """Get scheduled times adjusted for night shift cross-date logic"""
+        from .utils import adjust_nightshift_times
+        
+        if not self.scheduled_time_in or not self.scheduled_time_out:
+            return None
+        
+        adjusted = adjust_nightshift_times(
+            self.scheduled_time_in,
+            self.scheduled_time_out,
+            base_date=self.date
+        )
+        
+        return {
+            'schedule_in_dt': adjusted['schedule_in_dt'],
+            'schedule_out_dt': adjusted['schedule_out_dt'],
+            'is_night_shift': adjusted['is_night_shift']
+        }
+    
+    @property
+    def adjusted_actual_times(self):
+        """Get actual times adjusted for night shift cross-date logic"""
+        from .utils import adjust_nightshift_times
+        
+        if not self.time_in or not self.time_out:
+            return None
+        
+        adjusted = adjust_nightshift_times(
+            self.scheduled_time_in,
+            self.scheduled_time_out,
+            self.time_in,
+            self.time_out,
+            self.date
+        )
+        
+        return {
+            'time_in_dt': adjusted['time_in_dt'],
+            'time_out_dt': adjusted['time_out_dt'],
+            'is_night_shift': adjusted['is_night_shift']
+        }
+    
+    def calculate_enhanced_metrics(self):
+        """Calculate enhanced metrics using night shift cross-date logic"""
+        from .utils import calculate_nightshift_duration, get_attendance_status_enhanced
+        
+        if not self.scheduled_time_in or not self.scheduled_time_out:
+            return
+        
+        # Calculate duration with night shift support
+        duration_data = calculate_nightshift_duration(
+            self.scheduled_time_in,
+            self.scheduled_time_out,
+            self.time_in,
+            self.time_out,
+            self.date
+        )
+        
+        # Update night differential
+        if duration_data['night_differential_hours'] > 0:
+            self.night_differential_hours = duration_data['night_differential_hours']
+        
+        # Calculate billed hours with proper break deduction
+        if duration_data['actual_duration']:
+            total_minutes = duration_data['actual_duration'].total_seconds() / 60
+            
+            # Apply break deduction based on shift duration
+            break_deduction = 0
+            if total_minutes >= 420:  # 7 hours or more
+                break_deduction = 60  # 1 hour break
+            elif total_minutes >= 240:  # 4 hours or more
+                break_deduction = 30  # 30 minutes break
+            
+            billed_minutes = max(0, total_minutes - break_deduction)
+            self.billed_hours = round(billed_minutes / 60, 2)
+        
+        # Calculate late minutes with night shift support
+        if self.time_in and self.scheduled_time_in:
+            adjusted_times = self.adjusted_scheduled_times
+            if adjusted_times and adjusted_times['schedule_in_dt']:
+                time_in_dt = datetime.combine(self.date, self.time_in)
+                if time_in_dt > adjusted_times['schedule_in_dt']:
+                    late_duration = time_in_dt - adjusted_times['schedule_in_dt']
+                    late_minutes = late_duration.total_seconds() / 60
+                    
+                    # Apply late rules: 5 minutes grace period, then add 5 minutes penalty
+                    if late_minutes <= 5:
+                        self.late_minutes = 0
+                    else:
+                        self.late_minutes = int(late_minutes + 5)
+        
+        # Calculate undertime with night shift support
+        if self.time_in and self.time_out and self.scheduled_time_in and self.scheduled_time_out:
+            adjusted_times = self.adjusted_scheduled_times
+            if adjusted_times and adjusted_times['schedule_out_dt']:
+                time_out_dt = datetime.combine(self.date, self.time_out)
+                if time_out_dt < adjusted_times['schedule_out_dt']:
+                    undertime_duration = adjusted_times['schedule_out_dt'] - time_out_dt
+                    self.undertime_minutes = int(undertime_duration.total_seconds() / 60)
+        
+        # Update status using enhanced logic
+        new_status = get_attendance_status_enhanced(
+            self.scheduled_time_in,
+            self.scheduled_time_out,
+            self.time_in,
+            self.time_out,
+            self.date
+        )
+        
+        if new_status != "unknown":
+            self.status = new_status
+        
+        # Save the updated metrics
+        self.save(update_fields=[
+            'billed_hours', 'late_minutes', 'undertime_minutes', 
+            'night_differential_hours', 'status', 'updated_at'
+        ])
+    
+    def get_nightshift_display_info(self):
+        """Get display information for night shifts"""
+        if not self.is_night_shift_schedule:
+            return None
+        
+        adjusted = self.adjusted_scheduled_times
+        if not adjusted:
+            return None
+        
+        return {
+            'start_date': self.date,
+            'end_date': (self.date + timedelta(days=1)) if adjusted['is_night_shift'] else self.date,
+            'start_time': self.scheduled_time_in.strftime('%I:%M %p') if self.scheduled_time_in else '-',
+            'end_time': self.scheduled_time_out.strftime('%I:%M %p') if self.scheduled_time_out else '-',
+            'crosses_midnight': adjusted['is_night_shift'],
+            'duration_hours': round(self.billed_hours + (self.total_break_minutes / 60), 2) if self.billed_hours else 0
+        }
     
     @property
     def formatted_billed_hours(self):
