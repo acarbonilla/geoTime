@@ -84,6 +84,59 @@ const ScheduleReport = () => {
   const [currentEmployeeId, setCurrentEmployeeId] = useState('');
   const [groupNightshifts, setGroupNightshifts] = useState(true);
 
+  // ENHANCED: Helper function to calculate accurate nightshift duration
+  const calculateNightshiftDuration = (timeIn, timeOut, dateIn, dateOut) => {
+    try {
+      if (!timeIn || !timeOut || timeIn === '-' || timeOut === '-') {
+        return '0h';
+      }
+
+      // Parse the time strings (assuming format like "09:12 PM" or "06:50 AM")
+      const parseTime = (timeStr) => {
+        const time = moment(timeStr, ['h:mm A', 'HH:mm', 'h:mm:ss A', 'HH:mm:ss']);
+        return time.isValid() ? time : null;
+      };
+
+      const inTime = parseTime(timeIn);
+      const outTime = parseTime(timeOut);
+
+      if (!inTime || !outTime) {
+        console.warn('Invalid time format for duration calculation:', { timeIn, timeOut });
+        return '0h';
+      }
+
+      // Create full datetime objects
+      const inDateTime = moment(dateIn + ' ' + inTime.format('HH:mm:ss'));
+      let outDateTime = moment(dateOut + ' ' + outTime.format('HH:mm:ss'));
+
+      // If timeout is earlier than time-in, it's the next day
+      if (outDateTime.isBefore(inDateTime)) {
+        outDateTime.add(1, 'day');
+      }
+
+      // Calculate duration in hours
+      const durationMs = outDateTime.diff(inDateTime);
+      const durationHours = durationMs / (1000 * 60 * 60);
+
+      // Format duration (e.g., "9.63h" or "9h 38m")
+      if (durationHours >= 1) {
+        const wholeHours = Math.floor(durationHours);
+        const minutes = Math.round((durationHours - wholeHours) * 60);
+        
+        if (minutes === 0) {
+          return `${wholeHours}h`;
+        } else {
+          return `${wholeHours}.${minutes.toString().padStart(2, '0')}h`;
+        }
+      } else {
+        return `${Math.round(durationHours * 60)}m`;
+      }
+    } catch (error) {
+      console.error('Error calculating nightshift duration:', error);
+      return '0h';
+    }
+  };
+
   useEffect(() => {
     // Get current user's employee ID from localStorage
     const employeeData = localStorage.getItem('employee');
@@ -2291,6 +2344,12 @@ const ScheduleReport = () => {
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
+                          <FaHourglassHalf className="w-3 h-3" />
+                          <span>Duration</span>
+                        </div>
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
                           <FaClock className="w-3 h-3" />
                           <span>Scheduled In</span>
                         </div>
@@ -2342,7 +2401,7 @@ const ScheduleReport = () => {
                       if (!report.daily_records || report.daily_records.length === 0) {
                         return (
                           <tr>
-                            <td colSpan="12" className="px-6 py-8 text-center text-gray-500">
+                            <td colSpan="13" className="px-6 py-8 text-center text-gray-500">
                               <div className="text-lg font-medium mb-2">No Daily Records Found</div>
                               <div className="text-sm">The report was generated but no daily records are available.</div>
                               <div className="text-xs mt-2 text-gray-400">
@@ -2474,20 +2533,30 @@ const ScheduleReport = () => {
                         // Check if this is a nightshift that crosses midnight
                         if (isNightshift && hasTimeInNoTimeOut && hasNextDayTimeout) {
                           if (groupNightshifts) {
-                          // Create a combined row for the nightshift
-                          const combinedRecord = {
-                            ...currentRecord,
-                            isNightshift: true,
-                            nextDayTimeout: nextDayTimeoutEntry,
-                            nextDayDate: nextRecord.date,
-                            nextDayDay: nextRecord.day,
-                            // Set the time_out to the next day's timeout for calculations
-                            time_out: nextDayTimeoutEntry ? nextDayTimeoutEntry.event_time : currentRecord.time_out
-                          };
-                          
-                          groupedRecords.push(combinedRecord);
-                          i++; // Skip the next record since we've combined it
-                          console.log(`🌙 Nightshift grouped: ${currentRecord.date} → ${nextRecord.date} with timeout: ${nextDayTimeoutEntry.event_time}`);
+                            // ENHANCED: Create a combined row for the nightshift with improved formatting
+                            const combinedRecord = {
+                              ...currentRecord,
+                              isNightshift: true,
+                              nextDayTimeout: nextDayTimeoutEntry,
+                              nextDayDate: nextRecord.date,
+                              nextDayDay: nextRecord.day,
+                              // Set the time_out to the next day's timeout for calculations
+                              time_out: nextDayTimeoutEntry ? nextDayTimeoutEntry.event_time : currentRecord.time_out,
+                              // ENHANCED: Add formatted date span for display
+                              displayDateSpan: `${moment(currentRecord.date).format('MMM DD')} → ${moment(nextRecord.date).format('MMM DD')}`,
+                              displayDaySpan: `${currentRecord.day} → ${nextRecord.day}`,
+                              // ENHANCED: Calculate accurate duration for nightshift
+                              calculatedDuration: calculateNightshiftDuration(
+                                currentRecord.time_in, 
+                                nextDayTimeoutEntry.event_time,
+                                currentRecord.date,
+                                nextRecord.date
+                              )
+                            };
+                            
+                            groupedRecords.push(combinedRecord);
+                            i++; // Skip the next record since we've combined it
+                            console.log(`🌙 Nightshift grouped: ${currentRecord.date} → ${nextRecord.date} with timeout: ${nextDayTimeoutEntry.event_time}, duration: ${combinedRecord.calculatedDuration}`);
                           } else {
                             // Add current record as-is (will show time-in)
                             groupedRecords.push(currentRecord);
@@ -2548,8 +2617,16 @@ const ScheduleReport = () => {
                                 </>
                               ) : (
                                 <>
-                                  <span>{moment(record.date).format('MMM DD')}</span>
-                                  {record.isNightshift && record.nextDayDate && (
+                                  {/* ENHANCED: Show improved date span for grouped nightshifts */}
+                                  {record.isNightshift && record.displayDateSpan ? (
+                                    <span className="font-semibold text-blue-700">
+                                      {record.displayDateSpan}
+                                    </span>
+                                  ) : (
+                                    <span>{moment(record.date).format('MMM DD')}</span>
+                                  )}
+                                  
+                                  {record.isNightshift && record.nextDayDate && !record.displayDateSpan && (
                                     <div className="text-xs text-blue-600 font-normal">
                                       → {moment(record.nextDayDate).format('MMM DD')}
                                     </div>
@@ -2557,7 +2634,7 @@ const ScheduleReport = () => {
                                   {record.isNightshiftTimeout && record.previousDayDate && (
                                     <div className="text-xs text-purple-600 font-normal">
                                       ← {moment(record.previousDayDate).format('MMM DD')}
-                                    </div>
+                                  </div>
                                   )}
                                   {record.isNightshift && !record.nextDayDate && record.isIncomplete && (
                                     <div className="text-xs text-orange-600 font-normal">
@@ -2586,12 +2663,20 @@ const ScheduleReport = () => {
                                 </>
                               ) : (
                                 <>
-                                  <span>{record.day}</span>
-                                  {record.isNightshift && record.nextDayDay && (
+                                  {/* ENHANCED: Show improved day span for grouped nightshifts */}
+                                  {record.isNightshift && record.displayDaySpan ? (
+                                    <span className="font-semibold text-blue-700">
+                                      {record.displayDaySpan}
+                                    </span>
+                                  ) : (
+                                    <span>{record.day}</span>
+                                  )}
+                                  
+                                  {record.isNightshift && record.nextDayDay && !record.displayDaySpan && (
                                     <div className="text-xs text-blue-600 font-normal">
                                       → {record.nextDayDay}
                                     </div>
-                              )}
+                                  )}
                                   {record.isNightshiftTimeout && record.previousDayDay && (
                                     <div className="text-xs text-purple-600 font-normal">
                                       ← {record.previousDayDay}
@@ -2743,6 +2828,26 @@ const ScheduleReport = () => {
                               // 5. If no time out found, show dash
                               return '-';
                             })()}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                            {/* ENHANCED: Display calculated duration for nightshifts */}
+                            {record.isNightshift && record.calculatedDuration ? (
+                              <div className="text-blue-600 font-medium">
+                                {record.calculatedDuration}
+                              </div>
+                            ) : record.isNightshift && record.time_in && record.time_out && 
+                                record.time_in !== '-' && record.time_out !== '-' ? (
+                              <div className="text-gray-600">
+                                {calculateNightshiftDuration(
+                                  record.time_in, 
+                                  record.time_out, 
+                                  record.date, 
+                                  record.date
+                                )}
+                              </div>
+                            ) : (
+                              '-'
+                            )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                             {record.isNightshiftTimeout ? (
