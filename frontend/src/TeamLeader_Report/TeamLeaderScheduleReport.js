@@ -27,6 +27,24 @@ import {
 import moment from 'moment';
 
 const TeamLeaderScheduleReport = () => {
+  // CSS styles for grouped nightshift rows
+  const groupedNightshiftStyles = `
+    .grouped-nightshift-row {
+      background-color: #eff6ff !important;
+      border-left: 4px solid #3b82f6 !important;
+    }
+    .grouped-nightshift-row:hover {
+      background-color: #dbeafe !important;
+    }
+    .nightshift-row {
+      background-color: #eff6ff !important;
+      border-left: 4px solid #3b82f6 !important;
+    }
+    .nightshift-row:hover {
+      background-color: #dbeafe !important;
+    }
+  `;
+
   const [employee, setEmployee] = useState(null);
 
   const [loading, setLoading] = useState(false);
@@ -80,6 +98,9 @@ const TeamLeaderScheduleReport = () => {
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [viewMode, setViewMode] = useState('reports'); // 'reports' or 'members'
   const [selectedMember, setSelectedMember] = useState(null);
+  
+  // Schedule View Mode - Group vs Individual
+  const [scheduleViewMode, setScheduleViewMode] = useState('group'); // 'group' or 'individual'
   
   // Team Report Data
   const [teamSummary, setTeamSummary] = useState(null);
@@ -166,6 +187,17 @@ const TeamLeaderScheduleReport = () => {
       setError('Failed to fetch employees');
     }
   }, [employee]);
+
+  // Inject CSS styles for grouped nightshift rows
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = groupedNightshiftStyles;
+    document.head.appendChild(styleElement);
+    
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, []);
 
   const checkAuthAndRole = async () => {
     try {
@@ -1320,8 +1352,135 @@ const TeamLeaderScheduleReport = () => {
       return [];
     }
 
-    // Return records without grouping (each day on separate row)
-    return records;
+    // If individual view mode is selected, return records ungrouped
+    if (scheduleViewMode === 'individual') {
+      return records;
+    }
+
+    // Group view mode: Group consecutive nightshifts
+    const groupedRecords = [];
+    let currentGroup = [];
+    
+    // Sort records by date
+    const sortedRecords = [...records].sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    for (let i = 0; i < sortedRecords.length; i++) {
+      const currentRecord = sortedRecords[i];
+      const nextRecord = sortedRecords[i + 1];
+      
+      // Check if current record is a nightshift (scheduled 21:00-06:00 or similar)
+      const isNightshift = currentRecord.scheduled_time_in && currentRecord.scheduled_time_out && 
+        (currentRecord.scheduled_time_in.includes('21:00') || currentRecord.scheduled_time_in.includes('09:00 PM') ||
+         currentRecord.scheduled_time_in.includes('20:00') || currentRecord.scheduled_time_in.includes('08:00 PM')) &&
+        (currentRecord.scheduled_time_out.includes('06:00') || currentRecord.scheduled_time_out.includes('06:00 AM') ||
+         currentRecord.scheduled_time_out.includes('05:00') || currentRecord.scheduled_time_out.includes('05:00 AM'));
+      
+      if (isNightshift) {
+        // Check if this can be grouped with the next record
+        if (nextRecord && isConsecutiveNightshift(currentRecord, nextRecord)) {
+          currentGroup.push(currentRecord);
+        } else {
+          // End of group
+          currentGroup.push(currentRecord);
+          if (currentGroup.length > 1) {
+            // Create grouped record
+            groupedRecords.push(createGroupedRecord(currentGroup));
+          } else {
+            // Single nightshift, add as is
+            groupedRecords.push(currentRecord);
+          }
+          currentGroup = [];
+        }
+      } else {
+        // Not a nightshift, add any existing group first
+        if (currentGroup.length > 1) {
+          groupedRecords.push(createGroupedRecord(currentGroup));
+          currentGroup = [];
+        } else if (currentGroup.length === 1) {
+          groupedRecords.push(currentGroup[0]);
+          currentGroup = [];
+        }
+        // Add current non-nightshift record
+        groupedRecords.push(currentRecord);
+      }
+    }
+    
+    // Handle any remaining group
+    if (currentGroup.length > 1) {
+      groupedRecords.push(createGroupedRecord(currentGroup));
+    } else if (currentGroup.length === 1) {
+      groupedRecords.push(currentGroup[0]);
+    }
+    
+    return groupedRecords;
+  };
+
+  // Helper function to check if two records are consecutive nightshifts
+  const isConsecutiveNightshift = (record1, record2) => {
+    const date1 = new Date(record1.date);
+    const date2 = new Date(record2.date);
+    
+    // Check if dates are consecutive
+    const diffTime = date2 - date1;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays !== 1) return false;
+    
+    // Check if both are nightshifts with same schedule
+    const isNightshift1 = record1.scheduled_time_in && record1.scheduled_time_out && 
+      (record1.scheduled_time_in.includes('21:00') || record1.scheduled_time_in.includes('09:00 PM') ||
+       record1.scheduled_time_in.includes('20:00') || record1.scheduled_time_in.includes('08:00 PM')) &&
+      (record1.scheduled_time_out.includes('06:00') || record1.scheduled_time_out.includes('06:00 AM') ||
+       record1.scheduled_time_out.includes('05:00') || record1.scheduled_time_out.includes('05:00 AM'));
+    
+    const isNightshift2 = record2.scheduled_time_in && record2.scheduled_time_out && 
+      (record2.scheduled_time_in.includes('21:00') || record2.scheduled_time_in.includes('09:00 PM') ||
+       record2.scheduled_time_in.includes('20:00') || record2.scheduled_time_in.includes('08:00 PM')) &&
+      (record2.scheduled_time_out.includes('06:00') || record2.scheduled_time_out.includes('06:00 AM') ||
+       record2.scheduled_time_out.includes('05:00') || record2.scheduled_time_out.includes('05:00 AM'));
+    
+    if (!isNightshift1 || !isNightshift2) return false;
+    
+    // Check if schedules are the same
+    return record1.scheduled_time_in === record2.scheduled_time_in && 
+           record1.scheduled_time_out === record2.scheduled_time_out;
+  };
+
+  // Helper function to create a grouped record
+  const createGroupedRecord = (group) => {
+    const firstRecord = group[0];
+    const lastRecord = group[group.length - 1];
+    
+    // Calculate date range
+    const startDate = new Date(firstRecord.date);
+    const endDate = new Date(lastRecord.date);
+    const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+    
+    // Format dates for display
+    const startDateStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const endDateStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    
+    // Calculate day range
+    const startDay = startDate.toLocaleDateString('en-US', { weekday: 'short' });
+    const endDay = endDate.toLocaleDateString('en-US', { weekday: 'short' });
+    
+    return {
+      ...firstRecord,
+      id: `grouped-${firstRecord.id || firstRecord.date}-${lastRecord.id || lastRecord.date}`,
+      date: `${startDateStr} - ${endDateStr} (${daysDiff} days)`,
+      day: `${startDay} - ${endDay}`,
+      isGrouped: true,
+      groupSize: daysDiff,
+      groupRecords: group,
+      // For grouped records, show dashes for actual time in/out since they span multiple days
+      time_in: '-',
+      time_out: '-',
+      // Keep scheduled times from first record
+      scheduled_time_in: firstRecord.scheduled_time_in,
+      scheduled_time_out: firstRecord.scheduled_time_out,
+      // Mark as nightshift
+      isNightshift: true
+    };
   };
 
   // Function to determine the correct status based on user requirements
@@ -1919,6 +2078,35 @@ const TeamLeaderScheduleReport = () => {
 
                 {/* Daily Records Table */}
                 <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-lg">
+                  {/* Schedule View Toggle */}
+                  <div className="bg-white border-b border-gray-200 p-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-medium text-gray-900">Schedule Records</h3>
+                      <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+                        <button
+                          onClick={() => setScheduleViewMode('group')}
+                          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                            scheduleViewMode === 'group'
+                              ? 'bg-white text-blue-600 shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Group View
+                        </button>
+                        <button
+                          onClick={() => setScheduleViewMode('individual')}
+                          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                            scheduleViewMode === 'individual'
+                              ? 'bg-white text-blue-600 shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Individual Days
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
                   {loading ? (
                     <div className="px-6 py-12 text-center">
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
@@ -2087,7 +2275,9 @@ const TeamLeaderScheduleReport = () => {
                             
                             // Determine row styling based on night shift status
                             let rowClassName = "hover:bg-gray-50 transition-colors duration-200";
-                            if (report.isNightshift) {
+                            if (report.isGrouped) {
+                              rowClassName += " grouped-nightshift-row bg-blue-50 border-l-4 border-blue-400";
+                            } else if (report.isNightshift) {
                               rowClassName += " nightshift-row bg-blue-50 border-l-4 border-blue-400";
                             } else if (report.hasPreviousNightshiftTimeout) {
                               rowClassName += " previous-nightshift-timeout-row bg-green-50 border-l-4 border-green-400";
@@ -2097,47 +2287,37 @@ const TeamLeaderScheduleReport = () => {
                               <tr key={`${report.id || report.date}-${index}`} className={rowClassName}>
                                 <td className="px-6 py-4 text-sm font-medium text-gray-900">
                                   <div className="flex flex-col">
-                                    {/* ENHANCED: Show improved date span for grouped nightshifts */}
-                                    {report.isNightshift && report.displayDateSpan ? (
-                                      <span className="font-semibold text-blue-700">
-                                        {report.displayDateSpan}
-                                      </span>
+                                    {/* Show grouped date range for grouped records */}
+                                    {report.isGrouped ? (
+                                      <div className="flex flex-col">
+                                        <span className="font-semibold text-blue-700">
+                                          {report.date}
+                                        </span>
+                                        <div className="text-xs text-blue-600 font-normal mt-1">
+                                          🌙 {report.groupSize} consecutive nightshifts {report.scheduled_time_in} - {report.scheduled_time_out}
+                                        </div>
+                                      </div>
                                     ) : (
-                                    <span>{reportDate.toLocaleDateString()}</span>
-                                    )}
-                                    
-                                    {report.isNightshift && report.nextDayDate && !report.displayDateSpan && (
-                                      <div className="text-xs text-blue-600 font-normal">
-                                        → {moment(report.nextDayDate).format('MMM DD')}
-                                      </div>
-                                    )}
-                                    {report.isNightshift && !report.nextDayDate && report.isIncomplete && (
-                                      <div className="text-xs text-orange-600 font-normal">
-                                        ⚠️ Incomplete
-                                      </div>
-                                    )}
-                                    {report.hasPreviousNightshiftTimeout && (
-                                      <div className="text-xs text-green-600 font-normal">
-                                        ✓ Available for new time-in
-                                      </div>
+                                      /* Show individual date for non-grouped records */
+                                      <span>{reportDate.toLocaleDateString()}</span>
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 text-sm text-gray-600">
+                                <td className="px-6 py-4 text-sm text-gray-900">
                                   <div className="flex flex-col">
-                                    {/* ENHANCED: Show improved day span for grouped nightshifts */}
-                                    {report.isNightshift && report.displayDaySpan ? (
-                                      <span className="font-semibold text-blue-700">
-                                        {report.displayDaySpan}
-                                      </span>
-                                    ) : (
-                                    <span>{dayName}</span>
-                                    )}
-                                    
-                                    {report.isNightshift && report.nextDayDay && !report.displayDaySpan && (
-                                      <div className="text-xs text-blue-600 font-normal">
-                                        → {report.nextDayDay}
+                                    {/* Show grouped day range for grouped records */}
+                                    {report.isGrouped ? (
+                                      <div className="flex flex-col">
+                                        <span className="font-semibold text-blue-700">
+                                          {report.day}
+                                        </span>
+                                        <div className="text-xs text-blue-600 font-normal mt-1">
+                                          {report.groupSize} consecutive days
+                                        </div>
                                       </div>
+                                    ) : (
+                                      /* Show individual day for non-grouped records */
+                                      <span>{dayName}</span>
                                     )}
                                   </div>
                                 </td>
@@ -2146,7 +2326,11 @@ const TeamLeaderScheduleReport = () => {
                                     <span className={`inline-flex items-center space-x-2 px-3 py-1 text-xs font-medium rounded-full ${getStatusStyling(getStatus(report))}`}>
                                       {getStatus(report)}
                                     </span>
-                                    {report.isNightshift && (
+                                    {report.isGrouped ? (
+                                      <span className="inline-flex items-center space-x-2 px-2 py-1 text-xs font-medium rounded-full border border-blue-200 text-blue-800 bg-blue-100">
+                                        🌙 Nightshift
+                                      </span>
+                                    ) : report.isNightshift && (
                                       <span className="inline-flex items-center space-x-2 px-2 py-1 text-xs font-medium rounded-full border border-blue-200 text-blue-800 bg-blue-100">
                                         🌙 Nightshift
                                       </span>
@@ -2159,17 +2343,17 @@ const TeamLeaderScheduleReport = () => {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  {formatTime(report.time_in)}
+                                  {report.isGrouped ? '-' : formatTime(report.time_in)}
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                   <div className="flex flex-col">
-                                    <span>{formatTime(report.time_out)}</span>
-                                    {report.isNightshift && report.nextDayTimeout && (
+                                    {report.isGrouped ? '-' : formatTime(report.time_out)}
+                                    {!report.isGrouped && report.isNightshift && report.nextDayTimeout && (
                                       <div className="text-xs text-blue-600 font-normal">
                                         (Next day: {moment(report.nextDayDate).format('MMM DD')})
                                       </div>
                                     )}
-                                    {report.hasPreviousNightshiftTimeout && report.previousNightshiftInfo && (
+                                    {!report.isGrouped && report.hasPreviousNightshiftTimeout && report.previousNightshiftInfo && (
                                       <div className="text-xs text-green-600 font-normal">
                                         (Previous day: {moment(report.previousNightshiftInfo.date).format('MMM DD')})
                                       </div>
@@ -2185,8 +2369,8 @@ const TeamLeaderScheduleReport = () => {
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                   <div className="flex flex-col">
-                                    <span>{metrics.bh || '-'}</span>
-                                    {metrics.bh === 0 && report.time_in && report.time_out && report.scheduled_time_in && 
+                                    {report.isGrouped ? '-' : (metrics.bh || '-')}
+                                    {!report.isGrouped && metrics.bh === 0 && report.time_in && report.time_out && report.scheduled_time_in && 
                                      moment(`2000-01-01 ${report.time_in}`).isValid() && 
                                      moment(`2000-01-01 ${report.scheduled_time_in}`).isValid() &&
                                      moment(`2000-01-01 ${report.time_in}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) &&
@@ -2198,17 +2382,17 @@ const TeamLeaderScheduleReport = () => {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  {metrics.lt || '-'}
+                                  {report.isGrouped ? '-' : (metrics.lt || '-')}
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  {metrics.ut || '-'}
+                                  {report.isGrouped ? '-' : (metrics.ut || '-')}
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                   <div className="flex flex-col">
-                                    <span>{metrics.nd || '-'}</span>
-                                    {metrics.nd === 0 && report.time_in && report.time_out && report.scheduled_time_in && 
+                                    {report.isGrouped ? '-' : (metrics.nd || '-')}
+                                    {!report.isGrouped && metrics.nd === 0 && report.time_in && report.time_out && report.scheduled_time_in && 
                                      moment(`2000-01-01 ${report.time_in}`).isValid() && 
-                                     moment(`2000-01-01 ${report.scheduled_time_in}`).isValid() &&
+                                     moment(`2000-01-01 ${report.scheduled_time_out}`).isValid() &&
                                      moment(`2000-01-01 ${report.time_in}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) &&
                                      moment(`2000-01-01 ${report.time_out}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) && (
                                       <div className="text-xs text-red-600 font-normal">
