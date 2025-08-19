@@ -1801,7 +1801,8 @@ const ScheduleReport = () => {
             }
           }
           
-          // Also check time_entries if available
+          // Only check time_entries if we didn't find a direct time_out
+          // This prevents time_entries from overriding the actual night shift timeout
           if (!nextDayTimeout && nextRecord.time_entries && Array.isArray(nextRecord.time_entries)) {
             const nextTimeOut = nextRecord.time_entries.find(entry => 
               entry.entry_type === 'time_out' && entry.event_time
@@ -1810,7 +1811,9 @@ const ScheduleReport = () => {
             if (nextTimeOut && nextTimeOut.event_time) {
               const timeOutHour = parseInt(nextTimeOut.event_time.split(':')[0]);
               console.log(`🔍 Next day time entry time out hour: ${timeOutHour}`);
-              if (timeOutHour < 6) {
+              // Only use time_entries if it's clearly a night shift timeout (before 6 AM)
+              // AND if we don't have a direct time_out field
+              if (timeOutHour < 6 && (!nextRecord.time_out || nextRecord.time_out === '-')) {
                 nextDayTimeout = {
                   event_time: nextTimeOut.event_time,
                   date: nextRecord.date
