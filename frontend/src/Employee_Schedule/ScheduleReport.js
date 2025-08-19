@@ -975,125 +975,22 @@ const ScheduleReport = () => {
       // Use the new consecutive nightshift grouping function
       groupedRecords = groupRecordsWithConsecutiveNightshifts(dailyRecords);
     } else {
-      // Original grouping logic for individual days
+      // SIMPLIFIED: Return records without any nightshift grouping or modification
+      // Each day appears on its own row with original data
       for (let i = 0; i < dailyRecords.length; i++) {
-      const currentRecord = dailyRecords[i];
-      const nextRecord = dailyRecords[i + 1];
-      
-      // ENHANCED: Check if this is a nightshift using comprehensive logic
-      const isNightshift = currentRecord.scheduled_in && currentRecord.scheduled_out && (
-        // Pattern 1: Traditional night shift (starts late, ends early next day)
-        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
-         parseInt(currentRecord.scheduled_out.split(':')[0]) < 12) ||
-        // Pattern 2: Early start night shift (starts at noon, ends early next day)
-        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 12 && 
-         parseInt(currentRecord.scheduled_out.split(':')[0]) < 12) ||
-        // Pattern 3: Late night shift (starts very late, ends early next day)
-        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 20 && 
-         parseInt(currentRecord.scheduled_out.split(':')[0]) < 8) ||
-        // Pattern 4: Cross-midnight detection (end time < start time) - MOST IMPORTANT!
-        (parseInt(currentRecord.scheduled_in.split(':')[0]) > parseInt(currentRecord.scheduled_out.split(':')[0])) ||
-        // Pattern 5: Evening to morning pattern (8 PM - 5 AM, 9 PM - 6 AM, etc.)
-        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 18 && 
-         parseInt(currentRecord.scheduled_out.split(':')[0]) <= 11) ||
-        // Pattern 6: Any shift that starts in PM and ends in AM
-        (parseInt(currentRecord.scheduled_in.split(':')[0]) >= 12 && 
-         parseInt(currentRecord.scheduled_out.split(':')[0]) < 12)
-      );
-      
-      // Check if current record has time-in but no time-out (incomplete night shift)
-      const hasTimeInNoTimeOut = currentRecord.time_in && currentRecord.time_in !== '-' && 
-        (!currentRecord.time_out || currentRecord.time_out === '-');
-      
-      // Check if next day has early timeout that belongs to this nightshift
-      let hasNextDayTimeout = false;
-      let nextDayTimeoutEntry = null;
-      
-      if (nextRecord) {
-        // First check the main time_out field
-        if (nextRecord.time_out && nextRecord.time_out !== '-') {
-          const timeoutHour = parseInt(nextRecord.time_out.split(':')[0]);
-          // More flexible timeout detection: before 12 PM (noon) for next day
-          if (timeoutHour < 12) {
-            hasNextDayTimeout = true;
-            nextDayTimeoutEntry = {
-              event_time: nextRecord.time_out,
-              entry_type: 'time_out'
-            };
-          }
-        }
+        const currentRecord = dailyRecords[i];
         
-        // If not found in main field, check time_entries array
-        if (!hasNextDayTimeout && nextRecord.time_entries && Array.isArray(nextRecord.time_entries)) {
-          const timeoutInEntries = nextRecord.time_entries.find(entry => 
-            entry.entry_type === 'time_out' && 
-            parseInt(entry.event_time.split(':')[0]) < 12
-          );
-          
-          if (timeoutInEntries) {
-            hasNextDayTimeout = true;
-            nextDayTimeoutEntry = timeoutInEntries;
-          }
-        }
-      }
-      
-      // Check if this is a nightshift that crosses midnight
-      if (isNightshift && hasTimeInNoTimeOut && hasNextDayTimeout) {
-        // Create a combined record for the nightshift
-        const combinedRecord = {
-          ...currentRecord,
-          isNightshift: true,
-          nextDayTimeout: nextDayTimeoutEntry,
-          nextDayDate: nextRecord.date,
-          nextDayDay: nextRecord.day,
-          // Set the time_out to the next day's timeout for calculations
-          time_out: nextDayTimeoutEntry ? nextDayTimeoutEntry.event_time : currentRecord.time_out,
-          // Format the date to show the range
-          displayDate: `${moment(currentRecord.date).format('MMM DD')} → ${moment(nextRecord.date).format('MMM DD')}`,
-          displayDay: `${currentRecord.day} → ${nextRecord.day}`,
-          // Format the timeout to show it's from next day
-          displayTimeOut: `${nextDayTimeoutEntry.event_time} (Next day: ${moment(nextRecord.date).format('MMM DD')})`
-        };
-        
-        groupedRecords.push(combinedRecord);
-        
-        // IMPORTANT: Don't skip the next record - preserve it for potential future time-ins
-        // Instead, mark the next record as having a previous night shift timeout
-        if (nextRecord) {
-          const nextDayRecord = {
-            ...nextRecord,
-            hasPreviousNightshiftTimeout: true,
-            previousNightshiftInfo: `Timeout from ${moment(currentRecord.date).format('MMM DD')} night shift`,
-            displayDate: moment(nextRecord.date).format('MMM DD'),
-            displayDay: nextRecord.day,
-            displayTimeOut: formatTime(nextRecord.time_out) || '-'
-          };
-          groupedRecords.push(nextDayRecord);
-          i++; // Now skip since we've processed both records
-        }
-      } else if (isNightshift && hasTimeInNoTimeOut) {
-        // Nightshift with time-in but no timeout found - mark as incomplete
-        const incompleteRecord = {
-          ...currentRecord,
-          isNightshift: true,
-          isIncomplete: true,
-          displayDate: `${moment(currentRecord.date).format('MMM DD')} (Incomplete)`,
-          displayDay: currentRecord.day,
-          displayTimeOut: '-'
-        };
-        groupedRecords.push(incompleteRecord);
-      } else {
-        // Regular record, add as-is
-        const regularRecord = {
+        // Add record as-is with basic formatting
+        const simpleRecord = {
           ...currentRecord,
           displayDate: moment(currentRecord.date).format('MMM DD'),
           displayDay: currentRecord.day,
           displayTimeOut: formatTime(currentRecord.time_out) || '-'
         };
-        groupedRecords.push(regularRecord);
+        
+        groupedRecords.push(simpleRecord);
       }
     }
-    } // Close the else block
     
     return groupedRecords;
   };
