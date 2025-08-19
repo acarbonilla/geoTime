@@ -1748,7 +1748,8 @@ const ScheduleReport = () => {
         time_in: currentRecord.time_in,
         time_out: currentRecord.time_out,
         scheduled_in: currentRecord.scheduled_in,
-        scheduled_out: currentRecord.scheduled_out
+        scheduled_out: currentRecord.scheduled_out,
+        time_entries: currentRecord.time_entries ? `${currentRecord.time_entries.length} entries` : 'none'
       });
       
       // Check if current record is a nightshift
@@ -1760,13 +1761,27 @@ const ScheduleReport = () => {
         (parseInt(currentRecord.scheduled_in.split(':')[0]) > parseInt(currentRecord.scheduled_out.split(':')[0]))
       );
       
+      // Also check if this looks like a nightshift based on actual time entries
+      const hasLateTimeIn = currentRecord.time_in && currentRecord.time_in !== '-' && 
+        parseInt(currentRecord.time_in.split(':')[0]) >= 18;
+      const hasEarlyTimeOut = currentRecord.time_out && currentRecord.time_out !== '-' && 
+        parseInt(currentRecord.time_out.split(':')[0]) < 12;
+      
+      const isLikelyNightshift = hasLateTimeIn || hasEarlyTimeOut;
+      
+      const shouldProcessAsNightshift = isCurrentNightshift || isLikelyNightshift;
+      
       console.log(`🔍 Record ${i} nightshift check:`, {
         isNightshift: isCurrentNightshift,
+        isLikelyNightshift,
+        shouldProcessAsNightshift,
         scheduledInHour: currentRecord.scheduled_in ? parseInt(currentRecord.scheduled_in.split(':')[0]) : null,
-        scheduledOutHour: currentRecord.scheduled_out ? parseInt(currentRecord.scheduled_out.split(':')[0]) : null
+        scheduledOutHour: currentRecord.scheduled_out ? parseInt(currentRecord.scheduled_out.split(':')[0]) : null,
+        actualTimeInHour: currentRecord.time_in ? parseInt(currentRecord.time_in.split(':')[0]) : null,
+        actualTimeOutHour: currentRecord.time_out ? parseInt(currentRecord.time_out.split(':')[0]) : null
       });
       
-      if (isCurrentNightshift) {
+      if (shouldProcessAsNightshift) {
         // Check if this nightshift has time in but no time out (incomplete)
         const hasTimeIn = currentRecord.time_in && currentRecord.time_in !== '-';
         const hasTimeOut = currentRecord.time_out && currentRecord.time_out !== '-';
@@ -1785,19 +1800,36 @@ const ScheduleReport = () => {
           console.log(`🔍 Looking for next day timeout for nightshift ${i}:`, {
             nextRecordDate: nextRecord.date,
             nextRecordTimeOut: nextRecord.time_out,
-            nextRecordTimeEntries: nextRecord.time_entries
+            nextRecordTimeEntries: nextRecord.time_entries,
+            nextRecordTimeEntriesDetails: nextRecord.time_entries ? nextRecord.time_entries.map(entry => ({
+              type: entry.entry_type,
+              time: entry.event_time,
+              notes: entry.notes
+            })) : 'none'
           });
           
-          // Check if next day has time out before 6 AM (likely belongs to previous nightshift)
+          // Check if next day has time out that could belong to previous nightshift
           if (nextRecord.time_out && nextRecord.time_out !== '-') {
             const timeOutHour = parseInt(nextRecord.time_out.split(':')[0]);
             console.log(`🔍 Next day time out hour: ${timeOutHour}`);
-            if (timeOutHour < 6) {
+            
+            // Check if this time-out is clearly from a night shift:
+            // 1. Before 12 PM (noon) - typical night shift end time
+            // 2. Or if it's significantly different from the current record's time_out
+            const isNightshiftTimeout = timeOutHour < 12;
+            const isDifferentFromCurrent = currentRecord.time_out && currentRecord.time_out !== '-' && 
+              nextRecord.time_out !== currentRecord.time_out;
+            
+            if (isNightshiftTimeout || isDifferentFromCurrent) {
               nextDayTimeout = {
                 event_time: nextRecord.time_out,
                 date: nextRecord.date
               };
-              console.log(`✅ Found next day timeout:`, nextDayTimeout);
+              console.log(`✅ Found next day timeout:`, nextDayTimeout, {
+                isNightshiftTimeout,
+                isDifferentFromCurrent,
+                currentTimeOut: currentRecord.time_out
+              });
             }
           }
           
@@ -1811,14 +1843,26 @@ const ScheduleReport = () => {
             if (nextTimeOut && nextTimeOut.event_time) {
               const timeOutHour = parseInt(nextTimeOut.event_time.split(':')[0]);
               console.log(`🔍 Next day time entry time out hour: ${timeOutHour}`);
-              // Only use time_entries if it's clearly a night shift timeout (before 6 AM)
+              
+              // Check if this time entry is clearly from a night shift:
+              // 1. Before 12 PM (noon) - typical night shift end time
+              // 2. Or if it's significantly different from the current record's time_out
+              const isNightshiftTimeout = timeOutHour < 12;
+              const isDifferentFromCurrent = currentRecord.time_out && currentRecord.time_out !== '-' && 
+                nextTimeOut.event_time !== currentRecord.time_out;
+              
+              // Only use time_entries if it's clearly a night shift timeout
               // AND if we don't have a direct time_out field
-              if (timeOutHour < 6 && (!nextRecord.time_out || nextRecord.time_out === '-')) {
+              if ((isNightshiftTimeout || isDifferentFromCurrent) && (!nextRecord.time_out || nextRecord.time_out === '-')) {
                 nextDayTimeout = {
                   event_time: nextTimeOut.event_time,
                   date: nextRecord.date
                 };
-                console.log(`✅ Found next day timeout from time entries:`, nextDayTimeout);
+                console.log(`✅ Found next day timeout from time entries:`, nextDayTimeout, {
+                  isNightshiftTimeout,
+                  isDifferentFromCurrent,
+                  currentTimeOut: currentRecord.time_out
+                });
               }
             }
           }
@@ -1854,15 +1898,28 @@ const ScheduleReport = () => {
       if (currentRecord.time_out && currentRecord.time_out !== '-' && 
           (!currentRecord.time_in || currentRecord.time_in === '-')) {
         const timeOutHour = parseInt(currentRecord.time_out.split(':')[0]);
-        if (timeOutHour < 6) {
+        
+        // Check if this is likely a timeout from a previous nightshift:
+        // 1. Before 12 PM (noon) - typical night shift end time
+        // 2. Or if it's significantly different from the previous record's time_out
+        const isNightshiftTimeout = timeOutHour < 12;
+        const previousRecord = i > 0 ? processedRecords[processedRecords.length - 1] : null;
+        const isDifferentFromPrevious = previousRecord && previousRecord.time_out && 
+          previousRecord.time_out !== '-' && currentRecord.time_out !== previousRecord.time_out;
+        
+        if (isNightshiftTimeout || isDifferentFromPrevious) {
           // This is likely a timeout from a previous nightshift
           const enhancedRecord = {
             ...currentRecord,
             isNightshiftTimeout: true,
-            previousDayDate: null, // Will be set by the previous record
+            previousDayDate: previousRecord ? previousRecord.date : null,
             previousDayInfo: 'Timeout from previous night shift'
           };
-          console.log(`✅ Created timeout-only record:`, enhancedRecord);
+          console.log(`✅ Created timeout-only record:`, enhancedRecord, {
+            isNightshiftTimeout,
+            isDifferentFromPrevious,
+            previousTimeOut: previousRecord ? previousRecord.time_out : null
+          });
           processedRecords.push(enhancedRecord);
           continue;
         }
