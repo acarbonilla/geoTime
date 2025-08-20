@@ -100,6 +100,48 @@
   margin: 16px 0;
 }
 
+/* Mobile-optimized modal - only apply on small screens */
+.mobile-modal {
+  max-height: 90vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e0 #f7fafc;
+}
+
+.mobile-modal::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mobile-modal::-webkit-scrollbar-track {
+  background: #f7fafc;
+  border-radius: 3px;
+}
+
+.mobile-modal::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 3px;
+}
+
+.mobile-modal::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}
+
+/* Mobile-optimized form fields - only apply on small screens */
+.mobile-form-field {
+  min-height: 44px; /* Touch-friendly minimum height */
+  font-size: 16px; /* Prevent zoom on iOS */
+  -webkit-appearance: none;
+  border-radius: 8px;
+}
+
+/* Mobile-optimized buttons - only apply on small screens */
+.mobile-button {
+  min-height: 44px; /* Touch-friendly minimum height */
+  font-size: 16px;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Mobile-optimized flexbox - only apply on small screens */
 .mobile-flex {
   display: flex;

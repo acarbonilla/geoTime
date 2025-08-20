@@ -116,6 +116,10 @@ export const authAPI = {
     const response = await api.post('/token/refresh/', { refresh: refreshToken });
     return response.data;
   },
+  changePassword: async (passwordData) => {
+    const response = await api.post('/change-password/', passwordData);
+    return response.data;
+  },
 };
 
 // Employee API functions

@@ -152,6 +152,49 @@ class UserProfileAPIView(APIView):
         })
 
 
+class ChangePasswordAPIView(APIView):
+    """API View for changing user password"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        user = request.user
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+        
+        # Validate input
+        if not current_password or not new_password:
+            return Response({
+                'detail': 'Both current_password and new_password are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate password strength
+        if len(new_password) < 8:
+            return Response({
+                'detail': 'New password must be at least 8 characters long'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify current password
+        if not user.check_password(current_password):
+            return Response({
+                'detail': 'Current password is incorrect'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Change password
+            user.set_password(new_password)
+            user.save()
+            
+            return Response({
+                'message': 'Password changed successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"Password change error: {e}")
+            return Response({
+                'detail': 'Failed to change password. Please try again later.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class LocationViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Location model with full CRUD operations.

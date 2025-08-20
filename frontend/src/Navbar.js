@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import ViewToggle from './components/ViewToggle';
 import { shouldShowViewToggle } from './utils/deviceDetection';
+import { Password_Reset } from './Employee_Information';
 
 const DashboardIcon = () => (
   <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8v-10h-8v10zm0-18v6h8V3h-8z"/></svg>
@@ -27,6 +28,7 @@ const Navbar = ({ user, employee, onLogout }) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showScheduleDropdown, setShowScheduleDropdown] = useState(false);
   const [coords, setCoords] = useState({ latitude: null, longitude: null });
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
   const userMenuRef = useRef(null);
   const scheduleDropdownRef = useRef(null);
   const scheduleDropdownContentRef = useRef(null); // New ref for dropdown content
@@ -95,6 +97,11 @@ const Navbar = ({ user, employee, onLogout }) => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showScheduleDropdown]);
+
+  const handlePasswordReset = () => {
+    setShowPasswordReset(true);
+    setShowUserMenu(false);
+  };
 
   const getDashboardPath = () => {
     if (employee?.role === 'team_leader') return '/team-leader-dashboard';
@@ -473,6 +480,13 @@ const Navbar = ({ user, employee, onLogout }) => {
                       ⚙️ Settings
                   </button>
                   <button
+                    onClick={handlePasswordReset}
+                      className="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors duration-200 cursor-pointer"
+                    style={{ pointerEvents: 'auto' }}
+                  >
+                      🔐 Change Password
+                  </button>
+                  <button
                     onClick={onLogout}
                       className="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors duration-200 cursor-pointer"
                     style={{ pointerEvents: 'auto' }}
@@ -486,6 +500,29 @@ const Navbar = ({ user, employee, onLogout }) => {
           </div>
         </div>
       </div>
+      
+      {/* Password Reset Modal */}
+      {showPasswordReset && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowPasswordReset(false)}></div>
+          <div className="relative z-10 w-full max-w-md mx-4">
+            <div className="bg-white rounded-2xl shadow-2xl border border-gray-200/50 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-900">Change Password</h2>
+                <button
+                  onClick={() => setShowPasswordReset(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <Password_Reset onSuccess={() => setShowPasswordReset(false)} onLogout={onLogout} />
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 };

@@ -5,6 +5,7 @@ from .views import (
     DashboardAPIView, SearchAPIView, EmployeeHierarchyAPIView,
     TimeEntryViewSet, TimeInOutAPIView, TimeReportAPIView,
     GeofenceValidationAPIView, LoginAPIView, LogoutAPIView, UserProfileAPIView,
+    ChangePasswordAPIView,  # Add this import
     WorkSessionViewSet,
     ReportDownloadAPIView,
     ReportPreviewAPIView,  # Add this import
@@ -42,6 +43,7 @@ urlpatterns = [
     # Authentication endpoints
     path('api/login/', LoginAPIView.as_view(), name='login'),
     path('api/logout/', LogoutAPIView.as_view(), name='logout'),
+    path('api/change-password/', ChangePasswordAPIView.as_view(), name='change-password'),
     
     # JWT endpoints
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
@@ -56,7 +58,7 @@ urlpatterns = [
     path('api/time-out/', TimeInOutAPIView.as_view(), {'action': 'time-out'}, name='time-out'),
     path('api/time-reports/', TimeReportAPIView.as_view(), name='time-reports'),
     path('api/geofence/validate/', GeofenceValidationAPIView.as_view(), name='geofence-validate'),
-    path('api/tl-departments-locations/', tl_departments_and_locations, name='tl_departments_and_locations'),
+    path('api/tl-departments-locations/', tl_departments_and_locations, name='tl_departments-and_locations'),
 ] 
 urlpatterns += [
     path('api/reports/download/', ReportDownloadAPIView.as_view(), name='report-download'),
