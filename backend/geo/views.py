@@ -2712,8 +2712,8 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
             logger.info(f"User role: {request.user.employee_profile.role}")
         
         # Check if user is employee and trying to create schedule for past date
-        # Team leaders can create schedules for today and future dates for themselves and team members
-        if not request.user.is_staff and not (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
+        # All users (including employees) can create schedules for today and future dates
+        if not request.user.is_staff:
             from datetime import date
             from django.utils import timezone
             schedule_date = request.data.get('date')
@@ -2723,7 +2723,7 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
                     today = timezone.now().date()
                     if schedule_date < today:
                         return Response(
-                            {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                            {'error': 'You cannot create schedules for past dates.'}, 
                             status=status.HTTP_403_FORBIDDEN
                         )
                 except (ValueError, TypeError):
@@ -2833,10 +2833,11 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"Updating schedule - User: {request.user.username}")
+        logger.info(f"Request data: {request.data}")
         logger.info(f"Schedule instance: {self.get_object()}")
         
         # Check if user is employee and trying to modify past schedule
-        if not request.user.is_staff and not (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
+        if not request.user.is_staff:
             from datetime import date
             from django.utils import timezone
             instance = self.get_object()
@@ -2845,14 +2846,14 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
             today = timezone.now().date()
             if instance.date < today:
                 return Response(
-                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    {'error': 'You cannot modify schedules for past dates.'}, 
                     status=status.HTTP_403_FORBIDDEN
                 )
             
-            # Check if trying to modify today's schedule (employees cannot modify daily schedules)
-            if instance.date == today:
+            # Check if user is trying to modify someone else's schedule
+            if hasattr(request.user, 'employee_profile') and instance.employee != request.user.employee_profile:
                 return Response(
-                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    {'error': 'You can only modify your own schedules.'}, 
                     status=status.HTTP_403_FORBIDDEN
                 )
         
@@ -2875,6 +2876,7 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
             
             logger.info(f"Team leader updating schedule for: {instance.employee.employee_id}")
         
+        logger.info(f"Proceeding with update for schedule ID: {instance.id}")
         return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
@@ -2885,7 +2887,7 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
         logger.info(f"Schedule instance: {self.get_object()}")
         
         # Check if user is employee and trying to modify past schedule
-        if not request.user.is_staff and not (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
+        if not request.user.is_staff:
             from datetime import date
             from django.utils import timezone
             instance = self.get_object()
@@ -2894,14 +2896,14 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
             today = timezone.now().date()
             if instance.date < today:
                 return Response(
-                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    {'error': 'You cannot modify schedules for past dates.'}, 
                     status=status.HTTP_403_FORBIDDEN
                 )
             
-            # Check if trying to modify today's schedule (employees cannot modify daily schedules)
-            if instance.date == today:
+            # Check if user is trying to modify someone else's schedule
+            if hasattr(request.user, 'employee_profile') and instance.employee != request.user.employee_profile:
                 return Response(
-                    {'error': 'You are not allowed to Update/Add. Contact your TeamLeader.'}, 
+                    {'error': 'You can only modify your own schedules.'}, 
                     status=status.HTTP_403_FORBIDDEN
                 )
         
@@ -2933,12 +2935,26 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
         logger.info(f"Deleting schedule - User: {request.user.username}")
         logger.info(f"Schedule instance: {self.get_object()}")
         
-        # Only staff and team leaders can delete schedules
-        if not request.user.is_staff and not (hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader'):
-            return Response(
-                {'error': 'You are not allowed to delete schedules. Contact your TeamLeader.'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # Check if user is employee and trying to delete past schedule
+        if not request.user.is_staff:
+            from datetime import date
+            from django.utils import timezone
+            instance = self.get_object()
+            
+            # Check if schedule is for past date
+            today = timezone.now().date()
+            if instance.date < today:
+                return Response(
+                    {'error': 'You cannot delete schedules for past dates.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if user is trying to delete someone else's schedule
+            if hasattr(request.user, 'employee_profile') and instance.employee != request.user.employee_profile:
+                return Response(
+                    {'error': 'You can only delete your own schedules.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
         
         # For team leaders, validate they can only delete schedules for team members or themselves
         if hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader':

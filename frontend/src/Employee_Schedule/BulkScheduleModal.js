@@ -3,7 +3,7 @@ import moment from 'moment';
 import { getAvailableTemplates, updateTemplate, deleteTemplate, checkExistingSchedules } from '../api/scheduleAPI';
 import { toast } from 'react-toastify';
 
-const BulkScheduleModal = ({ isOpen, onClose, onSave, currentMonth, isStaff = false, selectedTeamMember = null, selectedTeamMemberId = null }) => {
+const BulkScheduleModal = ({ isOpen, onClose, onSave, currentMonth, selectedTeamMember = null, selectedTeamMemberId = null }) => {
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [bulkData, setBulkData] = useState({
@@ -315,8 +315,8 @@ const BulkScheduleModal = ({ isOpen, onClose, onSave, currentMonth, isStaff = fa
                        </div>
                        <div className="flex flex-col items-end gap-1">
                          <span className="text-xs text-gray-500 capitalize">{template.template_type}</span>
-                         {/* Show edit/delete buttons only for Personal templates owned by current user or staff */}
-                         {template.template_type === 'personal' && (isStaff || template.created_by === localStorage.getItem('userId')) && (
+                         {/* Show edit/delete buttons only for Personal templates owned by current user */}
+                         {template.template_type === 'personal' && template.created_by === localStorage.getItem('userId') && (
                            <div className="flex gap-1">
                              <button
                                onClick={(e) => handleEditTemplate(template, e)}

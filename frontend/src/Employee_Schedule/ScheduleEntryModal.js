@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import moment from 'moment';
 
 
-const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selectedDate, isStaff = false }) => {
+const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selectedDate }) => {
   const [formData, setFormData] = useState({
     date: '',
     scheduled_time_in: '',
@@ -16,8 +16,22 @@ const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selec
   useEffect(() => {
     if (schedule) {
       // Editing existing schedule
+      console.log('Editing schedule:', schedule);
+      console.log('Schedule date:', schedule.date);
+      console.log('Schedule date type:', typeof schedule.date);
+      console.log('Schedule date value:', schedule.date);
+      
+      // Ensure the date is in the correct format for the date input
+      let formattedDate = schedule.date;
+      if (typeof schedule.date === 'string') {
+        // If it's a string, ensure it's in YYYY-MM-DD format
+        formattedDate = moment(schedule.date).format('YYYY-MM-DD');
+      }
+      
+      console.log('Formatted date:', formattedDate);
+      
       setFormData({
-        date: schedule.date,
+        date: formattedDate,
         scheduled_time_in: schedule.scheduled_time_in,
         scheduled_time_out: schedule.scheduled_time_out,
         is_night_shift: schedule.is_night_shift,
@@ -25,6 +39,7 @@ const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selec
       });
     } else if (selectedDate) {
       // Creating new schedule
+      console.log('Creating new schedule for date:', selectedDate);
       setFormData({
         date: moment(selectedDate).format('YYYY-MM-DD'),
         scheduled_time_in: '',
@@ -66,6 +81,20 @@ const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selec
       newErrors.scheduled_time_out = 'Time out is required';
     }
 
+    // Check if date is in the past (allow today's date)
+    if (formData.date) {
+      const selectedDate = moment(formData.date);
+      const today = moment().startOf('day');
+      
+      console.log('Date validation - selected date:', selectedDate.format('YYYY-MM-DD'));
+      console.log('Date validation - today:', today.format('YYYY-MM-DD'));
+      console.log('Date validation - is before today:', selectedDate.isBefore(today));
+      
+      if (selectedDate.isBefore(today)) {
+        newErrors.date = 'Cannot create or edit schedules for past dates';
+      }
+    }
+
     if (formData.scheduled_time_in && formData.scheduled_time_out) {
       const timeIn = moment(formData.scheduled_time_in, 'HH:mm');
       const timeOut = moment(formData.scheduled_time_out, 'HH:mm');
@@ -82,9 +111,25 @@ const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selec
   const handleSubmit = (e) => {
     e.preventDefault();
     
+    console.log('=== FORM SUBMISSION DEBUG ===');
+    console.log('Form data before validation:', formData);
+    console.log('Form errors before validation:', errors);
+    
     if (validateForm()) {
-      console.log('Submitting form data:', formData);
+      console.log('✅ Form validation passed');
+      console.log('📤 Submitting data to backend:', formData);
+      console.log('📅 Date being sent:', formData.date);
+      console.log('🕐 Time In:', formData.scheduled_time_in);
+      console.log('🕐 Time Out:', formData.scheduled_time_out);
+      console.log('🌙 Night Shift:', formData.is_night_shift);
+      console.log('📝 Notes:', formData.notes);
+      console.log('📊 Current date (moment):', moment().format('YYYY-MM-DD'));
+      console.log('📊 Current date (new Date):', new Date().toISOString().split('T')[0]);
+      
       onSave(formData);
+    } else {
+      console.log('❌ Form validation failed');
+      console.log('Validation errors:', errors);
     }
   };
 
@@ -125,10 +170,15 @@ const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selec
               name="date"
               value={formData.date}
               onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min={moment().format('YYYY-MM-DD')}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                errors.date ? 'border-red-500' : 'border-gray-300'
+              }`}
               required
             />
-
+            {errors.date && (
+              <p className="text-red-500 text-sm mt-1">{errors.date}</p>
+            )}
           </div>
 
           {/* Time In */}
@@ -202,7 +252,7 @@ const ScheduleEntryModal = ({ isOpen, onClose, onSave, onDelete, schedule, selec
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3">
-            {schedule && onDelete && isStaff && (
+            {schedule && onDelete && (
               <button
                 type="button"
                 onClick={handleDelete}

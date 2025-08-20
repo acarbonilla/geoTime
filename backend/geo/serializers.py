@@ -352,7 +352,7 @@ class EmployeeScheduleSerializer(serializers.ModelSerializer):
             'is_night_shift', 'template_used', 'notes', 'created_at', 'updated_at',
             'employee_name', 'template_name', 'formatted_time', 'duration_hours'
         ]
-        read_only_fields = ['created_at', 'updated_at']  # Remove 'employee' from read-only fields
+        read_only_fields = ['created_at', 'updated_at', 'employee']  # Make employee read-only to prevent modification
 
     def validate(self, data):
         # Get the request and user
@@ -389,12 +389,22 @@ class EmployeeScheduleSerializer(serializers.ModelSerializer):
             return data
         
         # Regular employees can only manage their own schedules
-        # IMPORTANT: Ensure employee field is set to current user for regular employees
+        # Since employee field is now read-only, we don't need to set it during updates
+        # The backend will preserve the existing employee field
         if employee.role == 'employee':
-            data['employee'] = employee.id
-            logger.info(f"Setting employee field to current user: {employee.id}")
+            logger.info(f"Employee user updating schedule - employee field will be preserved")
         
         return data
+
+    def create(self, validated_data):
+        """Override create to automatically set the employee field"""
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'employee_profile'):
+            # For regular employees, ensure they can only create their own schedules
+            if request.user.employee_profile.role == 'employee':
+                validated_data['employee'] = request.user.employee_profile
+        
+        return super().create(validated_data)
 
 
 class DailyTimeSummarySerializer(serializers.ModelSerializer):
