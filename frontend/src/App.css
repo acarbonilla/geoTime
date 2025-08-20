@@ -53,16 +53,32 @@
   animation: fade-in-down 0.2s ease-out;
 }
 
-/* Ensure dropdown positioning works correctly */
+/* Ensure navbar and dropdown positioning works correctly */
 .navbar-fixed {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 1000 !important;
   min-height: 64px;
   display: flex;
   align-items: center;
+}
+
+/* Add body padding to account for fixed navbar */
+body {
+  padding-top: 64px; /* Match navbar height */
+}
+
+/* Ensure main content doesn't get hidden behind navbar */
+main, .main-content, #root > div:not(.navbar-fixed) {
+  margin-top: 64px;
+}
+
+/* Mobile dashboard has its own sticky header, so no additional padding needed */
+.mobile-dashboard {
+  padding-top: 0;
+  margin-top: 0;
 }
 
 /* Profile section and user menu specific styles */
