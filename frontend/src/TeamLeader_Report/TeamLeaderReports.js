@@ -341,9 +341,44 @@ const TeamLeaderReports = ({ employee }) => {
   const [subordinates, setSubordinates] = useState([]);
   const [departments, setDepartments] = useState([]);
   
-  // Set default dates to today and last 7 days
-  const today = new Date().toISOString().split('T')[0];
-  const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  // Helper function to get Manila timezone date
+  // This ensures all date calculations use Asia/Manila timezone regardless of user's system timezone
+  const getManilaDate = (date = new Date()) => {
+    // Convert the date to Manila timezone
+    const manilaDateString = date.toLocaleString("en-US", {
+      timeZone: "Asia/Manila",
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    
+    // Parse the date string (MM/DD/YYYY format) and convert to YYYY-MM-DD
+    const [month, day, year] = manilaDateString.split('/');
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  };
+
+  // Helper function to get current Manila time
+  const getManilaTime = () => {
+    return new Date().toLocaleString("en-US", {
+      timeZone: "Asia/Manila",
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  };
+  
+  // Set default dates to today and last 7 days in Manila timezone
+  const today = getManilaDate();
+  
+  // Calculate last week date in Manila timezone
+  const manilaTime = new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"});
+  const manilaDate = new Date(manilaTime);
+  const sevenDaysAgo = new Date(manilaDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const lastWeek = getManilaDate(sevenDaysAgo);
   
   const [filterForm, setFilterForm] = useState({
     startDate: lastWeek,
@@ -359,6 +394,7 @@ const TeamLeaderReports = ({ employee }) => {
     selectedEmployee: 'all',
     selectedDepartment: 'all',
   });
+  const [activeQuickFilter, setActiveQuickFilter] = useState('last7Days');
   const [loading, setLoading] = useState(false);
   const [subordinatesLoading, setSubordinatesLoading] = useState(false);
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
@@ -372,6 +408,92 @@ const TeamLeaderReports = ({ employee }) => {
   });
   const [successMessage, setSuccessMessage] = useState('');
   const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
+  // Helper functions for quick date filters
+  const getDateRange = (range) => {
+    // Get current Manila time
+    const manilaNow = new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"});
+    const manilaDate = new Date(manilaNow);
+    
+    // Get today's date in Manila timezone
+    const today = new Date(manilaDate.getFullYear(), manilaDate.getMonth(), manilaDate.getDate());
+    
+    switch (range) {
+      case 'today':
+        return {
+          startDate: getManilaDate(),
+          endDate: getManilaDate()
+        };
+      case 'yesterday':
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        return {
+          startDate: getManilaDate(yesterday),
+          endDate: getManilaDate(yesterday)
+        };
+      case 'thisWeek':
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay());
+        return {
+          startDate: getManilaDate(startOfWeek),
+          endDate: getManilaDate()
+        };
+      case 'lastWeek':
+        const lastWeekStart = new Date(today);
+        lastWeekStart.setDate(today.getDate() - today.getDay() - 7);
+        const lastWeekEnd = new Date(lastWeekStart);
+        lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
+        return {
+          startDate: getManilaDate(lastWeekStart),
+          endDate: getManilaDate(lastWeekEnd)
+        };
+      case 'thisMonth':
+        const startOfMonth = new Date(manilaDate.getFullYear(), manilaDate.getMonth(), 1);
+        return {
+          startDate: getManilaDate(startOfMonth),
+          endDate: getManilaDate()
+        };
+      case 'lastMonth':
+        const startOfLastMonth = new Date(manilaDate.getFullYear(), manilaDate.getMonth() - 1, 1);
+        const endOfLastMonth = new Date(manilaDate.getFullYear(), manilaDate.getMonth(), 0);
+        return {
+          startDate: getManilaDate(startOfLastMonth),
+          endDate: getManilaDate(endOfLastMonth)
+        };
+      case 'last7Days':
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 7);
+        return {
+          startDate: getManilaDate(sevenDaysAgo),
+          endDate: getManilaDate()
+        };
+      case 'last30Days':
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(today.getDate() - 30);
+        return {
+          startDate: getManilaDate(thirtyDaysAgo),
+          endDate: getManilaDate()
+        };
+      default:
+        return {
+          startDate: lastWeek,
+          endDate: today
+        };
+    }
+  };
+
+  const handleQuickDateFilter = (range) => {
+    const dateRange = getDateRange(range);
+    const newFilters = {
+      ...filterForm,
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate
+    };
+    setFilterForm(newFilters);
+    setFilters(newFilters);
+    setActiveQuickFilter(range);
+    setCurrentPage(1);
+  };
 
   // Fetch subordinates on component mount
   useEffect(() => {
@@ -512,6 +634,11 @@ const TeamLeaderReports = ({ employee }) => {
     const newFilterForm = { ...filterForm, [name]: value };
     setFilterForm(newFilterForm);
     
+    // Clear active quick filter if dates are manually changed
+    if (name === 'startDate' || name === 'endDate') {
+      setActiveQuickFilter(null);
+    }
+    
     // Automatically apply filters when they change
     setFilters(newFilterForm);
     setCurrentPage(1);
@@ -587,8 +714,8 @@ const TeamLeaderReports = ({ employee }) => {
     const dt = new Date(tsISO);
     if (!isNaN(dt)) {
       return {
-        date: dt.toLocaleDateString('en-CA'),
-        time: dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+        date: dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }),
+        time: dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
       };
     } else {
       let date = '', time = '';
@@ -671,6 +798,87 @@ const TeamLeaderReports = ({ employee }) => {
     doc.save('team_time_entries.pdf');
   };
 
+  // Summary statistics functions
+  const getSummaryStats = () => {
+    const totalEntries = filteredEntries.length;
+    const timeInCount = filteredEntries.filter(e => e.entry_type === 'time_in').length;
+    const timeOutCount = filteredEntries.filter(e => e.entry_type === 'time_out').length;
+    const totalOvertime = filteredEntries.reduce((sum, e) => sum + (e.overtime || 0), 0);
+    const employeesWithEntries = new Set(filteredEntries.map(e => e.employee_id)).size;
+    const departmentsWithEntries = new Set(filteredEntries.map(e => e.department_name).filter(Boolean)).size;
+    const entriesWithNotes = filteredEntries.filter(e => e.notes && e.notes.trim()).length;
+    const entriesWithLocation = filteredEntries.filter(e => e.latitude && e.longitude).length;
+
+    return {
+      totalEntries,
+      timeInCount,
+      timeOutCount,
+      totalOvertime: parseFloat(totalOvertime.toFixed(2)),
+      employeesWithEntries,
+      departmentsWithEntries,
+      entriesWithNotes,
+      entriesWithLocation,
+      averageOvertime: totalEntries > 0 ? parseFloat((totalOvertime / totalEntries).toFixed(2)) : 0
+    };
+  };
+
+  const exportSummary = () => {
+    const stats = getSummaryStats();
+    const summaryData = [
+      { Metric: 'Total Time Entries', Value: stats.totalEntries },
+      { Metric: 'Time In Entries', Value: stats.timeInCount },
+      { Metric: 'Time Out Entries', Value: stats.timeOutCount },
+      { Metric: 'Total Overtime Hours', Value: `${stats.totalOvertime}h` },
+      { Metric: 'Average Overtime per Entry', Value: `${stats.averageOvertime}h` },
+      { Metric: 'Unique Employees', Value: stats.employeesWithEntries },
+      { Metric: 'Departments Represented', Value: stats.departmentsWithEntries },
+      { Metric: 'Entries with Notes', Value: stats.entriesWithNotes },
+      { Metric: 'Entries with Location', Value: stats.entriesWithLocation },
+      { Metric: 'Date Range', Value: `${filterForm.startDate} to ${filterForm.endDate}` },
+      { Metric: 'Filter Applied', Value: activeQuickFilter ? activeQuickFilter.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()) : 'Custom Range' }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(summaryData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Summary Statistics');
+    XLSX.writeFile(wb, 'team_time_entries_summary.xlsx');
+  };
+
+  const exportSummaryPDF = () => {
+    const stats = getSummaryStats();
+    const doc = new jsPDF();
+    
+    // Title
+    doc.setFontSize(18);
+    doc.text('Team Time Entries Summary Report', 14, 20);
+    
+    // Date range
+    doc.setFontSize(12);
+    doc.text(`Date Range: ${filterForm.startDate} to ${filterForm.endDate}`, 14, 30);
+    doc.text(`Filter: ${activeQuickFilter ? activeQuickFilter.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()) : 'Custom Range'}`, 14, 37);
+    
+    // Summary table
+    autoTable(doc, {
+      startY: 45,
+      head: [['Metric', 'Value']],
+      body: [
+        ['Total Time Entries', stats.totalEntries.toString()],
+        ['Time In Entries', stats.timeInCount.toString()],
+        ['Time Out Entries', stats.timeOutCount.toString()],
+        ['Total Overtime Hours', `${stats.totalOvertime}h`],
+        ['Average Overtime per Entry', `${stats.averageOvertime}h`],
+        ['Unique Employees', stats.employeesWithEntries.toString()],
+        ['Departments Represented', stats.departmentsWithEntries.toString()],
+        ['Entries with Notes', stats.entriesWithNotes.toString()],
+        ['Entries with Location', stats.entriesWithLocation.toString()]
+      ],
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [59, 130, 246] }
+    });
+    
+    doc.save('team_time_entries_summary.pdf');
+  };
+
   // Pagination controls
   const renderPagination = () => {
     if (totalPages <= 1) return null;
@@ -744,6 +952,108 @@ const TeamLeaderReports = ({ employee }) => {
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h3m4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2h3a4 4 0 014 4v2" />
             </svg>
             Team Report Configuration
+          </div>
+          
+          {/* Quick Date Filters */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium text-gray-700">Quick Date Filters:</div>
+              <div className="flex items-center gap-3">
+                {activeQuickFilter && (
+                  <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                    {filterForm.startDate} to {filterForm.endDate}
+                  </div>
+                )}
+                <div className="text-xs text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                  🕐 Manila Time: {getManilaTime()}
+                </div>
+                <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded">
+                  📅 Manila Date: {getManilaDate()}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleQuickDateFilter('today')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 transform hover:scale-105 border ${
+                  activeQuickFilter === 'today'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                    : 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200'
+                }`}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => handleQuickDateFilter('yesterday')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 transform hover:scale-105 border ${
+                  activeQuickFilter === 'yesterday'
+                    ? 'bg-gray-600 text-white border-gray-600 shadow-md'
+                    : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
+                }`}
+              >
+                Yesterday
+              </button>
+              <button
+                onClick={() => handleQuickDateFilter('thisWeek')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 transform hover:scale-105 border ${
+                  activeQuickFilter === 'thisWeek'
+                    ? 'bg-green-600 text-white border-green-600 shadow-md'
+                    : 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
+                }`}
+              >
+                This Week
+              </button>
+              <button
+                onClick={() => handleQuickDateFilter('lastWeek')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 transform hover:scale-105 border ${
+                  activeQuickFilter === 'lastWeek'
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-md'
+                    : 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200'
+                }`}
+              >
+                Last Week
+              </button>
+              <button
+                onClick={() => handleQuickDateFilter('thisMonth')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 transform hover:scale-105 border ${
+                  activeQuickFilter === 'thisMonth'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                    : 'bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200'
+                }`}
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => handleQuickDateFilter('lastMonth')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 transform hover:scale-105 border ${
+                  activeQuickFilter === 'lastMonth'
+                    ? 'bg-orange-600 text-white border-orange-600 shadow-md'
+                    : 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200'
+                }`}
+              >
+                Last Month
+              </button>
+              <button
+                onClick={() => handleQuickDateFilter('last7Days')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 transform hover:scale-105 border ${
+                  activeQuickFilter === 'last7Days'
+                    ? 'bg-teal-600 text-white border-teal-600 shadow-md'
+                    : 'bg-teal-100 text-teal-700 border-teal-200 hover:bg-teal-200'
+                }`}
+              >
+                Last 7 Days
+              </button>
+              <button
+                onClick={() => handleQuickDateFilter('last30Days')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 transform hover:scale-105 border ${
+                  activeQuickFilter === 'last30Days'
+                    ? 'bg-pink-600 text-white border-pink-600 shadow-md'
+                    : 'bg-pink-100 text-pink-700 border-pink-200 hover:bg-pink-200'
+                }`}
+              >
+                Last 30 Days
+              </button>
+            </div>
           </div>
           
           <div className="flex flex-wrap gap-4 mb-2">
@@ -873,6 +1183,24 @@ const TeamLeaderReports = ({ employee }) => {
                 PDF
               </button>
             </Tooltip>
+            <Tooltip text="Download Summary">
+              <button 
+                onClick={exportSummary} 
+                disabled={!showTable || filteredEntries.length === 0}
+                className="bg-gradient-to-r from-purple-400 to-pink-600 text-white px-3 py-1.5 rounded shadow hover:from-purple-500 hover:to-pink-700 transition-all duration-200 transform hover:scale-105 font-medium focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:opacity-50 disabled:cursor-not-allowed button-pulse"
+              >
+                Summary
+              </button>
+            </Tooltip>
+            <Tooltip text="Download Summary PDF">
+              <button 
+                onClick={exportSummaryPDF} 
+                disabled={!showTable || filteredEntries.length === 0}
+                className="bg-gradient-to-r from-indigo-400 to-blue-600 text-white px-3 py-1.5 rounded shadow hover:from-indigo-500 hover:to-blue-700 transition-all duration-200 transform hover:scale-105 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed button-pulse"
+              >
+                Summary PDF
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -891,6 +1219,80 @@ const TeamLeaderReports = ({ employee }) => {
               </div>
             )}
           </div>
+
+          {/* Summary Statistics */}
+          {!loading && filteredEntries.length > 0 && (
+            <div className="mb-6">
+              <div className="text-sm font-medium text-gray-700 mb-3">Summary Statistics:</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {(() => {
+                  const stats = getSummaryStats();
+                  return (
+                    <>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                        <div className="text-2xl font-bold text-blue-600">{stats.totalEntries}</div>
+                        <div className="text-xs text-blue-700">Total Entries</div>
+                      </div>
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                        <div className="text-2xl font-bold text-green-600">{stats.timeInCount}</div>
+                        <div className="text-xs text-green-700">Time In</div>
+                      </div>
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                        <div className="text-2xl font-bold text-red-600">{stats.timeOutCount}</div>
+                        <div className="text-xs text-red-700">Time Out</div>
+                      </div>
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-center">
+                        <div className="text-2xl font-bold text-orange-600">{stats.totalOvertime}h</div>
+                        <div className="text-xs text-orange-700">Total OT</div>
+                      </div>
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                        <div className="text-2xl font-bold text-purple-600">{stats.employeesWithEntries}</div>
+                        <div className="text-xs text-purple-700">Employees</div>
+                      </div>
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-center">
+                        <div className="text-2xl font-bold text-indigo-600">{stats.departmentsWithEntries}</div>
+                        <div className="text-xs text-indigo-700">Departments</div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+              <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-teal-50 border border-teal-200 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-teal-600">{(() => {
+                    const stats = getSummaryStats();
+                    return stats.averageOvertime;
+                  })()}h</div>
+                  <div className="text-xs text-teal-700">Avg OT/Entry</div>
+                </div>
+                <div className="bg-pink-50 border border-pink-200 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-pink-600">{(() => {
+                    const stats = getSummaryStats();
+                    return stats.entriesWithNotes;
+                  })()}</div>
+                  <div className="text-xs text-pink-700">With Notes</div>
+                </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-yellow-600">{(() => {
+                    const stats = getSummaryStats();
+                    return stats.entriesWithLocation;
+                  })()}</div>
+                  <div className="text-xs text-yellow-700">With Location</div>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-gray-600">{(() => {
+                    const stats = getSummaryStats();
+                    return activeQuickFilter ? activeQuickFilter.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()) : 'Custom';
+                  })()}</div>
+                  <div className="text-xs text-gray-700">Filter Applied</div>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-center">
+                  <div className="text-lg font-bold text-blue-600">{getManilaDate()}</div>
+                  <div className="text-xs text-blue-700">Manila Date</div>
+                </div>
+              </div>
+            </div>
+          )}
           
           {!showTable ? (
             <div className="flex flex-col items-center py-12 text-blue-300 animate-fade-in">
@@ -908,6 +1310,25 @@ const TeamLeaderReports = ({ employee }) => {
             <div className="overflow-x-auto">
               {renderPageSizeSelector()}
               <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+                {/* Table Header with Count */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium text-gray-700">
+                      Showing {filteredEntries.length} time entries
+                      {timeEntriesData?.count && timeEntriesData.count !== filteredEntries.length && (
+                        <span className="text-gray-500 ml-2">
+                          (of {timeEntriesData.count} total)
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
+                      🕐 Manila Time: {getManilaTime()}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Page {currentPage} of {totalPages}
+                    </div>
+                  </div>
+                </div>
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gradient-to-r from-blue-50 to-indigo-50">
                     <tr>
@@ -945,8 +1366,8 @@ const TeamLeaderReports = ({ employee }) => {
                         let tsISO = ts.replace(/\.(\d+)([\+\-]\d{2}:\d{2})$/, '$2');
                         const dt = new Date(tsISO);
                         if (!isNaN(dt)) {
-                          date = dt.toLocaleDateString('en-CA');
-                          formattedTime = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                          date = dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+                          formattedTime = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' });
                         } else {
                           if (ts.includes('T')) {
                             [date, time] = ts.split('T');

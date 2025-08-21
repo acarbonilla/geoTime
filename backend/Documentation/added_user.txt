@@ -1,0 +1,54 @@
+Last ID: 
+ALS000106
+
+
+RR Davao
+Fullname: Nico
+
+RR Davao
+Fullname: Vince Fabria
+Username: fabriav
+Initial pword: testpass123
+ALS000101
+Deskside Engineer
+Status: Added
+
+
+==============CK Sukat=====================
+Fullname: Danilo Macario
+Username: macariod
+Initial pword: testpass123
+ALS000102
+Deskside Engineer
+Status: Added
+
+Lester Aggabao
+Username: aggabaol
+Initial pword: testpass123
+ALS000103
+Deskside Engineer
+Status: Added
+
+Fullname: Vinson Urrete
+Username: urretev
+Initial pword: testpass123
+ALS000106
+Deskside Engineer
+Status: Added
+=============RR Cebu======================
+
+RR Cebu
+Fullname: Benson Edillo
+Username: edillob
+Initial password: testpass123
+ALS000104
+Status: Added
+
+
+RR Cebu
+Fullname: Mike Manatad
+Username: manatadm
+Initial password: testpass123
+ALS000105
+
+===================

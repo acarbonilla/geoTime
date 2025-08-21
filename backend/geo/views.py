@@ -913,8 +913,46 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
         return TimeEntrySerializer
 
     def list(self, request, *args, **kwargs):
+        # Handle date range filtering - support both old and new parameter names
+        timestamp_gte = request.query_params.get('timestamp__gte') or request.query_params.get('start_date')
+        timestamp_lte = request.query_params.get('timestamp__lte') or request.query_params.get('end_date')
         date_str = request.query_params.get('date')
+        
         queryset = self.get_queryset()
+        
+        # Apply date range filters if provided
+        if timestamp_gte:
+            try:
+                # Extract just the date part for simpler filtering
+                gte_date = timestamp_gte.split('T')[0]
+                print(f"[DEBUG] Applying timestamp__gte filter: {timestamp_gte} -> date: {gte_date}")
+                # Convert string to date object for proper filtering
+                from datetime import datetime
+                gte_date_obj = datetime.strptime(gte_date, '%Y-%m-%d').date()
+                # For gte, we want entries from the start of the specified date
+                queryset = queryset.filter(timestamp__date__gte=gte_date_obj)
+                print(f"[DEBUG] Query after timestamp__gte: {queryset.query}")
+            except (ValueError, AttributeError):
+                return Response({'error': 'Invalid timestamp__gte format. Use ISO format'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if timestamp_lte:
+            try:
+                # Extract just the date part for simpler filtering
+                lte_date = timestamp_lte.split('T')[0]
+                print(f"[DEBUG] Applying timestamp__lte filter: {timestamp_lte} -> date: {lte_date}")
+                # Convert string to date object for proper filtering
+                from datetime import datetime
+                lte_date_obj = datetime.strptime(lte_date, '%Y-%m-%d').date()
+                # For lte, we want entries up to the end of the specified date
+                # So if lte_date is 2025-08-23, we want entries up to 2025-08-22 23:59:59
+                # This means we filter by timestamp__date__lt=2025-08-23 (less than next day)
+                next_day = lte_date_obj + timedelta(days=1)
+                queryset = queryset.filter(timestamp__date__lt=next_day)
+                print(f"[DEBUG] Query after timestamp__lte (adjusted): {queryset.query}")
+            except (ValueError, AttributeError):
+                return Response({'error': 'Invalid timestamp__lte format. Use ISO format'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Handle single date filter (backward compatibility)
         if date_str:
             try:
                 from datetime import datetime
@@ -926,7 +964,20 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
                 return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
             serializer = self.get_serializer(queryset, many=True)
             return Response({'entries': serializer.data})
-        # Default DRF behavior if no date param
+        
+        # Debug: Log the final queryset count and some sample results
+        final_count = queryset.count()
+        print(f"[DEBUG] Final queryset count: {final_count}")
+        print(f"[DEBUG] Final query: {queryset.query}")
+        
+        if final_count > 0:
+            # Show first few results for debugging
+            sample_results = queryset[:3]
+            print(f"[DEBUG] Sample results:")
+            for entry in sample_results:
+                print(f"  - ID: {entry.id}, Date: {entry.timestamp.date()}, Employee: {entry.employee.full_name}")
+        
+        # Default DRF behavior if no date params
         return super().list(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'])

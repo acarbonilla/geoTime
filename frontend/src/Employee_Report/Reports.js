@@ -6,8 +6,110 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import RequestTimeCorrectionDrawer from './RequestTimeCorrectionDrawer';
 // import MyTimeCorrectionRequests from './MyTimeCorrectionRequests';
-import { FaFilter, FaFileCsv, FaFileExcel, FaFilePdf, FaCalendarAlt, FaUserClock } from 'react-icons/fa';
+import { FaFilter, FaFileCsv, FaFileExcel, FaFilePdf, FaUserClock } from 'react-icons/fa';
 import { Tooltip as ReactTooltip } from 'react-tooltip';
+
+// Add custom CSS animations
+const customStyles = `
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  
+  @keyframes bounceIn {
+    0% { opacity: 0; transform: scale(0.3); }
+    50% { opacity: 1; transform: scale(1.05); }
+    70% { transform: scale(0.9); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.6s ease-out;
+  }
+  
+  .animate-slide-in {
+    animation: slideIn 0.4s ease-out;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+  
+  .animate-bounce-in {
+    animation: bounceIn 0.6s ease-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.5s ease-out;
+  }
+  
+  .hover-lift {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  }
+  
+  .button-pulse {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .button-pulse:hover {
+    transform: scale(1.05);
+  }
+  
+  .table-row-hover {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .table-row-hover:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+  }
+  
+  .card-glow {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .card-glow:hover {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
+  }
+  
+  .gradient-bg {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+  
+  .gradient-text {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+`;
+
+// Inject custom styles
+if (typeof document !== 'undefined') {
+  const styleElement = document.createElement('style');
+  styleElement.textContent = customStyles;
+  document.head.appendChild(styleElement);
+}
 
 // Commented out unused components to reduce bundle size
 /*
@@ -44,8 +146,6 @@ const Reports = () => {
   
   // Filter form state
   const [filterForm, setFilterForm] = useState({
-    timeEntriesStartDate: '',
-    timeEntriesEndDate: '',
     timeEntriesType: 'all'
   });
   
@@ -57,6 +157,8 @@ const Reports = () => {
   // const [activeTab, setActiveTab] = useState('timeEntries');
   const [isCorrectionDrawerOpen, setIsCorrectionDrawerOpen] = useState(false);
   // State for UI control
+  const [filtersLoading, setFiltersLoading] = useState(false);
+
 
   // Remove employee state and related API call
   // const [employee, setEmployee] = useState(null);
@@ -68,12 +170,80 @@ const Reports = () => {
   const [myRequests, setMyRequests] = useState([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
 
-  // Commented out unused handler
-  /*
-  const handleOpenCorrectionDrawer = () => {
-    setIsCorrectionDrawerOpen(true);
+
+
+
+
+  // Summary statistics functions
+  const getSummaryStats = () => {
+    const totalEntries = filteredEntries.length;
+    const timeInCount = filteredEntries.filter(e => e.entry_type === 'time_in').length;
+    const timeOutCount = filteredEntries.filter(e => e.entry_type === 'time_out').length;
+    const totalOvertime = filteredEntries.reduce((sum, e) => sum + (e.overtime || 0), 0);
+    const entriesWithNotes = filteredEntries.filter(e => e.notes && e.notes.trim()).length;
+    const entriesWithLocation = filteredEntries.filter(e => e.latitude && e.longitude).length;
+
+    return {
+      totalEntries,
+      timeInCount,
+      timeOutCount,
+      totalOvertime: parseFloat(totalOvertime.toFixed(2)),
+      entriesWithNotes,
+      entriesWithLocation,
+      averageOvertime: totalEntries > 0 ? parseFloat((totalOvertime / totalEntries).toFixed(2)) : 0
+    };
   };
-  */
+
+  const exportSummary = () => {
+    const stats = getSummaryStats();
+    const summaryData = [
+      { Metric: 'Total Time Entries', Value: stats.totalEntries },
+      { Metric: 'Time In Entries', Value: stats.timeInCount },
+      { Metric: 'Time Out Entries', Value: stats.timeOutCount },
+      { Metric: 'Total Overtime Hours', Value: `${stats.totalOvertime}h` },
+      { Metric: 'Average Overtime per Entry', Value: `${stats.averageOvertime}h` },
+      { Metric: 'Entries with Notes', Value: stats.entriesWithNotes },
+      { Metric: 'Entries with Location', Value: stats.entriesWithLocation },
+      { Metric: 'Filter Applied', Value: 'All Time' }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(summaryData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Summary Statistics');
+    XLSX.writeFile(wb, 'my_time_entries_summary.xlsx');
+  };
+
+  const exportSummaryPDF = () => {
+    const stats = getSummaryStats();
+    const doc = new jsPDF();
+    
+    // Title
+    doc.setFontSize(18);
+    doc.text('My Time Entries Summary Report', 14, 20);
+    
+    // Filter info
+    doc.setFontSize(12);
+    doc.text(`Filter: All Time`, 14, 30);
+    
+    // Summary table
+    autoTable(doc, {
+      startY: 45,
+      head: [['Metric', 'Value']],
+      body: [
+        ['Total Time Entries', stats.totalEntries.toString()],
+        ['Time In Entries', stats.timeInCount.toString()],
+        ['Time Out Entries', stats.timeOutCount.toString()],
+        ['Total Overtime Hours', `${stats.totalOvertime}h`],
+        ['Average Overtime per Entry', `${stats.averageOvertime}h`],
+        ['Entries with Notes', stats.entriesWithNotes.toString()],
+        ['Entries with Location', stats.entriesWithLocation.toString()]
+      ],
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [59, 130, 246] }
+    });
+    
+    doc.save('my_time_entries_summary.pdf');
+  };
   
   const handleCloseCorrectionDrawer = () => {
     setIsCorrectionDrawerOpen(false);
@@ -94,8 +264,7 @@ const Reports = () => {
   // Pagination handlers
   const handlePageChange = (page) => {
     setCurrentPage(page);
-    // Fetch entries for the new page
-    fetchTimeEntries();
+    // The useEffect will automatically trigger fetchTimeEntries when currentPage changes
   };
   
 
@@ -104,6 +273,8 @@ const Reports = () => {
   // Filter form change handler
   const handleFilterFormChange = (e) => {
     const { name, value } = e.target;
+    console.log('🔧 Filter changed:', name, value);
+    
     setFilterForm(prev => ({
       ...prev,
       [name]: value
@@ -112,10 +283,27 @@ const Reports = () => {
 
   // Apply filters for time entries
   const handleApplyTimeEntriesFilters = () => {
+    console.log('🚀 Applying filters manually:', filterForm);
     // Apply the filters and refresh the data
     setCurrentPage(1);
-    fetchTimeEntries();
+    
+    // The useEffect will automatically trigger fetchTimeEntries when filters change
   };
+
+  // Reset filters to default
+  const handleResetFilters = () => {
+    // Reset to default filter
+    setFilterForm(prev => ({
+      ...prev,
+      timeEntriesType: 'all'
+    }));
+    
+    setCurrentPage(1);
+    
+    // The useEffect will automatically trigger fetchTimeEntries when filters change
+  };
+
+
 
   // Pagination
   const indexOfLastEntry = currentPage * entriesPerPage;
@@ -203,16 +391,9 @@ const Reports = () => {
       doc.setFontSize(18);
       doc.text(title, 14, 22);
       
-      // Add date range and filters info
+      // Add filter info
       doc.setFontSize(11);
       doc.setTextColor(100);
-      
-      let dateRange = 'All time';
-      if (filterForm.timeEntriesStartDate || filterForm.timeEntriesEndDate) {
-        const start = filterForm.timeEntriesStartDate || 'Start';
-        const end = filterForm.timeEntriesEndDate || 'End';
-        dateRange = `${start} to ${end}`;
-      }
       
       let entryType = 'All Types';
       if (filterForm.timeEntriesType && filterForm.timeEntriesType !== 'all') {
@@ -221,8 +402,7 @@ const Reports = () => {
           .replace(/\b\w/g, l => l.toUpperCase());
       }
       
-      doc.text(`Date Range: ${dateRange}`, 14, 30);
-      doc.text(`Entry Type: ${entryType}`, 14, 38);
+      doc.text(`Entry Type: ${entryType}`, 14, 30);
       
       // Add table
       autoTable(doc, {
@@ -275,47 +455,112 @@ const Reports = () => {
     });
   };
 
-  // Fetch time entries from the API
+  // Check if JWT token is expired
+  const isTokenExpired = (token) => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const currentTime = Date.now() / 1000;
+      return payload.exp < currentTime;
+    } catch (error) {
+      console.error('Error checking token expiration:', error);
+      return true; // Assume expired if we can't decode
+    }
+  };
+
+  // Fetch time entries from the API - ONLY for the current authenticated user
   const fetchTimeEntries = useCallback(async () => {
     let isMounted = true;
+    
+    // Check if user is authenticated
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      console.error('❌ No access token found. User not authenticated.');
+      console.log('🔑 Redirecting to login...');
+      window.location.href = '/login';
+      return;
+    }
+    
+    // Check if token is expired
+    if (isTokenExpired(token)) {
+      console.error('❌ Access token has expired.');
+      console.log('🔑 Redirecting to login...');
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      window.location.href = '/login';
+      return;
+    }
+    
+    setFiltersLoading(true);
+    
     try {
       const params = new URLSearchParams();
       
       // Add time entries filters
-      if (filterForm.timeEntriesStartDate) params.append('start_date', filterForm.timeEntriesStartDate);
-      if (filterForm.timeEntriesEndDate) params.append('end_date', filterForm.timeEntriesEndDate);
-      if (filterForm.timeEntriesType !== 'all') params.append('entry_type', filterForm.timeEntriesType);
+      if (filterForm.timeEntriesType !== 'all') {
+        params.append('entry_type', filterForm.timeEntriesType);
+        console.log('🔧 Added entry_type:', filterForm.timeEntriesType);
+      }
       
       // Add pagination
       params.append('page', currentPage);
       params.append('page_size', entriesPerPage);
       
+      console.log('🔍 Fetching time entries with params:', params.toString());
+      console.log('🔧 Filter type:', filterForm.timeEntriesType);
+      console.log('🌐 Full API URL:', `/time-entries/?${params.toString()}`);
+      
+      // Check if user is authenticated
+      const token = localStorage.getItem('access_token');
+      console.log('🔑 Authentication check:', {
+        hasToken: !!token,
+        tokenLength: token ? token.length : 0,
+        tokenPreview: token ? `${token.substring(0, 20)}...` : 'No token'
+      });
+      
+      // Use the correct endpoint - backend automatically filters by current user
       const response = await axiosInstance.get(`/time-entries/?${params.toString()}`);
       if (isMounted) {
+        console.log('✅ API Response:', response.data);
+        console.log('📊 Results count:', response.data.results?.length || response.data.length);
+        console.log('📋 First few results:', response.data.results?.slice(0, 3) || response.data.slice(0, 3));
         setFilteredEntries(response.data.results || response.data);
         setTotalPages(Math.ceil((response.data.count || response.data.length) / entriesPerPage));
       }
     } catch (error) {
-      console.error('Error fetching time entries:', error);
+      console.error('❌ Error fetching time entries:', error);
+      console.error('🔍 Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          headers: error.config?.headers,
+          params: error.config?.params
+        }
+      });
       if (isMounted) {
         setFilteredEntries([]);
       }
     } finally {
-      // Cleanup
+      if (isMounted) {
+        setFiltersLoading(false);
+      }
     }
     
     return () => {
       isMounted = false;
     };
-  }, [currentPage, entriesPerPage, filterForm.timeEntriesEndDate, filterForm.timeEntriesStartDate, filterForm.timeEntriesType]);
+  }, [filterForm.timeEntriesType, currentPage, entriesPerPage]);
 
-  // Initialize data fetch
+  // Initialize data fetch - only run once on component mount
   useEffect(() => {
     let isMounted = true;
     
     const fetchData = async () => {
       try {
-        // Only fetch time entries
+        // Only fetch time entries on initial load
         await fetchTimeEntries();
       } catch (error) {
         console.error('Error initializing data:', error);
@@ -330,7 +575,27 @@ const Reports = () => {
     return () => {
       isMounted = false;
     };
-  }, [fetchTimeEntries]);
+  }, []); // Empty dependency array for initial load only
+
+  // Effect to refetch data when filters change
+  useEffect(() => {
+    if (filterForm.timeEntriesType !== 'all') {
+      console.log('🔄 Filters changed, refetching data...');
+      setCurrentPage(1); // Reset to first page when filters change
+      fetchTimeEntries();
+    }
+  }, [filterForm.timeEntriesType, fetchTimeEntries]);
+
+  // Effect to refetch data when page changes
+  useEffect(() => {
+    if (currentPage > 1) { // Skip initial load
+      console.log('📄 Page changed to', currentPage, ', refetching data...');
+      fetchTimeEntries();
+    }
+  }, [currentPage, fetchTimeEntries]);
+
+  // Remove the auto-refetch useEffect that was causing race conditions
+  // Filters will now only be applied when explicitly triggered by user actions
 
   // Fetch my time correction requests when tab is activated
   useEffect(() => {
@@ -436,121 +701,274 @@ const Reports = () => {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-2 py-6 md:px-4 md:py-8">
-      <div className="bg-white rounded-2xl shadow-xl overflow-hidden transition-shadow duration-300 hover:shadow-2xl">
+    <div className="w-full max-w-7xl mx-auto px-2 py-6 md:px-4 md:py-8 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 min-h-screen">
+      <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden transition-all duration-500 hover:shadow-3xl hover:scale-[1.01] animate-fade-in">
         {/* Tab bar */}
-        <div className="flex border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
+        <div className="flex border-b border-gray-200 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 animate-slide-in">
           <button
-            className={`px-6 py-4 text-lg font-semibold focus:outline-none transition-all duration-200 ${activeTab === 'entries' ? 'border-b-4 border-blue-600 text-blue-700 bg-white' : 'text-gray-500 hover:text-blue-600'}`}
+            className={`px-6 py-4 text-lg font-semibold focus:outline-none transition-all duration-300 relative overflow-hidden group ${
+              activeTab === 'entries' 
+                ? 'text-white bg-white/20 border-b-4 border-yellow-300 shadow-lg' 
+                : 'text-blue-100 hover:text-white hover:bg-white/10'
+            }`}
             onClick={() => setActiveTab('entries')}
           >
-            Time Entries
+            <span className="relative z-10 flex items-center gap-2">
+              <FaUserClock className="text-xl" />
+              Time Entries
+            </span>
+            {activeTab === 'entries' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-indigo-500/20 animate-pulse"></div>
+            )}
           </button>
           <button
-            className={`px-6 py-4 text-lg font-semibold focus:outline-none transition-all duration-200 relative ${activeTab === 'requests' ? 'border-b-4 border-blue-600 text-blue-700 bg-white' : 'text-gray-500 hover:text-blue-600'}`}
+            className={`px-6 py-4 text-lg font-semibold focus:outline-none transition-all duration-300 relative overflow-hidden group ${
+              activeTab === 'requests' 
+                ? 'text-white bg-white/20 border-b-4 border-yellow-300 shadow-lg' 
+                : 'text-blue-100 hover:text-white hover:bg-white/10'
+            }`}
             onClick={() => setActiveTab('requests')}
           >
-            My Time Correction Requests
-            {myRequests.length > 0 && (
-              <span className="ml-2 inline-block bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full align-middle">{myRequests.length}</span>
+            <span className="relative z-10 flex items-center gap-2">
+              <FaUserClock className="text-xl" />
+              My Time Correction Requests
+              {myRequests.length > 0 && (
+                <span className="ml-2 inline-block bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-0.5 rounded-full align-middle animate-bounce-in">
+                  {myRequests.length}
+                </span>
+              )}
+            </span>
+            {activeTab === 'requests' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 animate-pulse"></div>
             )}
           </button>
         </div>
         {/* Tab content */}
         {activeTab === 'entries' && (
           <>
-            {/* Filters, export, table, pagination as before */}
-            <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-gradient-to-r from-blue-50 to-white">
-              <div className="flex items-center gap-3">
-                <FaUserClock className="text-blue-500 text-2xl" />
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-800 tracking-tight">Time Entries Report</h1>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2 md:mt-0">
-                <button
-                  onClick={exportToCSV}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200"
-                >
-                  <FaFileCsv /> CSV
-                </button>
-                <button
-                  onClick={exportExcel}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200"
-                >
-                  <FaFileExcel /> Excel
-                </button>
-                <button
-                  onClick={exportPDF}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200"
-                >
-                  <FaFilePdf /> PDF
-                </button>
-              </div>
+                         {/* Filters, export, table, pagination as before */}
+             <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 animate-slide-up">
+               <div className="flex items-center gap-3">
+                 <div className="p-3 bg-white/20 rounded-full backdrop-blur-sm animate-bounce-in">
+                   <FaUserClock className="text-white text-2xl" />
+                 </div>
+                 <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight drop-shadow-lg">Time Entries Report</h1>
+               </div>
+                             <div className="flex flex-wrap gap-3 mt-2 md:mt-0">
+                 <button
+                   onClick={exportToCSV}
+                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-green-600 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-green-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
+                   style={{ animationDelay: '0.1s' }}
+                 >
+                   <FaFileCsv className="text-lg" /> CSV
+                 </button>
+                 <button
+                   onClick={exportExcel}
+                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
+                   style={{ animationDelay: '0.2s' }}
+                 >
+                   <FaFileExcel className="text-lg" /> Excel
+                 </button>
+                 <button
+                   onClick={exportPDF}
+                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-red-600 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
+                   style={{ animationDelay: '0.3s' }}
+                 >
+                   <FaFilePdf className="text-lg" /> PDF
+                 </button>
+                 <button
+                   onClick={exportSummary}
+                   disabled={filteredEntries.length === 0}
+                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-purple-600 hover:to-violet-700 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in disabled:opacity-50 disabled:cursor-not-allowed"
+                   style={{ animationDelay: '0.4s' }}
+                 >
+                   <FaFileExcel className="text-lg" /> Summary
+                 </button>
+                 <button
+                   onClick={exportSummaryPDF}
+                   disabled={filteredEntries.length === 0}
+                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-blue-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-indigo-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in disabled:opacity-50 disabled:cursor-not-allowed"
+                   style={{ animationDelay: '0.5s' }}
+                 >
+                   <FaFilePdf className="text-lg" /> Summary PDF
+                 </button>
+               </div>
             </div>
-            {/* Filter controls */}
-            <div className="p-6 bg-gradient-to-r from-blue-50 to-white border-b border-gray-100">
-              <div className="flex items-center gap-2 mb-4">
-                <FaFilter className="text-blue-400" />
-                <h2 className="text-lg font-semibold text-gray-700">Filters</h2>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1"><FaCalendarAlt className="inline text-blue-400" />Start Date</label>
-                  <input
-                    type="date"
-                    name="timeEntriesStartDate"
-                    value={filterForm.timeEntriesStartDate}
-                    onChange={handleFilterFormChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1"><FaCalendarAlt className="inline text-blue-400" />End Date</label>
-                  <input
-                    type="date"
-                    name="timeEntriesEndDate"
-                    value={filterForm.timeEntriesEndDate}
-                    onChange={handleFilterFormChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Entry Type</label>
-                  <select
-                    name="timeEntriesType"
-                    value={filterForm.timeEntriesType}
-                    onChange={handleFilterFormChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                         {/* Filter controls */}
+             <div className="p-6 bg-gradient-to-r from-slate-50 via-blue-50 to-indigo-50 border-b border-gray-200 animate-slide-up">
+               <div className="flex items-center gap-3 mb-6">
+                 <div className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-lg">
+                   <FaFilter className="text-white text-lg" />
+                 </div>
+                 <h2 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-700 bg-clip-text text-transparent">Advanced Filters</h2>
+               </div>
+              
+                             <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
+                 <div className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
+                   <label className="block text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                     <div className="p-1 bg-purple-100 rounded">
+                       <FaFilter className="text-purple-600 text-sm" />
+                     </div>
+                     Entry Type
+                   </label>
+                   <select
+                     name="timeEntriesType"
+                     value={filterForm.timeEntriesType}
+                     onChange={handleFilterFormChange}
+                     className="w-full p-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-purple-200 focus:border-purple-500 transition-all duration-300 shadow-sm hover:shadow-md"
+                   >
+                     <option value="all">All Entries</option>
+                     <option value="time_in">Time In</option>
+                     <option value="time_out">Time Out</option>
+                   </select>
+                 </div>
+               </div>
+                                                           <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      console.log('🔄 Manual refresh clicked');
+                      fetchTimeEntries();
+                    }}
+                    className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-green-600 hover:to-emerald-700 focus:outline-none focus:ring-4 focus:ring-green-200 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
+                    style={{ animationDelay: '0.3s' }}
                   >
-                    <option value="all">All Entries</option>
-                    <option value="time_in">Time In</option>
-                    <option value="time_out">Time Out</option>
-                  </select>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span className="font-semibold">Refresh Data</span>
+                  </button>
+                                     <button
+                     onClick={handleResetFilters}
+                     className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-gray-600 hover:to-gray-700 focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
+                     style={{ animationDelay: '0.3s' }}
+                   >
+                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                     </svg>
+                     <span className="font-semibold">Reset Filters</span>
+                   </button>
+                   <button
+                     onClick={handleApplyTimeEntriesFilters}
+                     className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-blue-200 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
+                     style={{ animationDelay: '0.4s' }}
+                   >
+                     <FaFilter className="text-lg" /> 
+                     <span className="font-semibold">Apply Filters</span>
+                   </button>
                 </div>
               </div>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={handleApplyTimeEntriesFilters}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200"
-                >
-                  <FaFilter /> Apply Filters
-                </button>
+
+
+                         {/* Summary Statistics */}
+             {filteredEntries.length > 0 && (
+               <div className="p-6 bg-gradient-to-r from-slate-50 via-blue-50 to-indigo-50 border-b border-gray-200 animate-slide-up">
+                 {filtersLoading && (
+                   <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-blue-700">
+                     <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                     </svg>
+                     <span className="text-sm font-medium">Applying filters...</span>
+                   </div>
+                 )}
+                 <div className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-3">
+                   <div className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-lg">
+                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                     </svg>
+                   </div>
+                   Summary Statistics
+                 </div>
+                                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                   {(() => {
+                     const stats = getSummaryStats();
+                     return (
+                       <>
+                         <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-xl p-4 text-center hover-lift card-glow animate-bounce-in" style={{ animationDelay: '0.1s' }}>
+                           <div className="text-3xl font-bold text-blue-600 mb-1">{stats.totalEntries}</div>
+                           <div className="text-sm font-semibold text-blue-700">Total Entries</div>
+                         </div>
+                         <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl p-4 text-center hover-lift card-glow animate-bounce-in" style={{ animationDelay: '0.2s' }}>
+                           <div className="text-3xl font-bold text-green-600 mb-1">{stats.timeInCount}</div>
+                           <div className="text-sm font-semibold text-green-700">Time In</div>
+                         </div>
+                         <div className="bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-200 rounded-xl p-4 text-center hover-lift card-glow animate-bounce-in" style={{ animationDelay: '0.3s' }}>
+                           <div className="text-3xl font-bold text-red-600 mb-1">{stats.timeOutCount}</div>
+                           <div className="text-sm font-semibold text-red-700">Time Out</div>
+                         </div>
+                         <div className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-200 rounded-xl p-4 text-center hover-lift card-glow animate-bounce-in" style={{ animationDelay: '0.4s' }}>
+                           <div className="text-3xl font-bold text-orange-600 mb-1">{stats.totalOvertime}h</div>
+                           <div className="text-sm font-semibold text-orange-700">Total OT</div>
+                         </div>
+                         <div className="bg-gradient-to-br from-teal-50 to-teal-100 border-2 border-teal-200 rounded-xl p-4 text-center hover-lift card-glow animate-bounce-in" style={{ animationDelay: '0.5s' }}>
+                           <div className="text-2xl font-bold text-teal-600 mb-1">{stats.averageOvertime}h</div>
+                           <div className="text-sm font-semibold text-teal-700">Avg OT/Entry</div>
+                         </div>
+                         <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-200 rounded-xl p-4 text-center hover-lift card-glow animate-bounce-in" style={{ animationDelay: '0.6s' }}>
+                           <div className="text-2xl font-bold text-purple-600 mb-1">{stats.entriesWithNotes}</div>
+                           <div className="text-sm font-semibold text-purple-700">With Notes</div>
+                         </div>
+                       </>
+                     );
+                   })()}
+                 </div>
+                                 <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
+                   <div className="bg-gradient-to-br from-pink-50 to-pink-100 border-2 border-pink-200 rounded-xl p-3 text-center hover-lift card-glow animate-bounce-in" style={{ animationDelay: '0.7s' }}>
+                     <div className="text-xl font-bold text-pink-600 mb-1">{(() => {
+                       const stats = getSummaryStats();
+                       return stats.entriesWithLocation;
+                     })()}</div>
+                     <div className="text-sm font-semibold text-pink-700">With Location</div>
+                   </div>
+                   <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-2 border-indigo-200 rounded-xl p-3 text-center hover-lift card-glow animate-bounce-in" style={{ animationDelay: '0.8s' }}>
+                     <div className="text-lg font-bold text-indigo-600 mb-1">All Time</div>
+                     <div className="text-sm font-semibold text-indigo-700">Filter Applied</div>
+                   </div>
+                 </div>
               </div>
-            </div>
+            )}
+
             {/* Time entries table */}
             <div className="overflow-x-auto bg-white">
+                             {/* Table Header with Count */}
+               <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 py-4 border-b border-gray-200 animate-slide-up">
+                 <div className="flex items-center justify-between">
+                   <div className="text-white font-semibold flex items-center gap-2">
+                     <div className="p-1 bg-white/20 rounded">
+                       <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                       </svg>
+                     </div>
+                     {filtersLoading ? (
+                       <span className="flex items-center gap-2">
+                         <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                         </svg>
+                         Applying filters...
+                       </span>
+                     ) : (
+                       `Showing ${filteredEntries.length} time entries`
+                     )}
+                   </div>
+                   <div className="text-blue-100 bg-white/20 px-3 py-1 rounded-full text-sm font-medium">
+                     Page {currentPage} of {totalPages}
+                   </div>
+                 </div>
+               </div>
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-blue-100 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Employee</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Time</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Location</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Overtime</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Notes</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">Coordinates</th>
-                  </tr>
-                </thead>
+                                 <thead className="bg-gradient-to-r from-blue-600 to-indigo-600 sticky top-0 z-10 shadow-lg">
+                   <tr>
+                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Employee</th>
+                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Type</th>
+                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Date</th>
+                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Time</th>
+                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Location</th>
+                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Overtime</th>
+                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Notes</th>
+                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Coordinates</th>
+                   </tr>
+                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {currentEntries.length === 0 ? (
                     <tr>
@@ -563,11 +981,11 @@ const Reports = () => {
                       const date = formatDate(entry.timestamp);
                       const formattedTime = formatTime(entry.timestamp);
                       return (
-                        <tr
-                          key={entry.id}
-                          className={`transition-colors duration-200 hover:bg-blue-50 animate-fade-in ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
-                          style={{ animationDelay: `${idx * 40}ms` }}
-                        >
+                                                 <tr
+                           key={entry.id}
+                           className={`transition-all duration-300 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 animate-fade-in table-row-hover ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
+                           style={{ animationDelay: `${idx * 40}ms` }}
+                         >
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{entry.employee_name || 'You'}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${entry.entry_type === 'time_in' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{entry.entry_type === 'time_in' ? 'Time In' : 'Time Out'}</span>
@@ -607,17 +1025,23 @@ const Reports = () => {
             {renderPagination()}
           </>
         )}
-        {activeTab === 'requests' && (
-          <div className="p-6 bg-gradient-to-r from-blue-50 to-white min-h-[300px] animate-fade-in">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-blue-700 flex items-center gap-2"><FaUserClock /> My Time Correction Requests</h2>
-              <button
-                onClick={() => setIsCorrectionDrawerOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200"
-              >
-                + Request Time Correction
-              </button>
-            </div>
+                 {activeTab === 'requests' && (
+           <div className="p-6 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 min-h-[300px] animate-slide-up">
+             <div className="flex items-center justify-between mb-6">
+               <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-700 bg-clip-text text-transparent flex items-center gap-3">
+                 <div className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-lg">
+                   <FaUserClock className="text-white text-lg" />
+                 </div>
+                 My Time Correction Requests
+               </h2>
+               <button
+                 onClick={() => setIsCorrectionDrawerOpen(true)}
+                 className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-blue-200 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
+               >
+                 <span className="text-lg">+</span>
+                 <span className="font-semibold">Request Time Correction</span>
+               </button>
+             </div>
             {requestsLoading ? (
               <div className="flex justify-center items-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
@@ -625,25 +1049,41 @@ const Reports = () => {
             ) : myRequests.length === 0 ? (
               <div className="text-center text-gray-400 py-12">No time correction requests found.</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {myRequests.map((req, idx) => (
-                  <div key={req.id} className="bg-white rounded-xl shadow-md p-5 border border-blue-100 transition-transform duration-200 hover:scale-[1.02] animate-fade-in" style={{ animationDelay: `${idx * 40}ms` }}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${req.status === 'approved' ? 'bg-green-100 text-green-700' : req.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{req.status.charAt(0).toUpperCase() + req.status.slice(1)}</span>
-                      <span className="text-xs text-gray-400 ml-auto">{req.created_at ? new Date(req.created_at).toLocaleDateString() : ''}</span>
-                    </div>
-                    <div className="mb-1 text-sm text-gray-700 font-semibold">{req.request_type ? req.request_type.replace('_', ' ').toUpperCase() : 'Request'}</div>
-                    <div className="mb-2 text-xs text-gray-500">For: <span className="font-medium">{req.date || req.for_date || ''}</span></div>
-                    <div className="mb-2 text-xs text-gray-500">Reason: <span className="font-medium">{req.reason || req.notes || '—'}</span></div>
-                    {req.admin_notes && (
-                      <div className="mb-2 text-xs text-blue-500">Admin Notes: {req.admin_notes}</div>
-                    )}
-                    <div className="flex gap-2 mt-2">
-                      {/* Add more actions if needed */}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 {myRequests.map((req, idx) => (
+                   <div key={req.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border-2 border-gray-200 transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl hover:border-blue-300 animate-bounce-in card-glow" style={{ animationDelay: `${idx * 100}ms` }}>
+                     <div className="flex items-center gap-3 mb-4">
+                       <span className={`inline-block px-3 py-1.5 rounded-full text-sm font-bold ${
+                         req.status === 'approved' 
+                           ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg' 
+                           : req.status === 'pending' 
+                           ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-white shadow-lg' 
+                           : 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg'
+                       }`}>
+                         {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                       </span>
+                       <span className="text-sm text-gray-500 ml-auto bg-gray-100 px-3 py-1 rounded-full">
+                         {req.created_at ? new Date(req.created_at).toLocaleDateString() : ''}
+                       </span>
+                     </div>
+                     <div className="mb-3 text-lg text-gray-800 font-bold">{req.request_type ? req.request_type.replace('_', ' ').toUpperCase() : 'Request'}</div>
+                     <div className="mb-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                       <span className="font-semibold text-gray-700">For:</span> {req.date || req.for_date || ''}
+                     </div>
+                     <div className="mb-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                       <span className="font-semibold text-gray-700">Reason:</span> {req.reason || req.notes || '—'}
+                     </div>
+                     {req.admin_notes && (
+                       <div className="mb-3 text-sm text-blue-600 bg-blue-50 p-3 rounded-lg border-l-4 border-blue-400">
+                         <span className="font-semibold">Admin Notes:</span> {req.admin_notes}
+                       </div>
+                     )}
+                     <div className="flex gap-2 mt-4">
+                       {/* Add more actions if needed */}
+                     </div>
+                   </div>
+                 ))}
+               </div>
             )}
           </div>
         )}
