@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from '../utils/axiosInstance';
-import OvertimeRequestForm from './OvertimeRequestForm';
-import LeaveRequestForm from './LeaveRequestForm';
-import ChangeScheduleRequestForm from './ChangeScheduleRequestForm';
 import OvertimeRequestsList from './OvertimeRequestsList';
 import LeaveRequestList from './LeaveRequestList';
 import ChangeScheduleRequestList from './ChangeScheduleRequestList';
@@ -146,47 +143,17 @@ const MobileTabModal = ({ show, tabs, activeTab, onTabSelect, onClose }) => {
   );
 };
 
-const RequestModal = ({ show, onClose, children, maxWidth = 'max-w-5xl' }) => {
-  if (!show) return null;
-
-  return (
-    <>
-      <div
-        className="fixed inset-0 bg-black bg-opacity-50 z-[9998] animate-fade-in"
-        onClick={onClose}
-      />
-      <div className="fixed inset-0 flex items-center justify-center z-[9999] p-2 sm:p-4 pointer-events-none">
-        <div
-          className={`bg-white rounded-2xl shadow-2xl p-4 sm:p-6 lg:p-8 w-full ${maxWidth} relative animate-fade-in max-h-[90vh] overflow-y-auto pointer-events-auto`}
-          onClick={e => e.stopPropagation()}
-        >
-          <button
-            className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-3xl font-bold focus:outline-none z-10"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            &times;
-          </button>
-          <div className="mt-2">
-            <div className="w-full min-w-0 overflow-hidden">
-              {children}
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-};
-
-const TabHeader = ({ title, showForm, onToggleForm, buttonText }) => (
+const TabHeader = ({ title, hideButton = false }) => (
   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 mt-4 gap-4">
     <h1 className="text-3xl sm:text-4xl font-bold text-blue-700">{title}</h1>
-    <button
-      className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-lg text-lg transition-colors"
-      onClick={onToggleForm}
-    >
-      {buttonText}
-    </button>
+    {!hideButton && (
+      <button
+        className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-lg text-lg transition-colors"
+        onClick={() => {}}
+      >
+        Button
+      </button>
+    )}
   </div>
 );
 
@@ -201,11 +168,6 @@ const EmployeeRequestPage = () => {
   
   const [activeRequestTab, setActiveRequestTab] = useState('overtime');
   const [showTabModal, setShowTabModal] = useState(false);
-  const [showForms, setShowForms] = useState({
-    overtime: false,
-    leave: false,
-    change_schedule: false,
-  });
 
   // ========================================================================
   // DATA HOOKS
@@ -250,18 +212,19 @@ const EmployeeRequestPage = () => {
     setShowTabModal(false);
   };
 
-  const handleFormToggle = (formType) => {
-    setShowForms(prev => ({
-      ...prev,
-      [formType]: !prev[formType]
-    }));
+  const handleOvertimeRequestCreated = (newRequest) => {
+    // Refresh overtime data when a new request is created
+    overtimeData.fetchData();
   };
 
-  const handleFormSuccess = (formType) => {
-    setShowForms(prev => ({
-      ...prev,
-      [formType]: false
-    }));
+  const handleLeaveRequestCreated = (newRequest) => {
+    // Refresh leave data when a new request is created
+    leaveData.fetchData();
+  };
+
+  const handleChangeScheduleRequestCreated = (newRequest) => {
+    // Refresh change schedule data when a new request is created
+    changeScheduleData.fetchData();
   };
 
   // ========================================================================
@@ -275,28 +238,18 @@ const EmployeeRequestPage = () => {
     const configs = {
       overtime: {
         title: 'Overtime Request',
-        buttonText: showForms.overtime ? 'Close Overtime Request' : 'Request Overtime',
-        FormComponent: OvertimeRequestForm,
         ListComponent: OvertimeRequestsList,
         data: overtimeData,
-        onSubmit: overtimeData.submitData,
       },
       leave: {
         title: 'Leave Request',
-        buttonText: showForms.leave ? 'Close Leave Request' : 'Request Leave',
-        FormComponent: LeaveRequestForm,
         ListComponent: LeaveRequestList,
         data: leaveData,
-        onSubmit: leaveData.submitData,
       },
       change_schedule: {
         title: 'Change Schedule Request',
-        buttonText: showForms.change_schedule ? 'Close Change Schedule Request' : 'Request Change Schedule',
-        FormComponent: ChangeScheduleRequestForm,
         ListComponent: ChangeScheduleRequestList,
         data: changeScheduleData,
-        onSubmit: changeScheduleData.submitData,
-        maxWidth: 'max-w-6xl',
       },
     };
     return configs[tabKey];
@@ -307,7 +260,7 @@ const EmployeeRequestPage = () => {
   // ========================================================================
   
   const currentConfig = getFormConfig(activeRequestTab);
-  const { FormComponent, ListComponent, data, onSubmit, maxWidth } = currentConfig;
+  const { ListComponent, data } = currentConfig;
 
   return (
          <div className={`w-full min-h-screen px-4 sm:px-6 lg:px-8 animate-fade-in ${isNavbarVisible ? 'pt-7' : 'pt-6'}`}>
@@ -341,29 +294,20 @@ const EmployeeRequestPage = () => {
       <div className="max-w-7xl mx-auto">
         <TabHeader 
           title={currentConfig.title}
-          showForm={showForms[activeRequestTab]}
-          onToggleForm={() => handleFormToggle(activeRequestTab)}
-          buttonText={currentConfig.buttonText}
+          hideButton={true}
         />
-
-        {/* Request Form Modal */}
-        <RequestModal 
-          show={showForms[activeRequestTab]}
-          onClose={() => handleFormToggle(activeRequestTab)}
-          maxWidth={maxWidth}
-        >
-          <FormComponent
-            onSuccess={() => handleFormSuccess(activeRequestTab)}
-            onClose={() => handleFormToggle(activeRequestTab)}
-            onSubmit={onSubmit}
-          />
-        </RequestModal>
 
         {/* Request List */}
         <ListComponent 
           requests={data.data || []}
           isLoading={data.loading}
           error={data.error}
+          onRequestCreated={
+            activeRequestTab === 'overtime' ? handleOvertimeRequestCreated :
+            activeRequestTab === 'leave' ? handleLeaveRequestCreated :
+            activeRequestTab === 'change_schedule' ? handleChangeScheduleRequestCreated :
+            undefined
+          }
         />
       </div>
     </div>

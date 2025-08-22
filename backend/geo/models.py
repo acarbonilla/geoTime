@@ -347,6 +347,7 @@ class OvertimeRequest(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_overtime_requests')
     comments = models.TextField(blank=True, null=True)
+    approved_date = models.DateTimeField(null=True, blank=True, help_text='Date and time when the request was approved')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -385,6 +386,7 @@ class LeaveRequest(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_leave_requests')
     comments = models.TextField(blank=True, null=True)
+    approved_date = models.DateTimeField(null=True, blank=True, help_text='Date and time when the request was approved')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -417,6 +419,7 @@ class ChangeScheduleRequest(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_change_schedule_requests')
     comments = models.TextField(blank=True, null=True)
+    approved_date = models.DateTimeField(null=True, blank=True, help_text='Date and time when the request was approved')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

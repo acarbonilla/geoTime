@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaCalendarAlt, FaClock, FaTicketAlt, FaRegStickyNote } from 'react-icons/fa';
 
-const OvertimeRequestForm = ({ onSuccess, onClose, request, mutation }) => {
+const OvertimeRequestForm = ({ onSuccess, onCancel, request, onSubmit, mutation }) => {
   const isEdit = !!request;
   const [ticket, setTicket] = useState('');
   const [date, setDate] = useState('');
@@ -9,6 +9,7 @@ const OvertimeRequestForm = ({ onSuccess, onClose, request, mutation }) => {
   const [endTime, setEndTime] = useState('');
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isEdit) {
@@ -31,6 +32,7 @@ const OvertimeRequestForm = ({ onSuccess, onClose, request, mutation }) => {
     e.stopPropagation();
     console.log('Overtime form submitted');
     setError('');
+    
     if (!ticket || !date || !startTime || !endTime || !reason) {
       setError('All fields are required.');
       return;
@@ -45,113 +47,139 @@ const OvertimeRequestForm = ({ onSuccess, onClose, request, mutation }) => {
     };
 
     try {
-      console.log('Submitting overtime request:', formData);
-      if (mutation) {
+      setIsSubmitting(true);
+      setError('');
+      
+      if (onSubmit) {
+        // Use the parent's onSubmit handler
+        await onSubmit(formData);
+      } else if (mutation) {
+        // Fallback to mutation if provided
         await mutation.mutateAsync(formData);
+        if (onSuccess) onSuccess();
       } else {
-        // Fallback to direct axios call if no mutation provided
+        // Fallback to direct axios call
         const axios = (await import('../utils/axiosInstance')).default;
         if (isEdit) {
           await axios.patch(`overtime-requests/${request.id}/`, formData);
         } else {
           await axios.post('overtime-requests/', formData);
         }
+        if (onSuccess) onSuccess();
       }
+      
       console.log('Overtime request submitted successfully');
-      if (onSuccess) onSuccess();
     } catch (err) {
       console.error('Error submitting overtime request:', err);
-      setError('Failed to submit overtime request.');
+      setError('Failed to submit overtime request. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-blue-700">
-        <FaTicketAlt className="text-blue-400" /> {isEdit ? 'Edit Overtime Request' : 'Overtime Request Form'}
-      </h2>
-      {error && <div className="text-red-500 text-sm mb-2">{error}</div>}
-      <div className="flex flex-col gap-4">
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-600 text-sm">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label className="flex flex-col font-medium">
-          Ticket
-          <input
-            type="text"
-            className="mt-1 border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-            value={ticket}
-            onChange={e => setTicket(e.target.value)}
-            placeholder="Enter ticket number or code"
-            required
-          />
+          <span className="text-sm text-gray-700 mb-1">Ticket</span>
+          <div className="relative">
+            <FaTicketAlt className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+              value={ticket}
+              onChange={e => setTicket(e.target.value)}
+              placeholder="Enter ticket number or code"
+              required
+            />
+          </div>
         </label>
+        
         <label className="flex flex-col font-medium">
-          Date
-          <div className="relative mt-1">
-            <span className="absolute left-3 top-2.5 text-blue-400"><FaCalendarAlt /></span>
+          <span className="text-sm text-gray-700 mb-1">Date</span>
+          <div className="relative">
+            <FaCalendarAlt className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="date"
-              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
               value={date}
               onChange={e => setDate(e.target.value)}
               required
             />
           </div>
         </label>
+        
         <label className="flex flex-col font-medium">
-          Start Time
-          <div className="relative mt-1">
-            <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
+          <span className="text-sm text-gray-700 mb-1">Start Time</span>
+          <div className="relative">
+            <FaClock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="time"
-              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
               value={startTime}
               onChange={e => setStartTime(e.target.value)}
               required
             />
           </div>
         </label>
+        
         <label className="flex flex-col font-medium">
-          End Time
-          <div className="relative mt-1">
-            <span className="absolute left-3 top-2.5 text-blue-400"><FaClock /></span>
+          <span className="text-sm text-gray-700 mb-1">End Time</span>
+          <div className="relative">
+            <FaClock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="time"
-              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
               value={endTime}
               onChange={e => setEndTime(e.target.value)}
               required
             />
           </div>
         </label>
-        <label className="flex flex-col font-medium">
-          Reason
-          <div className="relative mt-1">
-            <span className="absolute left-3 top-2.5 text-blue-400"><FaRegStickyNote /></span>
-            <textarea
-              className="pl-10 border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-              value={reason}
-              onChange={e => setReason(e.target.value)}
-              placeholder="Enter reason for overtime"
-              rows={3}
-              required
-            />
-          </div>
-        </label>
       </div>
-      <div className="flex justify-end gap-3 mt-4">
+      
+      <label className="flex flex-col font-medium">
+        <span className="text-sm text-gray-700 mb-1">Reason</span>
+        <div className="relative">
+          <FaRegStickyNote className="absolute left-3 top-3 text-gray-400 w-4 h-4" />
+          <textarea
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="Enter reason for overtime request"
+            rows={3}
+            required
+          />
+        </div>
+      </label>
+      
+      <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
         <button
           type="button"
-          className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold"
-          onClick={onClose}
-          disabled={mutation?.isLoading}
+          className="px-6 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-all duration-200"
+          onClick={onCancel}
+          disabled={isSubmitting}
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="px-5 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow disabled:opacity-60"
-          disabled={mutation?.isLoading}
+          className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-md transition-all duration-200 transform hover:scale-105 disabled:opacity-60 disabled:transform-none flex items-center gap-2"
+          disabled={isSubmitting}
         >
-          {mutation?.isLoading ? (isEdit ? 'Saving...' : 'Submitting...') : (isEdit ? 'Save Changes' : 'Submit Request')}
+          {isSubmitting ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              {isEdit ? 'Saving...' : 'Submitting...'}
+            </>
+          ) : (
+            isEdit ? 'Save Changes' : 'Submit Request'
+          )}
         </button>
       </div>
     </form>

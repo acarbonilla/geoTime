@@ -11,7 +11,7 @@ const LEAVE_TYPES = [
   { value: 'other', label: 'Other' },
 ];
 
-const LeaveRequestForm = ({ onSuccess, onClose, request, mutation }) => {
+const LeaveRequestForm = ({ onSuccess, onCancel, request, onSubmit, mutation }) => {
   const isEdit = !!request;
   const [leaveType, setLeaveType] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -19,6 +19,7 @@ const LeaveRequestForm = ({ onSuccess, onClose, request, mutation }) => {
   const [numberDays, setNumberDays] = useState('');
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isEdit) {
@@ -59,23 +60,33 @@ const LeaveRequestForm = ({ onSuccess, onClose, request, mutation }) => {
     };
 
     try {
-      if (mutation) {
+      setIsSubmitting(true);
+      setError('');
+      
+      if (onSubmit) {
+        // Use the parent's onSubmit handler
+        await onSubmit(formData);
+      } else if (mutation) {
+        // Fallback to mutation if provided
         await mutation.mutateAsync(formData);
+        if (onSuccess) onSuccess();
       } else {
-        // Fallback to direct axios call if no mutation provided
+        // Fallback to direct axios call
         const axios = (await import('../utils/axiosInstance')).default;
         if (isEdit) {
           await axios.patch(`leave-requests/${request.id}/`, formData);
         } else {
           await axios.post('leave-requests/', formData);
         }
+        if (onSuccess) onSuccess();
       }
-      if (onSuccess) onSuccess();
     } catch (err) {
       const errorMessage = err.response?.data?.detail || 
                           (err.response?.data && Object.values(err.response.data).flat().join(', ')) ||
                           'Failed to submit leave request.';
       setError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -161,17 +172,24 @@ const LeaveRequestForm = ({ onSuccess, onClose, request, mutation }) => {
         <button
           type="button"
           className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold"
-          onClick={onClose}
-          disabled={mutation?.isLoading}
+          onClick={onCancel}
+          disabled={isSubmitting}
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="px-5 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow disabled:opacity-60"
-          disabled={mutation?.isLoading}
+          className="px-5 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow disabled:opacity-60 flex items-center gap-2"
+          disabled={isSubmitting}
         >
-          {mutation?.isLoading ? (isEdit ? 'Saving...' : 'Submitting...') : (isEdit ? 'Save Changes' : 'Submit Request')}
+          {isSubmitting ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              {isEdit ? 'Saving...' : 'Submitting...'}
+            </>
+          ) : (
+            isEdit ? 'Save Changes' : 'Submit Request'
+          )}
         </button>
       </div>
     </form>

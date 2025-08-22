@@ -2391,6 +2391,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Only pending requests can be approved.'}, status=status.HTTP_400_BAD_REQUEST)
         overtime_request.status = 'approved'
         overtime_request.approver = user
+        overtime_request.approved_date = timezone.now()
         overtime_request.comments = request.data.get('comments', '')
         overtime_request.save()
         return Response(self.get_serializer(overtime_request).data)
@@ -2492,6 +2493,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Only pending requests can be approved.'}, status=status.HTTP_400_BAD_REQUEST)
         leave_request.status = 'approved'
         leave_request.approver = user
+        leave_request.approved_date = timezone.now()
         leave_request.comments = request.data.get('comments', '')
         leave_request.save()
         return Response(self.get_serializer(leave_request).data)
@@ -2611,6 +2613,7 @@ class ChangeScheduleRequestViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Only pending requests can be approved.'}, status=status.HTTP_400_BAD_REQUEST)
         change_request.status = 'approved'
         change_request.approver = user
+        change_request.approved_date = timezone.now()
         change_request.comments = request.data.get('comments', '')
         change_request.save()
         return Response(self.get_serializer(change_request).data)

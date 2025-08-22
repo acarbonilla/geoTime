@@ -275,9 +275,9 @@ class OvertimeRequestSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'employee', 'employee_name', 'date', 'start_time', 'end_time',
             'ticket',
-            'reason', 'status', 'approver', 'approver_name', 'comments', 'created_at', 'updated_at'
+            'reason', 'status', 'approver', 'approver_name', 'comments', 'approved_date', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'employee_name', 'approver_name'] 
+        read_only_fields = ['id', 'created_at', 'updated_at', 'employee_name', 'approver_name', 'approved_date'] 
 
 
 class LeaveRequestSerializer(serializers.ModelSerializer):
@@ -291,9 +291,9 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'employee', 'employee_name', 'leave_type', 'leave_type_display',
             'start_date', 'end_date', 'number_days', 'duration_days', 'reason', 'status',
-            'approver', 'approver_name', 'comments', 'created_at', 'updated_at'
+            'approver', 'approver_name', 'comments', 'approved_date', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'employee_name', 'approver_name', 'leave_type_display', 'duration_days'] 
+        read_only_fields = ['id', 'created_at', 'updated_at', 'employee_name', 'approver_name', 'leave_type_display', 'duration_days', 'approved_date'] 
 
 
 class ChangeScheduleRequestSerializer(serializers.ModelSerializer):
@@ -306,9 +306,9 @@ class ChangeScheduleRequestSerializer(serializers.ModelSerializer):
             'id', 'employee', 'employee_name',
             'original_date', 'original_start_time', 'original_end_time',
             'requested_date', 'requested_start_time', 'requested_end_time',
-            'reason', 'status', 'approver', 'approver_name', 'comments', 'created_at', 'updated_at'
+            'reason', 'status', 'approver', 'approver_name', 'comments', 'approved_date', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'employee_name', 'approver_name'] 
+        read_only_fields = ['id', 'created_at', 'updated_at', 'employee_name', 'approver_name', 'approved_date'] 
 
 
 class ScheduleTemplateSerializer(serializers.ModelSerializer):

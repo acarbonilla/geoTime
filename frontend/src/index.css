@@ -2,169 +2,311 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Status Pill Styles - Explicit CSS to prevent Tailwind purging */
-.status-present {
-  @apply text-green-700 bg-green-100 border-green-200;
-}
-
-.status-late {
-  @apply text-orange-700 bg-orange-100 border-orange-200;
-}
-
-.status-absent {
-  @apply text-red-700 bg-red-100 border-red-200;
-}
-
-.status-weekend {
-  @apply text-gray-700 bg-gray-100 border-gray-200;
-}
-
-.status-half-day {
-  @apply text-yellow-700 bg-yellow-100 border-yellow-200;
-}
-
-.status-not-scheduled {
-  @apply text-blue-700 bg-blue-100 border-blue-200;
-}
-
-.status-default {
-  @apply text-gray-700 bg-gray-100 border-gray-200;
-}
-
-/* Common status pill layout */
-.status-pill {
-  @apply inline-flex items-center space-x-2 px-3 py-1 text-xs font-medium rounded-full border;
-}
-
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  width: 100%;
-}
-
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-
-.bg-grid-pattern {
-  background-image: 
-    linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px);
-  background-size: 20px 20px;
-}
-
-html, body, #root {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  width: 100%;
-}
-
-.App {
-  width: 100%;
-  min-height: 100vh;
-  position: relative;
-  z-index: 1;
-}
-
-/* Z-Index Hierarchy:
- * 1-10: Main content
- * 11-50: Dropdowns, tooltips
- * 51-100: Modals, overlays
- * 101-998: Other UI elements
- * 999: Navbar dropdowns and menus
- * 1000: Navbar (highest priority)
- */
-
-/* Ensure navbar stays on top */
-nav {
-  position: relative;
-  z-index: 1000;
-  width: 100%;
-  pointer-events: auto;
-}
-
-/* Ensure navbar elements are clickable */
-nav * {
-  pointer-events: auto;
-}
-
-/* Ensure main content stays below navbar */
-main, .main-content {
-  position: relative;
-  z-index: 1;
-}
-
-/* Ensure modals and overlays are below navbar but above content */
-.modal-overlay, .drawer-overlay {
-  z-index: 100;
-}
-
-.modal-content, .drawer-content {
-  z-index: 101;
-}
-
-/* Force navbar to be on top - use fixed positioning from App.css */
-.navbar-fixed {
-  position: fixed !important;
-  top: 0 !important;
-  z-index: 1000 !important;
-  pointer-events: auto;
-}
-
-/* Mobile-specific adjustments */
-@media (max-width: 400px) {
-  .container {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
+/* Custom animations and styles */
+@layer components {
+  /* Fade in animation for list items */
+  .animate-fade-in {
+    animation: fadeIn 0.6s ease-in-out;
   }
-  
-  /* Ensure content doesn't overflow on very small screens */
-  .min-h-screen {
-    min-height: 100vh;
-    overflow-x: hidden;
+
+  /* Staggered animation for list items */
+  .animate-stagger {
+    animation: stagger 0.3s ease-out forwards;
   }
-  
-  /* Reduce text sizes for very small screens */
-  .text-sm {
-    font-size: 0.875rem;
+
+  /* Hover effects for cards */
+  .card-hover {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  
-  /* Ensure buttons are properly sized */
-  button {
-    min-height: 2.5rem;
+
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Smooth button transitions */
+  .btn-transition {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .btn-transition:hover {
+    transform: translateY(-1px);
+  }
+
+  /* Loading spinner animation */
+  .animate-spin-slow {
+    animation: spin 2s linear infinite;
+  }
+
+  /* Pulse animation for status indicators */
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Slide in animation for modals */
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+
+  /* Bounce animation for interactive elements */
+  .animate-bounce-gentle {
+    animation: bounceGentle 0.6s ease-in-out;
+  }
+
+  /* Gradient text animation */
+  .animate-gradient-text {
+    background: linear-gradient(-45deg, #3b82f6, #8b5cf6, #06b6d4, #10b981);
+    background-size: 400% 400%;
+    animation: gradientShift 3s ease infinite;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Shimmer effect for loading states */
+  .animate-shimmer {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Floating animation for icons */
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  /* Scale animation for buttons */
+  .animate-scale {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .animate-scale:hover {
+    transform: scale(1.05);
+  }
+
+  .animate-scale:active {
+    transform: scale(0.95);
   }
 }
 
-/* View toggle animations */
-.view-toggle-enter {
-  opacity: 0;
-  transform: scale(0.9);
+/* Keyframe animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.view-toggle-enter-active {
-  opacity: 1;
-  transform: scale(1);
-  transition: opacity 300ms, transform 300ms;
+@keyframes stagger {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.view-toggle-exit {
-  opacity: 1;
-  transform: scale(1);
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.view-toggle-exit-active {
-  opacity: 0;
-  transform: scale(0.9);
-  transition: opacity 300ms, transform 300ms;
+@keyframes bounceGentle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
 }
 
-/* Smooth transitions for view changes */
-.view-transition {
-  transition: all 0.3s ease-in-out;
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* Enhanced focus states */
+.focus-ring:focus {
+  outline: none;
+  ring: 2px;
+  ring-color: #3b82f6;
+  ring-offset: 2px;
+}
+
+/* Custom shadows */
+.shadow-soft {
+  box-shadow: 0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04);
+}
+
+.shadow-medium {
+  box-shadow: 0 4px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.shadow-strong {
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15), 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive text sizing */
+.text-responsive-xs {
+  font-size: clamp(0.75rem, 2vw, 0.875rem);
+}
+
+.text-responsive-sm {
+  font-size: clamp(0.875rem, 2.5vw, 1rem);
+}
+
+.text-responsive-base {
+  font-size: clamp(1rem, 3vw, 1.125rem);
+}
+
+.text-responsive-lg {
+  font-size: clamp(1.125rem, 3.5vw, 1.25rem);
+}
+
+.text-responsive-xl {
+  font-size: clamp(1.25rem, 4vw, 1.5rem);
+}
+
+.text-responsive-2xl {
+  font-size: clamp(1.5rem, 5vw, 1.875rem);
+}
+
+/* Enhanced button styles */
+.btn-primary {
+  @apply bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200;
+}
+
+.btn-primary:hover {
+  @apply bg-blue-700 transform hover:scale-105 shadow-md;
+}
+
+.btn-secondary {
+  @apply bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200;
+}
+
+.btn-secondary:hover {
+  @apply bg-gray-700 transform hover:scale-105 shadow-md;
+}
+
+.btn-success {
+  @apply bg-green-600 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200;
+}
+
+.btn-success:hover {
+  @apply bg-green-700 transform hover:scale-105 shadow-md;
+}
+
+.btn-danger {
+  @apply bg-red-600 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200;
+}
+
+.btn-danger:hover {
+  @apply bg-red-700 transform hover:scale-105 shadow-md;
+}
+
+/* Enhanced card styles */
+.card {
+  @apply bg-white rounded-xl p-6 shadow-md border border-gray-100 transition-all duration-300;
+}
+
+.card:hover {
+  @apply shadow-lg transform hover:-translate-y-1;
+}
+
+/* Enhanced input styles */
+.input-enhanced {
+  @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200;
+}
+
+.input-enhanced:focus {
+  @apply shadow-md;
+}
+
+/* Status badge styles */
+.badge {
+  @apply px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1;
+}
+
+.badge-pending {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.badge-approved {
+  @apply bg-green-100 text-green-800;
+}
+
+.badge-rejected {
+  @apply bg-red-100 text-red-800;
+}
+
+/* Animation delays for staggered effects */
+.animation-delay-0 { animation-delay: 0ms; }
+.animation-delay-50 { animation-delay: 50ms; }
+.animation-delay-100 { animation-delay: 100ms; }
+.animation-delay-150 { animation-delay: 150ms; }
+.animation-delay-200 { animation-delay: 200ms; }
+.animation-delay-250 { animation-delay: 250ms; }
+.animation-delay-300 { animation-delay: 300ms; }

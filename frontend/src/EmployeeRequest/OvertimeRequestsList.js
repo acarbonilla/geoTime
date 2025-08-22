@@ -1,18 +1,25 @@
 import React, { useState, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from '../utils/axiosInstance';
-import { FaTicketAlt, FaCalendarAlt, FaClock, FaUserCheck, FaUserTimes, FaHourglassHalf, FaSort, FaSortUp, FaSortDown } from 'react-icons/fa';
+import { FaTicketAlt, FaCalendarAlt, FaClock, FaUserCheck, FaUserTimes, FaHourglassHalf, FaSort, FaSortUp, FaSortDown, FaDownload, FaPlus, FaFilter, FaSearch } from 'react-icons/fa';
 import OvertimeRequestForm from './OvertimeRequestForm';
+import { generateOvertimeRequestPDF, downloadPDF } from '../utils/pdfGenerator';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 const STATUS_OPTIONS = [
-  { value: '', label: 'All Statuses' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: '', label: 'All Statuses', color: 'bg-gray-100 text-gray-800' },
+  { value: 'pending', label: 'Pending', color: 'bg-yellow-100 text-yellow-800' },
+  { value: 'approved', label: 'Approved', color: 'bg-green-100 text-green-800' },
+  { value: 'rejected', label: 'Rejected', color: 'bg-red-100 text-red-800' },
 ];
 
-const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null }) => {
+const STATUS_ICONS = {
+  pending: FaHourglassHalf,
+  approved: FaUserCheck,
+  rejected: FaUserTimes,
+};
+
+const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null, onRequestCreated }) => {
   const queryClient = useQueryClient();
   // Filtering, sorting, pagination state
   const [statusFilter, setStatusFilter] = useState('');
@@ -22,6 +29,49 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null }
   const [pageSize, setPageSize] = useState(10);
   const [showForm, setShowForm] = useState(false);
   const [editRequest, setEditRequest] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
+  // Create mutation
+  const createMutation = useMutation({
+    mutationFn: async (formData) => {
+      const response = await axios.post('overtime-requests/', formData);
+      return response.data;
+    },
+    onSuccess: (newRequest) => {
+      // Optimistically update the cache
+      queryClient.setQueryData(['overtime-requests'], (oldData) => {
+        if (!oldData) return { results: [newRequest] };
+        if (oldData.results) {
+          return {
+            ...oldData,
+            results: [newRequest, ...oldData.results]
+          };
+        }
+        return {
+          ...oldData,
+          data: [newRequest, ...(oldData.data || [])]
+        };
+      });
+      
+      // Also invalidate to ensure we have the latest data
+      queryClient.invalidateQueries({ queryKey: ['overtime-requests'] });
+      
+      // Show success message
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 5000); // Hide after 5 seconds
+      
+      // Call the parent callback if provided
+      if (onRequestCreated) {
+        onRequestCreated(newRequest);
+      }
+    },
+    onError: (error) => {
+      console.error('Failed to create overtime request:', error);
+      // Revert optimistic update on error
+      queryClient.invalidateQueries({ queryKey: ['overtime-requests'] });
+    }
+  });
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -39,8 +89,15 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null }
     if (statusFilter) {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
+    if (searchTerm) {
+      filtered = filtered.filter(r => 
+        r.employee_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.ticket?.toString().includes(searchTerm)
+      );
+    }
     return filtered;
-  }, [requests, statusFilter]);
+  }, [requests, statusFilter, searchTerm]);
 
   // Sorting
   const sortedRequests = useMemo(() => {
@@ -78,7 +135,7 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null }
 
   React.useEffect(() => {
     setCurrentPage(1); // Reset to first page on filter/sort change
-  }, [statusFilter, sortField, sortOrder, pageSize]);
+  }, [statusFilter, sortField, sortOrder, pageSize, searchTerm]);
 
   const handleEdit = (req) => {
     setEditRequest(req);
@@ -99,187 +156,396 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null }
     setEditRequest(null);
   };
 
+  const handleFormSubmit = async (formData) => {
+    try {
+      await createMutation.mutateAsync(formData);
+      setShowForm(false);
+      setEditRequest(null);
+    } catch (error) {
+      // Error is handled by the mutation
+      console.error('Form submission failed:', error);
+    }
+  };
+
+  const handleDownloadPDF = (request) => {
+    const pdf = generateOvertimeRequestPDF(request);
+    downloadPDF(pdf, `overtime-request-${request.id}.pdf`);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return '-';
+    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const getStatusIcon = (status) => {
+    const IconComponent = STATUS_ICONS[status] || FaHourglassHalf;
+    return <IconComponent className="w-4 h-4" />;
+  };
+
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-2 text-gray-600">Loading overtime requests...</span>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <FaUserTimes className="h-5 w-5 text-red-400" />
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-red-800">Error loading overtime requests</h3>
-            <div className="mt-2 text-sm text-red-700">
-              {error.message || 'Failed to load overtime requests. Please try again.'}
-            </div>
-          </div>
-        </div>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+        <div className="text-red-600 text-lg font-semibold mb-2">Error Loading Overtime Requests</div>
+        <div className="text-red-500">{error.message || 'An error occurred while loading the data.'}</div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-8 rounded-2xl shadow-xl mt-6 animate-fade-in">
-      <h2 className="text-2xl font-bold mb-4 text-blue-700 flex items-center gap-2"><FaTicketAlt className="text-blue-400" />My Overtime Requests</h2>
-      {/* Filter and sort controls */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Status:</label>
-          <select
-            className="border rounded px-2 py-1 text-sm"
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-          >
-            {STATUS_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Sort by:</label>
+    <div className="space-y-6">
+      {/* Header Section */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white shadow-lg">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Overtime Requests</h2>
+            <p className="text-blue-100">Manage and track employee overtime requests</p>
+          </div>
           <button
-            className={`flex items-center gap-1 px-2 py-1 rounded ${sortField === 'date' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}
-            onClick={() => handleSort('date')}
+            onClick={() => setShowForm(true)}
+            className="bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-all duration-200 transform hover:scale-105 shadow-md flex items-center gap-2"
           >
-            Date {sortField === 'date' && (sortOrder === 'asc' ? <FaSortUp /> : <FaSortDown />)}
-            {sortField !== 'date' && <FaSort />}
+            <FaPlus className="w-4 h-4" />
+            New Request
           </button>
-          <button
-            className={`flex items-center gap-1 px-2 py-1 rounded ${sortField === 'status' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}
-            onClick={() => handleSort('status')}
-          >
-            Status {sortField === 'status' && (sortOrder === 'asc' ? <FaSortUp /> : <FaSortDown />)}
-            {sortField !== 'status' && <FaSort />}
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Show:</label>
-          <select
-            className="border rounded px-2 py-1 text-sm"
-            value={pageSize}
-            onChange={e => setPageSize(Number(e.target.value))}
-          >
-            {PAGE_SIZE_OPTIONS.map(size => (
-              <option key={size} value={size}>{size}</option>
-            ))}
-          </select>
-          <span className="text-sm">per page</span>
         </div>
       </div>
-      {/* Table */}
-      {paginatedRequests.length === 0 ? (
-        <div className="text-gray-500">No overtime requests found.</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-blue-50">
-                <th className="px-3 py-2 text-left">Ticket</th>
-                <th className="px-3 py-2 text-left">Date</th>
-                <th className="px-3 py-2 text-left">Start</th>
-                <th className="px-3 py-2 text-left">End</th>
-                <th className="px-3 py-2 text-left">Reason</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-left">Approver</th>
-                <th className="px-3 py-2 text-left">Comments</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedRequests.map((req, idx) => (
-                <tr key={req.id} className={`border-b ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} animate-fade-in`} style={{animationDelay: `${idx * 40}ms`}}>
-                  <td className="px-3 py-2 font-semibold"><FaTicketAlt className="text-blue-400 inline mr-1" />{req.ticket || '-'}</td>
-                  <td className="px-3 py-2"><FaCalendarAlt className="text-blue-400 inline mr-1" />{req.date}</td>
-                  <td className="px-3 py-2"><FaClock className="text-blue-400 inline mr-1" />{req.start_time || '-'}</td>
-                  <td className="px-3 py-2"><FaClock className="text-blue-400 inline mr-1" />{req.end_time || '-'}</td>
-                  <td className="px-3 py-2">{req.reason || '-'}</td>
-                  <td className="px-3 py-2 capitalize">
-                    {req.status === 'pending' && <span className="inline-flex items-center gap-1 text-yellow-700 bg-yellow-100 px-2 py-1 rounded-full font-semibold"><FaHourglassHalf /> Pending</span>}
-                    {req.status === 'approved' && <span className="inline-flex items-center gap-1 text-green-700 bg-green-100 px-2 py-1 rounded-full font-semibold"><FaUserCheck /> Approved</span>}
-                    {req.status === 'rejected' && <span className="inline-flex items-center gap-1 text-red-700 bg-red-100 px-2 py-1 rounded-full font-semibold"><FaUserTimes /> Rejected</span>}
-                  </td>
-                  <td className="px-3 py-2">{req.approver_name || '-'}</td>
-                  <td className="px-3 py-2">{req.comments || '-'}</td>
-                  <td className="px-3 py-2">
-                    {req.status === 'pending' && (
-                      <>
-                        <button
-                          className="mr-2 px-3 py-1 rounded bg-yellow-100 text-yellow-800 hover:bg-yellow-200 font-semibold"
-                          onClick={() => handleEdit(req)}
-                        >Edit</button>
-                        <button
-                          className="px-3 py-1 rounded bg-red-100 text-red-800 hover:bg-red-200 font-semibold"
-                          onClick={() => handleDelete(req)}
-                        >Delete</button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+      {/* Success Message */}
+      {showSuccessMessage && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-md animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-green-800">
+                Overtime request created successfully!
+              </p>
+              <p className="text-sm text-green-700">
+                Your request has been submitted and is now pending approval.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowSuccessMessage(false)}
+              className="text-green-400 hover:text-green-600 transition-colors"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
-      {/* Pagination Controls */}
-      <div className="flex justify-between items-center mt-4">
-        <div className="text-sm text-gray-600">
-          Page {currentPage} of {totalPages}
-        </div>
-        <div className="flex gap-1">
-          <button
-            className="px-2 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
-            onClick={() => setCurrentPage(1)}
-            disabled={currentPage === 1}
-          >First</button>
-          <button
-            className="px-2 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-          >Prev</button>
-          <button
-            className="px-2 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-          >Next</button>
-          <button
-            className="px-2 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
-            onClick={() => setCurrentPage(totalPages)}
-            disabled={currentPage === totalPages}
-          >Last</button>
+
+      {/* Filters and Search */}
+      <div className="bg-white rounded-xl p-6 shadow-md border border-gray-100">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Search */}
+          <div className="relative">
+            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search by name, reason, or ticket..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+            />
+          </div>
+
+          {/* Status Filter */}
+          <div className="relative">
+            <FaFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 appearance-none bg-white"
+            >
+              {STATUS_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Page Size */}
+          <div>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+            >
+              {PAGE_SIZE_OPTIONS.map(size => (
+                <option key={size} value={size}>Show {size}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
+
+      {/* Results Summary */}
+      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between text-sm text-gray-600">
+          <span>Showing {paginatedRequests.length} of {sortedRequests.length} requests</span>
+          <span>Page {currentPage} of {totalPages}</span>
+        </div>
+      </div>
+
+      {/* Requests List */}
+      <div className="space-y-4">
+        {paginatedRequests.map((request, index) => (
+          <div
+            key={request.id}
+            className="bg-white rounded-xl p-6 shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1"
+            style={{ animationDelay: `${index * 50}ms` }}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <FaTicketAlt className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{request.employee_name || 'Unknown Employee'}</h3>
+                  <p className="text-sm text-gray-500">Ticket: {request.ticket || request.id}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${STATUS_OPTIONS.find(s => s.value === request.status)?.color || 'bg-gray-100 text-gray-800'}`}>
+                  {getStatusIcon(request.status)}
+                  {request.status?.charAt(0).toUpperCase() + request.status?.slice(1) || 'Unknown'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div className="flex items-center gap-2">
+                <FaCalendarAlt className="w-4 h-4 text-gray-400" />
+                <div>
+                  <p className="text-xs text-gray-500">Date</p>
+                  <p className="font-medium">{formatDate(request.date)}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <FaClock className="w-4 h-4 text-gray-400" />
+                <div>
+                  <p className="text-xs text-gray-500">Time</p>
+                  <p className="font-medium">{formatTime(request.start_time)} - {formatTime(request.end_time)}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <FaUserCheck className="w-4 h-4 text-gray-400" />
+                <div>
+                  <p className="text-xs text-gray-500">Approver</p>
+                  <p className="font-medium">{request.approver_name || 'Pending'}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <FaCalendarAlt className="w-4 h-4 text-gray-400" />
+                <div>
+                  <p className="text-xs text-gray-500">Approved Date</p>
+                  <p className="font-medium">{request.status === 'approved' ? formatDate(request.approved_date) : '-'}</p>
+                </div>
+              </div>
+            </div>
+
+            {request.reason && (
+              <div className="mb-4">
+                <p className="text-sm text-gray-500 mb-1">Reason</p>
+                <p className="text-gray-700 bg-gray-50 p-3 rounded-lg">{request.reason}</p>
+              </div>
+            )}
+
+            {request.comments && (
+              <div className="mb-4">
+                <p className="text-sm text-gray-500 mb-1">Comments</p>
+                <p className="text-gray-700 bg-blue-50 p-3 rounded-lg border-l-4 border-blue-200">{request.comments}</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <span>Created: {formatDate(request.created_at)}</span>
+                {request.updated_at !== request.created_at && (
+                  <span>• Updated: {formatDate(request.updated_at)}</span>
+                )}
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {/* Show Edit and Delete only for pending requests */}
+                {request.status === 'pending' && (
+                  <>
+                    <button
+                      onClick={() => handleEdit(request)}
+                      className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 font-medium"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(request)}
+                      className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 font-medium"
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+                
+                {/* Show PDF download only for approved or denied requests */}
+                {(request.status === 'approved' || request.status === 'denied') && (
+                  <button
+                    onClick={() => handleDownloadPDF(request)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 font-medium flex items-center gap-2"
+                  >
+                    <FaDownload className="w-4 h-4" />
+                    PDF
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="bg-white rounded-xl p-6 shadow-md border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-3 py-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                First
+              </button>
+              <button
+                onClick={() => setCurrentPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-3 py-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                Previous
+              </button>
+            </div>
+            
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-3 py-2 rounded-lg transition-all duration-200 ${
+                      currentPage === pageNum
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-500 hover:bg-gray-100'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                Next
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                Last
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Form Modal */}
       {showForm && (
         <>
           {/* Modal Backdrop */}
-          <div
-            className="fixed inset-0 bg-black bg-opacity-40 z-40 animate-fade-in"
-            onClick={() => { setShowForm(false); setEditRequest(null); }}
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 animate-fade-in"
+            onClick={() => {
+              setShowForm(false);
+              setEditRequest(null);
+            }}
           />
           {/* Modal Content */}
-          <div className="fixed inset-0 flex items-center justify-center z-50">
-            <div
-              className="bg-white rounded-2xl shadow-2xl p-8 max-w-lg w-full relative animate-fade-in"
-              onClick={e => e.stopPropagation()}
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div 
+              className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-slide-in"
+              onClick={(e) => e.stopPropagation()}
             >
-              <button
-                className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl font-bold focus:outline-none"
-                onClick={() => { setShowForm(false); setEditRequest(null); }}
-                aria-label="Close"
-              >
-                &times;
-              </button>
-              <OvertimeRequestForm
-                onSuccess={handleFormSuccess}
-                onClose={() => { setShowForm(false); setEditRequest(null); }}
-                request={editRequest}
-              />
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {editRequest ? 'Edit Overtime Request' : 'New Overtime Request'}
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setShowForm(false);
+                      setEditRequest(null);
+                    }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <OvertimeRequestForm
+                  request={editRequest}
+                  onSuccess={handleFormSuccess}
+                  onCancel={() => {
+                    setShowForm(false);
+                    setEditRequest(null);
+                  }}
+                  onSubmit={handleFormSubmit}
+                />
+              </div>
             </div>
           </div>
         </>

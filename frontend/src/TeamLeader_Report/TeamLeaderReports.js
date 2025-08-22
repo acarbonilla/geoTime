@@ -373,12 +373,14 @@ const TeamLeaderReports = ({ employee }) => {
   
   // Set default dates to today and last 7 days in Manila timezone
   const today = getManilaDate();
+  console.log('🌅 Today date calculated:', today);
   
   // Calculate last week date in Manila timezone
   const manilaTime = new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"});
   const manilaDate = new Date(manilaTime);
   const sevenDaysAgo = new Date(manilaDate.getTime() - 7 * 24 * 60 * 60 * 1000);
   const lastWeek = getManilaDate(sevenDaysAgo);
+  console.log('📅 Last week date calculated:', lastWeek);
   
   const [filterForm, setFilterForm] = useState({
     startDate: lastWeek,
@@ -387,6 +389,8 @@ const TeamLeaderReports = ({ employee }) => {
     selectedEmployee: 'all',
     selectedDepartment: 'all',
   });
+  console.log('📋 Initial filterForm state:', { startDate: lastWeek, endDate: today });
+  
   const [filters, setFilters] = useState({
     startDate: lastWeek,
     endDate: today,
@@ -394,6 +398,7 @@ const TeamLeaderReports = ({ employee }) => {
     selectedEmployee: 'all',
     selectedDepartment: 'all',
   });
+  console.log('🔍 Initial filters state:', { startDate: lastWeek, endDate: today });
   const [activeQuickFilter, setActiveQuickFilter] = useState('last7Days');
   const [loading, setLoading] = useState(false);
   const [subordinatesLoading, setSubordinatesLoading] = useState(false);
@@ -411,18 +416,25 @@ const TeamLeaderReports = ({ employee }) => {
 
   // Helper functions for quick date filters
   const getDateRange = (range) => {
+    console.log('🔍 getDateRange called with range:', range);
+    
     // Get current Manila time
     const manilaNow = new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"});
     const manilaDate = new Date(manilaNow);
+    console.log('🕐 Manila time:', manilaNow);
+    console.log('📅 Manila date object:', manilaDate);
     
     // Get today's date in Manila timezone
     const today = new Date(manilaDate.getFullYear(), manilaDate.getMonth(), manilaDate.getDate());
+    console.log('📅 Today date object:', today);
     
     switch (range) {
       case 'today':
+        const todayDate = getManilaDate();
+        console.log('🌅 Today case - getManilaDate() result:', todayDate);
         return {
-          startDate: getManilaDate(),
-          endDate: getManilaDate()
+          startDate: todayDate,
+          endDate: todayDate
         };
       case 'yesterday':
         const yesterday = new Date(today);
@@ -483,16 +495,23 @@ const TeamLeaderReports = ({ employee }) => {
   };
 
   const handleQuickDateFilter = (range) => {
+    console.log('🎯 Quick filter clicked:', range);
     const dateRange = getDateRange(range);
+    console.log('📅 Date range calculated:', dateRange);
+    
     const newFilters = {
       ...filterForm,
       startDate: dateRange.startDate,
       endDate: dateRange.endDate
     };
+    console.log('🔄 New filters:', newFilters);
+    
     setFilterForm(newFilters);
     setFilters(newFilters);
     setActiveQuickFilter(range);
     setCurrentPage(1);
+    
+    console.log('✅ Quick filter applied successfully');
   };
 
   // Fetch subordinates on component mount
@@ -543,8 +562,15 @@ const TeamLeaderReports = ({ employee }) => {
         ordering: '-timestamp'
       };
       
-      if (filters.startDate) params.start_date = filters.startDate;
-      if (filters.endDate) params.end_date = filters.endDate;
+      console.log('🔍 Current filters:', filters);
+      if (filters.startDate) {
+        params.start_date = filters.startDate;
+        console.log('📅 Added start_date:', filters.startDate);
+      }
+      if (filters.endDate) {
+        params.end_date = filters.endDate;
+        console.log('📅 Added end_date:', filters.endDate);
+      }
       if (filters.selectedEmployee !== 'all') {
         params.employee = filters.selectedEmployee;
       }
@@ -625,23 +651,32 @@ const TeamLeaderReports = ({ employee }) => {
       data = data.filter(e => e.entry_type === filters.entryType);
     }
     
+    console.log('🔍 Local filtering result:', {
+      originalEntries: entries.length,
+      filteredEntries: data.length,
+      filters: filters,
+      sampleEntry: data[0]
+    });
     setFilteredEntries(data);
   }, [entries, filters]);
 
   const handleFilterFormChange = (e) => {
     const { name, value } = e.target;
-    console.log('Filter changed:', name, value);
+    console.log('🔧 Filter changed:', name, value);
     const newFilterForm = { ...filterForm, [name]: value };
+    console.log('🔄 New filter form:', newFilterForm);
     setFilterForm(newFilterForm);
     
     // Clear active quick filter if dates are manually changed
     if (name === 'startDate' || name === 'endDate') {
       setActiveQuickFilter(null);
+      console.log('🗑️ Active quick filter cleared');
     }
     
     // Automatically apply filters when they change
     setFilters(newFilterForm);
     setCurrentPage(1);
+    console.log('✅ Filters updated and page reset');
   };
 
   const handleEditEntry = (entry) => {
