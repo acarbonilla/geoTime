@@ -101,7 +101,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
   // Get initial location
   const getInitialLocation = useCallback(async () => {
     try {
-      const position = await getCurrentPosition();
+      const position = await safeGetCurrentPosition();
       setCurrentCoords({ 
         latitude: position.coords.latitude, 
         longitude: position.coords.longitude 
@@ -110,6 +110,19 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
     } catch (error) {
       console.warn('Initial geolocation failed:', error);
       setGeolocationStatus('error');
+      // Set default coordinates or handle gracefully
+      setCurrentCoords({ latitude: 0, longitude: 0 });
+    }
+  }, []);
+
+  // Enhanced geolocation wrapper with error handling
+  const safeGetCurrentPosition = useCallback(async () => {
+    try {
+      return await getCurrentPosition();
+    } catch (error) {
+      console.warn('Geolocation error in safe wrapper:', error);
+      // Re-throw with a more user-friendly message
+      throw new Error('Unable to get your location. Please check your location permissions and try again.');
     }
   }, []);
 
@@ -426,7 +439,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       setIsClockingIn(true);
       setGeolocationStatus('requesting');
       
-      const position = await getCurrentPosition();
+      const position = await safeGetCurrentPosition();
       setGeolocationStatus('success');
       setCurrentCoords({ 
         latitude: position.coords.latitude, 
@@ -491,7 +504,7 @@ const MobileDashboard = ({ user, employee, onLogout }) => {
       setIsClockingOut(true);
       setGeolocationStatus('requesting');
       
-      const position = await getCurrentPosition();
+      const position = await safeGetCurrentPosition();
       setGeolocationStatus('success');
       setCurrentCoords({ 
         latitude: position.coords.latitude, 

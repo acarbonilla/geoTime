@@ -34,6 +34,8 @@ export const getCurrentPosition = (options = {}) => {
             errorMessage = error.message || 'An unknown error occurred.';
         }
         
+        // Log the error for debugging but don't throw
+        console.warn('Geolocation error:', errorMessage, error);
         reject(new Error(errorMessage));
       },
       { ...defaultOptions, ...options }
@@ -49,21 +51,33 @@ export const watchPosition = (callback, options = {}) => {
   };
 
   if (!navigator.geolocation) {
-    throw new Error('Geolocation is not supported by this browser');
+    console.warn('Geolocation is not supported by this browser');
+    return null; // Return null instead of throwing
   }
 
-  return navigator.geolocation.watchPosition(
-    callback,
-    (error) => {
-      console.error('Geolocation watch error:', error);
-    },
-    { ...defaultOptions, ...options }
-  );
+  try {
+    return navigator.geolocation.watchPosition(
+      callback,
+      (error) => {
+        console.warn('Geolocation watch error:', error);
+        // Don't throw, just log the error
+      },
+      { ...defaultOptions, ...options }
+    );
+  } catch (error) {
+    console.warn('Error setting up geolocation watch:', error);
+    return null; // Return null on error instead of throwing
+  }
 };
 
 export const clearWatch = (watchId) => {
-  if (navigator.geolocation && watchId) {
-    navigator.geolocation.clearWatch(watchId);
+  try {
+    if (navigator.geolocation && watchId) {
+      navigator.geolocation.clearWatch(watchId);
+    }
+  } catch (error) {
+    console.warn('Error clearing geolocation watch:', error);
+    // Don't throw, just log the error
   }
 };
 
@@ -104,4 +118,45 @@ export const getAccuracyDescription = (accuracy) => {
   if (accuracy <= 20) return 'Fair';
   if (accuracy <= 50) return 'Poor';
   return 'Very Poor';
+};
+
+// Enhanced error handling wrapper for geolocation operations
+export const withGeolocationErrorHandling = async (geolocationOperation, fallbackValue = null) => {
+  try {
+    return await geolocationOperation();
+  } catch (error) {
+    // Log the error for debugging
+    console.warn('Geolocation operation failed:', error);
+    
+    // Check if it's a permission error
+    if (error.message && error.message.includes('permission')) {
+      console.warn('Location permission denied. User needs to enable location services.');
+    }
+    
+    // Check if it's a timeout error
+    if (error.message && error.message.includes('timeout')) {
+      console.warn('Location request timed out. This might be due to poor GPS signal.');
+    }
+    
+    // Check if it's a position unavailable error
+    if (error.message && error.message.includes('unavailable')) {
+      console.warn('Location information is currently unavailable.');
+    }
+    
+    // Return fallback value if provided, otherwise re-throw with user-friendly message
+    if (fallbackValue !== null) {
+      return fallbackValue;
+    }
+    
+    // Re-throw with a more user-friendly error message
+    throw new Error('Unable to get your location. Please check your location permissions and try again.');
+  }
+};
+
+// Safe getCurrentPosition with built-in error handling
+export const getCurrentPositionSafe = (options = {}) => {
+  return withGeolocationErrorHandling(
+    () => getCurrentPosition(options),
+    { coords: { latitude: 0, longitude: 0, accuracy: 0 } }
+  );
 }; 

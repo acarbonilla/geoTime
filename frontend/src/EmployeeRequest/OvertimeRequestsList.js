@@ -278,8 +278,8 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null, 
           {/* Status Filter */}
           <div className="relative">
             <FaFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <select
-              value={statusFilter}
+          <select
+            value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 appearance-none bg-white"
             >
@@ -287,21 +287,21 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null, 
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
-              ))}
-            </select>
-          </div>
+            ))}
+          </select>
+        </div>
 
           {/* Page Size */}
           <div>
-            <select
-              value={pageSize}
+          <select
+            value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-            >
-              {PAGE_SIZE_OPTIONS.map(size => (
+          >
+            {PAGE_SIZE_OPTIONS.map(size => (
                 <option key={size} value={size}>Show {size}</option>
-              ))}
-            </select>
+            ))}
+          </select>
           </div>
         </div>
       </div>
@@ -400,21 +400,21 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null, 
               <div className="flex items-center gap-2">
                 {/* Show Edit and Delete only for pending requests */}
                 {request.status === 'pending' && (
-                  <>
-                    <button
+                        <>
+                          <button
                       onClick={() => handleEdit(request)}
                       className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 font-medium"
                     >
                       Edit
                     </button>
-                    <button
+                          <button
                       onClick={() => handleDelete(request)}
                       className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 font-medium"
                     >
                       Delete
                     </button>
-                  </>
-                )}
+                        </>
+                      )}
                 
                 {/* Show PDF download only for approved or denied requests */}
                 {(request.status === 'approved' || request.status === 'denied') && (
@@ -428,25 +428,25 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null, 
                 )}
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+                    </div>
+              ))}
+        </div>
 
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="bg-white rounded-xl p-6 shadow-md border border-gray-100">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage(1)}
-                disabled={currentPage === 1}
+          <button
+            onClick={() => setCurrentPage(1)}
+            disabled={currentPage === 1}
                 className="px-3 py-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
               >
                 First
               </button>
-              <button
+          <button
                 onClick={() => setCurrentPage(currentPage - 1)}
-                disabled={currentPage === 1}
+            disabled={currentPage === 1}
                 className="px-3 py-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
               >
                 Previous
@@ -483,30 +483,30 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null, 
             </div>
             
             <div className="flex items-center gap-2">
-              <button
+          <button
                 onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
+            disabled={currentPage === totalPages}
                 className="px-3 py-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
               >
                 Next
               </button>
-              <button
-                onClick={() => setCurrentPage(totalPages)}
-                disabled={currentPage === totalPages}
+          <button
+            onClick={() => setCurrentPage(totalPages)}
+            disabled={currentPage === totalPages}
                 className="px-3 py-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
               >
                 Last
               </button>
             </div>
-          </div>
         </div>
+      </div>
       )}
 
       {/* Form Modal */}
       {showForm && (
         <>
           {/* Modal Backdrop */}
-          <div 
+          <div
             className="fixed inset-0 bg-black bg-opacity-50 z-40 animate-fade-in"
             onClick={() => {
               setShowForm(false);
@@ -515,7 +515,7 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null, 
           />
           {/* Modal Content */}
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-            <div 
+            <div
               className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-slide-in"
               onClick={(e) => e.stopPropagation()}
             >
@@ -524,7 +524,7 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null, 
                   <h2 className="text-xl font-bold text-gray-900">
                     {editRequest ? 'Edit Overtime Request' : 'New Overtime Request'}
                   </h2>
-                  <button
+              <button
                     onClick={() => {
                       setShowForm(false);
                       setEditRequest(null);
@@ -534,11 +534,11 @@ const OvertimeRequestsList = ({ requests = [], isLoading = false, error = null, 
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
-                  </button>
+              </button>
                 </div>
-                <OvertimeRequestForm
+              <OvertimeRequestForm
                   request={editRequest}
-                  onSuccess={handleFormSuccess}
+                onSuccess={handleFormSuccess}
                   onCancel={() => {
                     setShowForm(false);
                     setEditRequest(null);

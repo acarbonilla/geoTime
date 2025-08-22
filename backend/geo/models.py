@@ -253,6 +253,12 @@ class TimeEntry(models.Model):
     def working_date(self):
         """Get the working date based on event_time (not timestamp)"""
         return self.event_time.date() if self.event_time else self.timestamp.date()
+    
+    @property
+    def working_date_str(self):
+        """Get the working date as string in YYYY-MM-DD format"""
+        working_date = self.working_date
+        return working_date.strftime('%Y-%m-%d') if working_date else None
 
 
 class WorkSession(models.Model):
@@ -320,6 +326,10 @@ class TimeCorrectionRequest(models.Model):
     requested_time_out = models.TimeField(null=True, blank=True)
     reason = models.TextField()
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    # New fields added for approval functionality
+    approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_correction_requests')
+    comments = models.TextField(blank=True, null=True)
+    approved_date = models.DateTimeField(null=True, blank=True, help_text='Date and time when the request was approved')
     submitted_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_correction_requests')

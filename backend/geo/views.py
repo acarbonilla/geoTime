@@ -599,7 +599,14 @@ class DashboardAPIView(APIView):
         """Get team attendance for today"""
         today = timezone.now().date()
         
+        # Initialize counters
+        present_count = 0
+        absent_count = 0
+        late_count = 0
+        
+        # Detailed attendance data for other purposes
         attendance_data = []
+        
         for member in team_members:
             # Get today's entries for this member
             today_entries = TimeEntry.objects.filter(
@@ -611,6 +618,9 @@ class DashboardAPIView(APIView):
             if today_entries.exists():
                 first_entry = today_entries.first()
                 last_entry = today_entries.last()
+                
+                # Count as present if they have any time entries today
+                present_count += 1
                 
                 status = 'present'
                 if first_entry.entry_type == 'time_in':
@@ -626,6 +636,7 @@ class DashboardAPIView(APIView):
                     'last_entry': last_entry.timestamp.strftime('%H:%M') if last_entry != first_entry else None
                 })
             else:
+                absent_count += 1
                 attendance_data.append({
                     'employee_id': member.id,
                     'employee_name': member.full_name,
@@ -634,7 +645,13 @@ class DashboardAPIView(APIView):
                     'last_entry': None
                 })
         
-        return attendance_data
+        # Return both summary counts and detailed data
+        return {
+            'present': present_count,
+            'absent': absent_count,
+            'late': late_count,
+            'detailed_data': attendance_data
+        }
 
     def _get_department_attendance(self, department):
         """Get department attendance for today"""
@@ -918,6 +935,15 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
         timestamp_lte = request.query_params.get('timestamp__lte') or request.query_params.get('end_date')
         date_str = request.query_params.get('date')
         
+        # Import required modules
+        from datetime import datetime, time, timedelta
+        from django.utils import timezone
+        
+        # DEBUG: Log the parameters received
+        print(f"[DEBUG] TimeEntryViewSet.list - Query params: {request.query_params}")
+        print(f"[DEBUG] TimeEntryViewSet.list - start_date: {timestamp_gte}")
+        print(f"[DEBUG] TimeEntryViewSet.list - end_date: {timestamp_lte}")
+        
         queryset = self.get_queryset()
         
         # Apply date range filters if provided
@@ -925,32 +951,41 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
             try:
                 # Extract just the date part for simpler filtering
                 gte_date = timestamp_gte.split('T')[0]
-                print(f"[DEBUG] Applying timestamp__gte filter: {timestamp_gte} -> date: {gte_date}")
                 # Convert string to date object for proper filtering
-                from datetime import datetime
                 gte_date_obj = datetime.strptime(gte_date, '%Y-%m-%d').date()
                 # For gte, we want entries from the start of the specified date
-                queryset = queryset.filter(timestamp__date__gte=gte_date_obj)
-                print(f"[DEBUG] Query after timestamp__gte: {queryset.query}")
-            except (ValueError, AttributeError):
-                return Response({'error': 'Invalid timestamp__gte format. Use ISO format'}, status=status.HTTP_400_BAD_REQUEST)
+                print(f"[DEBUG] Filtering by start_date >= {gte_date_obj}")
+                
+                # IMPORTANT: Filter by event_time field, not timestamp field
+                # Use Django's __date lookup for proper date comparison
+                print(f"[DEBUG] Using event_time__date__gte for filtering")
+                queryset = queryset.filter(event_time__date__gte=gte_date_obj)
+                
+            except Exception as e:
+                print(f"[DEBUG] Error parsing start_date: {e}")
+                print(f"[DEBUG] Falling back to simple date filtering on event_time")
+                # Fallback to simple date filtering on event_time field
+                queryset = queryset.filter(event_time__date__gte=gte_date_obj)
         
         if timestamp_lte:
             try:
                 # Extract just the date part for simpler filtering
                 lte_date = timestamp_lte.split('T')[0]
-                print(f"[DEBUG] Applying timestamp__lte filter: {timestamp_lte} -> date: {lte_date}")
                 # Convert string to date object for proper filtering
-                from datetime import datetime
                 lte_date_obj = datetime.strptime(lte_date, '%Y-%m-%d').date()
                 # For lte, we want entries up to the end of the specified date
-                # So if lte_date is 2025-08-23, we want entries up to 2025-08-22 23:59:59
-                # This means we filter by timestamp__date__lt=2025-08-23 (less than next day)
-                next_day = lte_date_obj + timedelta(days=1)
-                queryset = queryset.filter(timestamp__date__lt=next_day)
-                print(f"[DEBUG] Query after timestamp__lte (adjusted): {queryset.query}")
-            except (ValueError, AttributeError):
-                return Response({'error': 'Invalid timestamp__lte format. Use ISO format'}, status=status.HTTP_400_BAD_REQUEST)
+                print(f"[DEBUG] Filtering by end_date <= {lte_date_obj}")
+                
+                # IMPORTANT: Filter by event_time field, not timestamp field
+                # Use Django's __date lookup for proper date comparison
+                print(f"[DEBUG] Using event_time__date__lte for filtering")
+                queryset = queryset.filter(event_time__date__lte=lte_date_obj)
+                
+            except Exception as e:
+                print(f"[DEBUG] Error parsing end_date: {e}")
+                print(f"[DEBUG] Falling back to simple date filtering on event_time")
+                # Fallback to simple date filtering on event_time field
+                queryset = queryset.filter(event_time__date__lte=lte_date_obj)
         
         # Handle single date filter (backward compatibility)
         if date_str:
@@ -965,17 +1000,15 @@ class TimeEntryViewSet(RoleBasedPermissionMixin, viewsets.ModelViewSet):
             serializer = self.get_serializer(queryset, many=True)
             return Response({'entries': serializer.data})
         
-        # Debug: Log the final queryset count and some sample results
+        # DEBUG: Log the final queryset count and some sample entries
         final_count = queryset.count()
         print(f"[DEBUG] Final queryset count: {final_count}")
-        print(f"[DEBUG] Final query: {queryset.query}")
         
+        # Show some sample entries to debug the filtering
         if final_count > 0:
-            # Show first few results for debugging
-            sample_results = queryset[:3]
-            print(f"[DEBUG] Sample results:")
-            for entry in sample_results:
-                print(f"  - ID: {entry.id}, Date: {entry.timestamp.date()}, Employee: {entry.employee.full_name}")
+            sample_entries = queryset[:3]
+            for i, entry in enumerate(sample_entries):
+                print(f"[DEBUG] Sample entry {i+1}: ID={entry.id}, timestamp={entry.timestamp}, event_time={entry.event_time}, event_time_date={entry.event_time.date() if entry.event_time else 'None'}")
         
         # Default DRF behavior if no date params
         return super().list(request, *args, **kwargs)
@@ -2156,6 +2189,8 @@ class TimeCorrectionRequestViewSet(viewsets.ModelViewSet):
                 print(f"[DEBUG] Starting transaction")
                 # Update the correction request
                 correction_request.status = 'approved'
+                correction_request.approver = approver
+                correction_request.approved_date = timezone.now()
                 correction_request.reviewed_by = approver
                 correction_request.reviewed_at = timezone.now()
                 correction_request.response_message = comments

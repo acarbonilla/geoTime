@@ -9,7 +9,7 @@ import TeamMap from './TeamMap';
 import AbsentTodayDrawer from './AbsentTodayDrawer';
 import { timeAPI } from '../../api';
 
-// Reusable Loading Components
+// Enhanced Loading Components with better animations
 const LoadingSpinner = ({ size = 'md', text = 'Loading...', description = '' }) => {
   const sizeClasses = {
     sm: 'h-4 w-4',
@@ -18,11 +18,14 @@ const LoadingSpinner = ({ size = 'md', text = 'Loading...', description = '' }) 
   };
   
   return (
-    <div className="flex items-center justify-center space-x-2">
-      <div className={`animate-spin rounded-full border-b-2 border-blue-600 ${sizeClasses[size]}`}></div>
-      <div>
-        <div className="text-blue-700 font-medium">{text}</div>
-        {description && <div className="text-blue-600 text-sm">{description}</div>}
+    <div className="flex items-center justify-center space-x-3 animate-fade-in">
+      <div className="relative">
+        <div className={`animate-spin rounded-full border-4 border-blue-200 ${sizeClasses[size]}`}></div>
+        <div className={`absolute top-0 left-0 rounded-full border-4 border-transparent border-t-blue-600 ${sizeClasses[size]} animate-ping`}></div>
+      </div>
+      <div className="text-center">
+        <div className="text-blue-700 font-semibold text-lg animate-pulse">{text}</div>
+        {description && <div className="text-blue-600 text-sm opacity-80 animate-pulse">{description}</div>}
       </div>
     </div>
   );
@@ -30,19 +33,19 @@ const LoadingSpinner = ({ size = 'md', text = 'Loading...', description = '' }) 
 
 const ProcessingMessage = ({ title, description, type = 'info' }) => {
   const colors = {
-    info: 'bg-blue-50 border-blue-200 text-blue-700',
-    success: 'bg-green-50 border-green-200 text-green-700',
-    warning: 'bg-yellow-50 border-yellow-200 text-yellow-700',
-    error: 'bg-red-50 border-red-200 text-red-700'
+    info: 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 text-blue-700',
+    success: 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 text-green-700',
+    warning: 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200 text-yellow-700',
+    error: 'bg-gradient-to-r from-red-50 to-pink-50 border-red-200 text-red-700'
   };
   
   return (
-    <div className={`mt-4 p-3 border rounded-lg ${colors[type]}`}>
-      <div className="flex items-center space-x-2">
-        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+    <div className={`mt-4 p-4 border-2 rounded-xl shadow-lg ${colors[type]} animate-slide-up`}>
+      <div className="flex items-center space-x-3">
+        <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent"></div>
         <div>
-          <div className="font-medium">{title}</div>
-          <div className="text-sm opacity-80">{description}</div>
+          <div className="font-semibold text-lg">{title}</div>
+          <div className="text-sm opacity-90">{description}</div>
         </div>
       </div>
     </div>
@@ -266,7 +269,7 @@ const TeamLeaderDashboard = ({ employee }) => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'clocked_in': return 'text-green-600';
+      case 'clocked_in': return 'text-emerald-600';
       case 'clocked_out': return 'text-red-600';
       default: return 'text-gray-600';
     }
@@ -297,182 +300,264 @@ const TeamLeaderDashboard = ({ employee }) => {
   };
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="text-center">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+      <div className="text-center animate-fade-in">
+        <div className="relative mb-8">
+          <div className="w-24 h-24 mx-auto bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse shadow-2xl"></div>
+          <div className="absolute inset-0 w-24 h-24 mx-auto bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full animate-ping opacity-75"></div>
+        </div>
         <LoadingSpinner size="lg" text="Loading dashboard..." description="Fetching team data and analytics" />
       </div>
     </div>
   );
+
   if (error) return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="text-center">
-        <div className="text-red-600 text-lg font-medium mb-2">Error Loading Dashboard</div>
-        <div className="text-gray-600">{error}</div>
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 via-red-50 to-pink-100">
+      <div className="text-center animate-fade-in">
+        <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-r from-red-500 to-pink-600 rounded-full flex items-center justify-center shadow-2xl">
+          <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+        </div>
+        <div className="text-red-600 text-2xl font-bold mb-3">Error Loading Dashboard</div>
+        <div className="text-red-500 text-lg mb-6 max-w-md">{error}</div>
         <button 
           onClick={fetchDashboardData}
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="px-6 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:from-red-600 hover:to-pink-700 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold"
         >
           Try Again
         </button>
       </div>
     </div>
   );
+
   if (!dashboard) return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="text-center">
-        <div className="animate-pulse rounded-full h-12 w-12 bg-blue-200 mx-auto mb-4"></div>
-        <div className="text-lg text-gray-700 font-medium">Loading dashboard data...</div>
-        <div className="text-sm text-gray-500 mt-2">Initializing components</div>
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+      <div className="text-center animate-fade-in">
+        <div className="relative mb-6">
+          <div className="w-16 h-16 mx-auto bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full animate-pulse shadow-xl"></div>
+          <div className="absolute inset-0 w-16 h-16 mx-auto bg-gradient-to-r from-blue-300 to-indigo-400 rounded-full animate-ping opacity-75"></div>
+        </div>
+        <div className="text-xl text-gray-700 font-semibold mb-2">Loading dashboard data...</div>
+        <div className="text-gray-500">Initializing components</div>
       </div>
     </div>
   );
 
   return (
-    <div className="max-w-6xl mx-auto p-2 sm:p-4 md:p-8 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 min-h-screen relative z-0">
-      <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 md:mb-8 text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Team Leader Dashboard</h1>
-      <TeamOverview
-        teamMembersCount={dashboard?.team_members_count || 0}
-        teamAttendance={dashboard?.team_attendance || { present: 0, absent: 0, late: 0 }}
-        pendingApprovals={pendingApprovalsCount}
-        onTeamMembersClick={() => setDrawerOpen(true)}
-        onPresentTodayClick={() => setTimeEntriesDrawerOpen(true)}
-        onPendingApprovalsClick={() => setApprovalsModalOpen(true)}
-        onAbsentTodayClick={() => setAbsentTodayDrawerOpen(true)}
-      />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-200 to-indigo-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-purple-200 to-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
+        <div className="absolute top-40 left-40 w-80 h-80 bg-gradient-to-br from-yellow-200 to-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
+      </div>
 
-      {/* Personal Time In/Out Section */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-xl border border-white/20 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6 md:mb-8">
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-800">My Time In/Out</h2>
-        
-        <div className="grid grid-cols-1 gap-4 sm:gap-6">
-          {/* Status Display */}
-          <div className="text-center">
-            <div className={`text-base sm:text-lg font-semibold ${getStatusColor(personalStatus)}`}>
-              {getStatusText(personalStatus)}
-            </div>
-            <div className="text-xs sm:text-sm text-gray-600 mt-1">
-              {employee?.full_name}
-            </div>
-          </div>
-
-          {/* Location Status */}
-          <div className="text-center">
-            {locationError ? (
-              <div className="text-red-600 text-xs sm:text-sm bg-red-50 p-2 rounded-lg">{locationError}</div>
-            ) : currentLocation ? (
-              <div className="text-green-600 text-xs sm:text-sm bg-green-50 p-2 rounded-lg">
-                ✓ Location obtained (Accuracy: {currentLocation.accuracy?.toFixed(1)}m)
-              </div>
-            ) : (
-              <div className="text-yellow-600 text-xs sm:text-sm bg-yellow-50 p-2 rounded-lg">Location not obtained</div>
-            )}
-            <button
-              type="button"
-              onClick={getCurrentLocation}
-              className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 underline mt-1 transition-colors"
-            >
-              Refresh Location
-            </button>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 justify-center">
-            {personalStatus !== 'clocked_in' ? (
-              <button
-                onClick={handlePersonalTimeIn}
-                disabled={isClockingIn}
-                className={`px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base transition-all duration-200 transform hover:scale-105 ${
-                  isClockingIn
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-green-500 to-green-600 text-white hover:from-green-600 hover:to-green-700 shadow-lg hover:shadow-xl'
-                }`}
-              >
-                {isClockingIn ? (
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Clocking In...</span>
-                  </div>
-                ) : (
-                  'Clock In'
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={handlePersonalTimeOut}
-                disabled={isClockingOut}
-                className={`px-3 sm:px-4 py-2 rounded-lg font-medium text-sm sm:text-base transition-all duration-200 transform hover:scale-105 ${
-                  isClockingOut
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl'
-                }`}
-              >
-                {isClockingOut ? (
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Clocking Out...</span>
-                  </div>
-                ) : (
-                  'Clock Out'
-                )}
-              </button>
-            )}
-            <button
-              onClick={checkCurrentSession}
-              className="px-3 py-2 text-xs sm:text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
-            >
-              Check Status
-            </button>
-          </div>
-
-          {/* Enhanced Loading Messages */}
-          {(isClockingIn || isClockingOut) && (
-            <ProcessingMessage 
-              title={isClockingIn ? 'Processing Clock In' : 'Processing Clock Out'}
-              description={isClockingIn 
-                ? 'Recording your start time and location...' 
-                : 'Recording your end time and calculating hours...'
-              }
-              type="info"
-            />
-          )}
+      <div className="relative z-10 max-w-7xl mx-auto p-4 sm:p-6 md:p-8">
+        {/* Enhanced Header */}
+        <div className="text-center mb-8 animate-fade-in">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600">
+            Team Leader Dashboard
+          </h1>
+          <div className="w-24 h-1 bg-gradient-to-r from-blue-500 to-purple-500 mx-auto rounded-full shadow-lg"></div>
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="mt-3 sm:mt-4 text-red-600 text-xs sm:text-sm p-2 bg-red-50 rounded-lg border border-red-200">
-            {error}
-          </div>
-        )}
-      </div>
-      <TeamMemberDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} teamLeaderId={employee?.id} />
-      <TeamTimeEntriesDrawer open={timeEntriesDrawerOpen} onClose={() => setTimeEntriesDrawerOpen(false)} />
-      <TimeCorrectionApprovalsModal 
-        open={approvalsModalOpen} 
-        pendingApprovalsCount={dashboard?.pending_approvals || 0}
-        onClose={() => {
-          setApprovalsModalOpen(false);
-          // Refresh dashboard data when modal is closed to update the pending approvals count
-          fetchDashboardData();
-        }} 
-      />
-      <AbsentTodayDrawer open={absentTodayDrawerOpen} onClose={() => setAbsentTodayDrawerOpen(false)} />
-      
-      {/* Time In/Out Manager and Team Map */}
-      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:gap-8 mb-4 sm:mb-6 md:mb-8 relative z-0">
-        <div className="lg:col-span-1">
-          <TimeInOutManager 
-            teamMembers={teamMembers}
-            onTimeEntryCreated={(data) => {
-              // Refresh dashboard data when a time entry is created
-              fetchDashboardData();
-              // Trigger map refresh with a small delay to ensure backend processing
-              setTimeout(() => {
-                setMapRefreshTrigger(prev => prev + 1);
-              }, 1000);
-            }}
+        {/* Team Overview Section */}
+        <div className="mb-8 animate-slide-up animation-delay-200">
+          <TeamOverview
+            teamMembersCount={dashboard?.team_members_count || 0}
+            teamAttendance={dashboard?.team_attendance || { present: 0, absent: 0, late: 0 }}
+            pendingApprovals={pendingApprovalsCount}
+            onTeamMembersClick={() => setDrawerOpen(true)}
+            onPresentTodayClick={() => setTimeEntriesDrawerOpen(true)}
+            onPendingApprovalsClick={() => setApprovalsModalOpen(true)}
+            onAbsentTodayClick={() => setAbsentTodayDrawerOpen(true)}
           />
         </div>
-        <div className="lg:col-span-2">
+
+        {/* Drawers and Modals */}
+        <TeamMemberDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} teamLeaderId={employee?.id} />
+        <TeamTimeEntriesDrawer open={timeEntriesDrawerOpen} onClose={() => setTimeEntriesDrawerOpen(false)} />
+        <TimeCorrectionApprovalsModal 
+          open={approvalsModalOpen} 
+          pendingApprovalsCount={dashboard?.pending_approvals || 0}
+          onClose={() => {
+            setApprovalsModalOpen(false);
+            // Refresh dashboard data when modal is closed to update the pending approvals count
+            fetchDashboardData();
+          }} 
+        />
+        <AbsentTodayDrawer open={absentTodayDrawerOpen} onClose={() => setAbsentTodayDrawerOpen(false)} />
+        
+        {/* First Row: My Time In/Out and Time In/Out Manager Side by Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 mb-8 animate-slide-up animation-delay-600 relative z-0">
+          {/* My Time In/Out Component */}
+          <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/30 p-6 sm:p-8 relative overflow-hidden">
+            {/* Decorative background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-indigo-50/50"></div>
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full -translate-y-12 translate-x-12 opacity-60"></div>
+            
+            <div className="relative z-10">
+              <h3 className="text-xl sm:text-2xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-gray-800 to-gray-600 flex items-center">
+                <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg mr-2 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                My Time In/Out
+              </h3>
+              
+              <div className="space-y-4">
+                {/* Status Display */}
+                <div className="text-center p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
+                  <div className={`text-lg sm:text-xl font-bold mb-2 ${getStatusColor(personalStatus)}`}>
+                    {getStatusText(personalStatus)}
+                  </div>
+                  <div className="text-gray-600 text-base font-medium">
+                    {employee?.full_name}
+                  </div>
+                </div>
+
+                {/* Location Status */}
+                <div className="text-center p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
+                  {locationError ? (
+                    <div className="text-red-600 text-xs bg-red-50 p-2 rounded-lg border border-red-200 animate-pulse">
+                      <svg className="w-4 h-4 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                      {locationError}
+                    </div>
+                  ) : currentLocation ? (
+                    <div className="text-green-700 text-xs bg-green-50 p-2 rounded-lg border border-green-200">
+                      <svg className="w-4 h-4 mx-auto mb-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      ✓ Location obtained (Accuracy: {currentLocation.accuracy?.toFixed(1)}m)
+                    </div>
+                  ) : (
+                    <div className="text-yellow-600 text-xs bg-yellow-50 p-2 rounded-lg border border-yellow-200">
+                      <svg className="w-4 h-4 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                      Location not obtained
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={getCurrentLocation}
+                    className="text-xs text-blue-600 hover:text-blue-800 underline mt-1 transition-colors font-medium hover:scale-105 transform"
+                  >
+                    Refresh Location
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col space-y-2">
+                  {personalStatus !== 'clocked_in' ? (
+                    <button
+                      onClick={handlePersonalTimeIn}
+                      disabled={isClockingIn}
+                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl ${
+                        isClockingIn
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 shadow-emerald-500/25'
+                      }`}
+                    >
+                      {isClockingIn ? (
+                        <div className="flex items-center justify-center space-x-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                          <span>Clocking In...</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Clock In</span>
+                        </div>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handlePersonalTimeOut}
+                      disabled={isClockingOut}
+                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl ${
+                        isClockingOut
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-red-500 to-pink-600 text-white hover:from-red-600 hover:to-pink-700 shadow-red-500/25'
+                      }`}
+                    >
+                      {isClockingOut ? (
+                        <div className="flex items-center justify-center space-x-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                          <span>Clocking Out...</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          <span>Clock Out</span>
+                        </div>
+                      )}
+                    </button>
+                  )}
+                  <button
+                    onClick={checkCurrentSession}
+                    className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold shadow-blue-500/25 flex items-center space-x-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Check Status</span>
+                  </button>
+                </div>
+
+                {/* Loading Messages */}
+                {(isClockingIn || isClockingOut) && (
+                  <ProcessingMessage 
+                    title={isClockingIn ? 'Processing Clock In' : 'Processing Clock Out'}
+                    description={isClockingIn 
+                      ? 'Recording your start time and location...' 
+                      : 'Recording your end time and calculating hours...'
+                    }
+                    type="info"
+                  />
+                )}
+
+                {/* Error Message */}
+                {error && (
+                  <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl border-2 border-red-200 animate-shake">
+                    <div className="flex items-center space-x-2">
+                      <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                      <div className="text-red-700 text-sm font-medium">{error}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Time In/Out Manager Component */}
+          <div>
+            <TimeInOutManager 
+              teamMembers={teamMembers}
+              onTimeEntryCreated={(data) => {
+                // Refresh dashboard data when a time entry is created
+                fetchDashboardData();
+                // Trigger map refresh with a small delay to ensure backend processing
+                setTimeout(() => {
+                  setMapRefreshTrigger(prev => prev + 1);
+                }, 1000);
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Second Row: Team Map Component - Full Width */}
+        <div className="mb-8 animate-slide-up animation-delay-800 relative z-0">
           <TeamMap 
             teamLeaderLocation={teamLeaderLocation}
             teamMembers={teamMembers}
@@ -480,9 +565,8 @@ const TeamLeaderDashboard = ({ employee }) => {
           />
         </div>
       </div>
-      
     </div>
   );
 };
 
-export default TeamLeaderDashboard; 
+export default TeamLeaderDashboard;

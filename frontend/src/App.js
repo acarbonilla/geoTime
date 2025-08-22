@@ -17,6 +17,7 @@ import ApprovalPage from './TeamLeaderApproval/ApprovalPage';
 import { ScheduleManagement, ScheduleReport } from './Employee_Schedule';
 import { TeamLeaderScheduleManagement, TeamLeaderScheduleReport } from './TeamLeader_Report';
 import { shouldShowMobileView, shouldShowNavbar } from './utils/deviceDetection';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -33,6 +34,48 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [employee, setEmployee] = useState(null);
+
+  useEffect(() => {
+    // Global error handler for unhandled promise rejections
+    const handleUnhandledRejection = (event) => {
+      console.warn('Unhandled promise rejection:', event.reason);
+      
+      // Handle geolocation errors specifically
+      if (event.reason && event.reason.message && 
+          (event.reason.message.includes('geolocation') || 
+           event.reason.message.includes('location') ||
+           event.reason.message.includes('permission'))) {
+        console.warn('Geolocation error caught by global handler:', event.reason.message);
+        // Prevent the error from being thrown as a runtime error
+        event.preventDefault();
+      }
+    };
+
+    // Global error handler for runtime errors
+    const handleError = (event) => {
+      console.warn('Runtime error caught by global handler:', event.error);
+      
+      // Handle geolocation errors specifically
+      if (event.error && event.error.message && 
+          (event.error.message.includes('geolocation') || 
+           event.error.message.includes('location') ||
+           event.error.message.includes('permission'))) {
+        console.warn('Geolocation runtime error caught by global handler:', event.error.message);
+        // Prevent the error from being displayed as a runtime error
+        event.preventDefault();
+      }
+    };
+
+    // Add global error handlers
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    window.addEventListener('error', handleError);
+
+    // Cleanup function
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+      window.removeEventListener('error', handleError);
+    };
+  }, []);
 
   useEffect(() => {
     // Check if user is already logged in
@@ -88,175 +131,177 @@ function App() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <Router>
-        <div className="App w-full min-h-screen">
-          {/* Toast Container for notifications */}
-          <ToastContainer
-            position="top-right"
-            autoClose={5000}
-            hideProgressBar={false}
-            newestOnTop={false}
-            closeOnClick
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
-            theme="light"
-          />
-          {/* Navbar for authenticated users - only show in full view */}
-          {isAuthenticated && shouldShowNavbar() && (
-            <div style={{ position: 'relative', zIndex: 1000 }}>
-              <Navbar user={user} employee={employee} onLogout={handleLogout} />
-            </div>
-          )}
-          
-          {/* Main content area with proper spacing from navbar */}
-          <div className="main-content" style={{ paddingTop: isAuthenticated && shouldShowNavbar() ? '80px' : '0' }}>
-            <Routes>
-              <Route 
-                path="/" 
-                element={
-                  isAuthenticated ? (
-                    (() => {
-                      // Enhanced view logic with automatic redirection
-                      const isMobileView = shouldShowMobileView();
-                      
-                      if (isMobileView) {
-                        // Show mobile dashboard for all users in mobile view
-                        return <MobileDashboard user={user} employee={employee} onLogout={handleLogout} />;
-                      } else {
-                        // Show appropriate full dashboard based on role
-                        if (employee?.role === 'team_leader') {
-                          return <Navigate to="/team-leader-dashboard" replace />;
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <div className="App w-full min-h-screen">
+            {/* Toast Container for notifications */}
+            <ToastContainer
+              position="top-right"
+              autoClose={5000}
+              hideProgressBar={false}
+              newestOnTop={false}
+              closeOnClick
+              rtl={false}
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme="light"
+            />
+            {/* Navbar for authenticated users - only show in full view */}
+            {isAuthenticated && shouldShowNavbar() && (
+              <div style={{ position: 'relative', zIndex: 1000 }}>
+                <Navbar user={user} employee={employee} onLogout={handleLogout} />
+              </div>
+            )}
+            
+            {/* Main content area with proper spacing from navbar */}
+            <div className="main-content" style={{ paddingTop: isAuthenticated && shouldShowNavbar() ? '80px' : '0' }}>
+              <Routes>
+                <Route 
+                  path="/" 
+                  element={
+                    isAuthenticated ? (
+                      (() => {
+                        // Enhanced view logic with automatic redirection
+                        const isMobileView = shouldShowMobileView();
+                        
+                        if (isMobileView) {
+                          // Show mobile dashboard for all users in mobile view
+                          return <MobileDashboard user={user} employee={employee} onLogout={handleLogout} />;
                         } else {
-                          return <Navigate to="/employee-dashboard" replace />;
+                          // Show appropriate full dashboard based on role
+                          if (employee?.role === 'team_leader') {
+                            return <Navigate to="/team-leader-dashboard" replace />;
+                          } else {
+                            return <Navigate to="/employee-dashboard" replace />;
+                          }
                         }
-                      }
-                    })()
-                  ) : (
-                    <Login onLogin={handleLogin} />
-                  )
-                } 
-              />
-              {/* Mobile view route - accessible from any device */}
-              <Route 
-                path="/mobile-view"
-                element={
-                  isAuthenticated ? (
-                    <MobileDashboard user={user} employee={employee} onLogout={handleLogout} />
-                  ) : (
-                    <Navigate to="/" replace />
-                  )
-                }
-              />
-              <Route 
-                path="/reports"
-                element={
-                  isAuthenticated ? (
-                    <Reports user={user} onLogout={handleLogout} />
-                  ) : (
-                    <Navigate to="/" replace />
-                  )
-                } 
-              />
-              {/* Full dashboard routes with automatic mobile detection */}
-              <Route 
-                path="/employee-dashboard"
-                element={
-                  isAuthenticated ? (
-                    (() => {
-                      // Check if screen size is mobile - if so, redirect to mobile view
-                      if (shouldShowMobileView()) {
-                        return <Navigate to="/mobile-view" replace />;
-                      }
-                      return <EmployeeDashboard onLogout={handleLogout} user={user} employee={employee} />;
-                    })()
-                  ) : (
-                    <Navigate to="/" replace />
-                  )
-                } 
-              />
-              <Route 
-                path="/team-leader-dashboard"
-                element={
-                  isAuthenticated ? (
-                    (() => {
-                      // Check if screen size is mobile - if so, redirect to mobile view
-                      if (shouldShowMobileView()) {
-                        return <Navigate to="/mobile-view" replace />;
-                      }
-                      return <TeamLeaderDashboard onLogout={handleLogout} user={user} employee={employee} />;
-                    })()
-                  ) : (
-                    <Navigate to="/" replace />
-                  )
-                } 
-              />
-              <Route
-                path="/team-leader-reports"
-                element={
-                  isAuthenticated && employee?.role === 'team_leader' ? (
-                    <TeamLeaderReports user={user} employee={employee} onLogout={handleLogout} />
-                  ) : (
-                    <Navigate to="/" replace />
-                  )
-                }
-              />
-              <Route 
-                path="/employee/request"
-                element={
-                  isAuthenticated && employee?.role === 'employee' ? (
-                    <EmployeeRequestPage user={user} employee={employee} />
-                  ) : (
-                    <Navigate to="/" replace />
-                  )
-                }
-              />
-              <Route
-                path="/approval"
-                element={
-                  isAuthenticated && employee?.role === 'team_leader' ? (
-                    <ApprovalPage user={user} employee={employee} />
-                  ) : (
-                    <Navigate to="/" replace />
-                  )
-                }
-              />
-              <Route
-                path="/schedule"
-                element={
-                  isAuthenticated ? (
-                    employee?.role === 'team_leader' ? (
-                      <TeamLeaderScheduleManagement />
+                      })()
                     ) : (
-                      <ScheduleManagement />
+                      <Login onLogin={handleLogin} />
                     )
-                  ) : (
-                    <Navigate to="/" replace />
-                  )
-                }
-              />
-              <Route
-                path="/schedule-report"
-                element={
-                  isAuthenticated ? (
-                    employee?.role === 'team_leader' ? (
-                      <TeamLeaderScheduleReport />
+                  } 
+                />
+                {/* Mobile view route - accessible from any device */}
+                <Route 
+                  path="/mobile-view"
+                  element={
+                    isAuthenticated ? (
+                      <MobileDashboard user={user} employee={employee} onLogout={handleLogout} />
                     ) : (
-                      <ScheduleReport />
+                      <Navigate to="/" replace />
                     )
-                  ) : (
-                    <Navigate to="/" replace />
-                  )
-                }
-              />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+                  }
+                />
+                <Route 
+                  path="/reports"
+                  element={
+                    isAuthenticated ? (
+                      <Reports user={user} onLogout={handleLogout} />
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  } 
+                />
+                {/* Full dashboard routes with automatic mobile detection */}
+                <Route 
+                  path="/employee-dashboard"
+                  element={
+                    isAuthenticated ? (
+                      (() => {
+                        // Check if screen size is mobile - if so, redirect to mobile view
+                        if (shouldShowMobileView()) {
+                          return <Navigate to="/mobile-view" replace />;
+                        }
+                        return <EmployeeDashboard onLogout={handleLogout} user={user} employee={employee} />;
+                      })()
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  } 
+                />
+                <Route 
+                  path="/team-leader-dashboard"
+                  element={
+                    isAuthenticated ? (
+                      (() => {
+                        // Check if screen size is mobile - if so, redirect to mobile view
+                        if (shouldShowMobileView()) {
+                          return <Navigate to="/mobile-view" replace />;
+                        }
+                        return <TeamLeaderDashboard onLogout={handleLogout} user={user} employee={employee} />;
+                      })()
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  } 
+                />
+                <Route
+                  path="/team-leader-reports"
+                  element={
+                    isAuthenticated && employee?.role === 'team_leader' ? (
+                      <TeamLeaderReports user={user} employee={employee} onLogout={handleLogout} />
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  }
+                />
+                <Route 
+                  path="/employee/request"
+                  element={
+                    isAuthenticated && employee?.role === 'employee' ? (
+                      <EmployeeRequestPage user={user} employee={employee} />
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/approval"
+                  element={
+                    isAuthenticated && employee?.role === 'team_leader' ? (
+                      <ApprovalPage user={user} employee={employee} />
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/schedule"
+                  element={
+                    isAuthenticated ? (
+                      employee?.role === 'team_leader' ? (
+                        <TeamLeaderScheduleManagement />
+                      ) : (
+                        <ScheduleManagement />
+                      )
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/schedule-report"
+                  element={
+                    isAuthenticated ? (
+                      employee?.role === 'team_leader' ? (
+                        <TeamLeaderScheduleReport />
+                      ) : (
+                        <ScheduleReport />
+                      )
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  }
+                />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </div>
           </div>
-        </div>
-      </Router>
-    </QueryClientProvider>
+        </Router>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

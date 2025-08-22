@@ -1,0 +1,25 @@
+warning: in the working copy of 'backend/geo/serializers.py', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/backend/geo/serializers.py b/backend/geo/serializers.py[m
+[1mindex 7cd24de..47c0196 100644[m
+[1m--- a/backend/geo/serializers.py[m
+[1m+++ b/backend/geo/serializers.py[m
+[36m@@ -255,15 +255,17 @@[m [mclass CurrentSessionStatusSerializer(serializers.Serializer):[m
+ [m
+ class TimeCorrectionRequestSerializer(serializers.ModelSerializer):[m
+     employee_name = serializers.CharField(source='employee.full_name', read_only=True)[m
+[32m+[m[32m    approver_name = serializers.CharField(source='approver.get_full_name', read_only=True)[m
+     reviewed_by_name = serializers.CharField(source='reviewed_by.full_name', read_only=True)[m
+ [m
+     class Meta:[m
+         model = TimeCorrectionRequest[m
+         fields = [[m
+             'id', 'employee', 'employee_name', 'date', 'requested_time_in', 'requested_time_out',[m
+[31m-            'reason', 'status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'reviewed_by_name', 'response_message'[m
+[32m+[m[32m            'reason', 'status', 'approver', 'approver_name', 'comments', 'approved_date',[m
+[32m+[m[32m            'submitted_at', 'reviewed_at', 'reviewed_by', 'reviewed_by_name', 'response_message'[m
+         ][m
+[31m-        read_only_fields = ['id', 'submitted_at', 'reviewed_at', 'reviewed_by', 'employee_name', 'reviewed_by_name'] [m
+[32m+[m[32m        read_only_fields = ['id', 'submitted_at', 'reviewed_at', 'reviewed_by', 'employee_name', 'approver_name', 'reviewed_by_name', 'approved_date'][m
+ [m
+ [m
+ class OvertimeRequestSerializer(serializers.ModelSerializer):[m

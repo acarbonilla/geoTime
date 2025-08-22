@@ -221,7 +221,7 @@ const ChangeScheduleRequestList = ({ requests = [], isLoading = false, error = n
           <div>
             <h2 className="text-2xl font-bold mb-2">Change Schedule Requests</h2>
             <p className="text-purple-100">Manage and track employee schedule change requests</p>
-          </div>
+        </div>
           <button
             onClick={() => setShowForm(true)}
             className="bg-white text-purple-600 px-6 py-3 rounded-lg font-semibold hover:bg-purple-50 transition-all duration-200 transform hover:scale-105 shadow-md flex items-center gap-2"
@@ -249,14 +249,14 @@ const ChangeScheduleRequestList = ({ requests = [], isLoading = false, error = n
                 Your request has been submitted and is now pending approval.
               </p>
             </div>
-            <button
+          <button
               onClick={() => setShowSuccessMessage(false)}
               className="text-green-400 hover:text-green-600 transition-colors"
-            >
+          >
               <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
               </svg>
-            </button>
+          </button>
           </div>
         </div>
       )}
@@ -294,15 +294,15 @@ const ChangeScheduleRequestList = ({ requests = [], isLoading = false, error = n
 
           {/* Page Size */}
           <div>
-            <select
-              value={pageSize}
+          <select
+            value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
-            >
-              {PAGE_SIZE_OPTIONS.map(size => (
+          >
+            {PAGE_SIZE_OPTIONS.map(size => (
                 <option key={size} value={size}>Show {size}</option>
-              ))}
-            </select>
+            ))}
+          </select>
           </div>
         </div>
       </div>
@@ -436,21 +436,21 @@ const ChangeScheduleRequestList = ({ requests = [], isLoading = false, error = n
               <div className="flex items-center gap-2">
                 {/* Show Edit and Delete only for pending requests */}
                 {request.status === 'pending' && (
-                  <>
-                    <button
+                        <>
+                          <button
                       onClick={() => handleEdit(request)}
                       className="px-4 py-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-all duration-200 font-medium"
-                    >
+                          >
                       Edit
-                    </button>
-                    <button
+                          </button>
+                          <button
                       onClick={() => handleDelete(request)}
                       className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 font-medium"
-                    >
+                          >
                       Delete
-                    </button>
-                  </>
-                )}
+                          </button>
+                        </>
+                      )}
                 
                 {/* Show PDF download only for approved or denied requests */}
                 {(request.status === 'approved' || request.status === 'denied') && (
@@ -464,7 +464,7 @@ const ChangeScheduleRequestList = ({ requests = [], isLoading = false, error = n
                 )}
               </div>
             </div>
-          </div>
+                    </div>
         ))}
       </div>
 
@@ -542,7 +542,7 @@ const ChangeScheduleRequestList = ({ requests = [], isLoading = false, error = n
       {showForm && (
         <>
           {/* Modal Backdrop */}
-          <div 
+          <div
             className="fixed inset-0 bg-black bg-opacity-50 z-40 animate-fade-in"
             onClick={() => {
               setShowForm(false);
@@ -551,7 +551,7 @@ const ChangeScheduleRequestList = ({ requests = [], isLoading = false, error = n
           />
           {/* Modal Content */}
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-            <div 
+            <div
               className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-slide-in"
               onClick={(e) => e.stopPropagation()}
             >
@@ -560,7 +560,7 @@ const ChangeScheduleRequestList = ({ requests = [], isLoading = false, error = n
                   <h2 className="text-xl font-bold text-gray-900">
                     {editRequest ? 'Edit Change Schedule Request' : 'New Change Schedule Request'}
                   </h2>
-                  <button
+              <button
                     onClick={() => {
                       setShowForm(false);
                       setEditRequest(null);
@@ -570,11 +570,11 @@ const ChangeScheduleRequestList = ({ requests = [], isLoading = false, error = n
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
-                  </button>
+              </button>
                 </div>
-                <ChangeScheduleRequestForm
+              <ChangeScheduleRequestForm
                   request={editRequest}
-                  onSuccess={handleFormSuccess}
+                onSuccess={handleFormSuccess}
                   onCancel={() => {
                     setShowForm(false);
                     setEditRequest(null);

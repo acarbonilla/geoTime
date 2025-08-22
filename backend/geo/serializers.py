@@ -255,15 +255,17 @@ class CurrentSessionStatusSerializer(serializers.Serializer):
 
 class TimeCorrectionRequestSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    approver_name = serializers.CharField(source='approver.get_full_name', read_only=True)
     reviewed_by_name = serializers.CharField(source='reviewed_by.full_name', read_only=True)
 
     class Meta:
         model = TimeCorrectionRequest
         fields = [
             'id', 'employee', 'employee_name', 'date', 'requested_time_in', 'requested_time_out',
-            'reason', 'status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'reviewed_by_name', 'response_message'
+            'reason', 'status', 'approver', 'approver_name', 'comments', 'approved_date',
+            'submitted_at', 'reviewed_at', 'reviewed_by', 'reviewed_by_name', 'response_message'
         ]
-        read_only_fields = ['id', 'submitted_at', 'reviewed_at', 'reviewed_by', 'employee_name', 'reviewed_by_name'] 
+        read_only_fields = ['id', 'submitted_at', 'reviewed_at', 'reviewed_by', 'employee_name', 'approver_name', 'reviewed_by_name', 'approved_date']
 
 
 class OvertimeRequestSerializer(serializers.ModelSerializer):
