@@ -4,8 +4,6 @@ import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import RequestTimeCorrectionDrawer from './RequestTimeCorrectionDrawer';
-// import MyTimeCorrectionRequests from './MyTimeCorrectionRequests';
 import { FaFilter, FaFileCsv, FaFileExcel, FaFilePdf, FaUserClock } from 'react-icons/fa';
 import { Tooltip as ReactTooltip } from 'react-tooltip';
 
@@ -153,22 +151,16 @@ const Reports = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [entriesPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
-  // Commented out unused state variables
-  // const [activeTab, setActiveTab] = useState('timeEntries');
-  const [isCorrectionDrawerOpen, setIsCorrectionDrawerOpen] = useState(false);
   // State for UI control
   const [filtersLoading, setFiltersLoading] = useState(false);
-
 
   // Remove employee state and related API call
   // const [employee, setEmployee] = useState(null);
   // const [pageSize, setPageSize] = useState(20);
   // const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
   
-  // Add state for active tab and requests
-  const [activeTab, setActiveTab] = useState('entries'); // 'entries' or 'requests'
-  const [myRequests, setMyRequests] = useState([]);
-  const [requestsLoading, setRequestsLoading] = useState(false);
+  // Only entries tab now
+  // const [activeTab] = useState('entries');
 
 
 
@@ -244,22 +236,6 @@ const Reports = () => {
     
     doc.save('my_time_entries_summary.pdf');
   };
-  
-  const handleCloseCorrectionDrawer = () => {
-    setIsCorrectionDrawerOpen(false);
-  };
-  
-  const handleRequestSubmitted = useCallback(() => {
-    setIsCorrectionDrawerOpen(false);
-    // Refresh the requests list if on requests tab
-    if (activeTab === 'requests') {
-      setRequestsLoading(true);
-      axiosInstance.get('/time-correction-requests/')
-        .then(res => setMyRequests(res.data.results || res.data))
-        .catch(() => setMyRequests([]))
-        .finally(() => setRequestsLoading(false));
-    }
-  }, [activeTab]);
   
   // Pagination handlers
   const handlePageChange = (page) => {
@@ -597,17 +573,6 @@ const Reports = () => {
   // Remove the auto-refetch useEffect that was causing race conditions
   // Filters will now only be applied when explicitly triggered by user actions
 
-  // Fetch my time correction requests when tab is activated
-  useEffect(() => {
-    if (activeTab === 'requests' && myRequests.length === 0 && !requestsLoading) {
-      setRequestsLoading(true);
-      axiosInstance.get('/time-correction-requests/')
-        .then(res => setMyRequests(res.data.results || res.data))
-        .catch(() => setMyRequests([]))
-        .finally(() => setRequestsLoading(false));
-    }
-  }, [activeTab, myRequests.length, requestsLoading]);
-
   // The formatExportDateTime function is already defined above
   const exportToCSV = () => {
     try {
@@ -701,101 +666,72 @@ const Reports = () => {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-2 py-6 md:px-4 md:py-8 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 min-h-screen">
-      <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden transition-all duration-500 hover:shadow-3xl hover:scale-[1.01] animate-fade-in">
+    <div className="w-full max-w-7xl mx-auto px-2 py-6 md:px-4 md:py-8 bg-gray-50 min-h-screen">
+      <div className="bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-500 hover:shadow-xl animate-fade-in">
         {/* Tab bar */}
-        <div className="flex border-b border-gray-200 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 animate-slide-in">
+        <div className="flex border-b border-gray-200 bg-white animate-slide-in">
           <button
-            className={`px-6 py-4 text-lg font-semibold focus:outline-none transition-all duration-300 relative overflow-hidden group ${
-              activeTab === 'entries' 
-                ? 'text-white bg-white/20 border-b-4 border-yellow-300 shadow-lg' 
-                : 'text-blue-100 hover:text-white hover:bg-white/10'
-            }`}
-            onClick={() => setActiveTab('entries')}
+            className="px-6 py-4 text-lg font-semibold focus:outline-none transition-all duration-300 relative overflow-hidden group text-gray-800 bg-gray-50 border-b-4 border-blue-600 shadow-sm"
           >
             <span className="relative z-10 flex items-center gap-2">
-              <FaUserClock className="text-xl" />
+              <FaUserClock className="text-xl text-blue-600" />
               Time Entries
             </span>
-            {activeTab === 'entries' && (
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-indigo-500/20 animate-pulse"></div>
-            )}
-          </button>
-          <button
-            className={`px-6 py-4 text-lg font-semibold focus:outline-none transition-all duration-300 relative overflow-hidden group ${
-              activeTab === 'requests' 
-                ? 'text-white bg-white/20 border-b-4 border-yellow-300 shadow-lg' 
-                : 'text-blue-100 hover:text-white hover:bg-white/10'
-            }`}
-            onClick={() => setActiveTab('requests')}
-          >
-            <span className="relative z-10 flex items-center gap-2">
-              <FaUserClock className="text-xl" />
-              My Time Correction Requests
-              {myRequests.length > 0 && (
-                <span className="ml-2 inline-block bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-0.5 rounded-full align-middle animate-bounce-in">
-                  {myRequests.length}
-                </span>
-              )}
-            </span>
-            {activeTab === 'requests' && (
-              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 animate-pulse"></div>
-            )}
+            <div className="absolute inset-0 bg-blue-50 animate-pulse"></div>
           </button>
         </div>
         {/* Tab content */}
-        {activeTab === 'entries' && (
-          <>
-                         {/* Filters, export, table, pagination as before */}
-             <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 animate-slide-up">
-               <div className="flex items-center gap-3">
-                 <div className="p-3 bg-white/20 rounded-full backdrop-blur-sm animate-bounce-in">
-                   <FaUserClock className="text-white text-2xl" />
-                 </div>
-                 <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight drop-shadow-lg">Time Entries Report</h1>
-               </div>
-                             <div className="flex flex-wrap gap-3 mt-2 md:mt-0">
-                 <button
-                   onClick={exportToCSV}
-                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-green-600 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-green-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
-                   style={{ animationDelay: '0.1s' }}
-                 >
-                   <FaFileCsv className="text-lg" /> CSV
-                 </button>
-                 <button
-                   onClick={exportExcel}
-                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
-                   style={{ animationDelay: '0.2s' }}
-                 >
-                   <FaFileExcel className="text-lg" /> Excel
-                 </button>
-                 <button
-                   onClick={exportPDF}
-                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-red-600 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
-                   style={{ animationDelay: '0.3s' }}
-                 >
-                   <FaFilePdf className="text-lg" /> PDF
-                 </button>
-                 <button
-                   onClick={exportSummary}
-                   disabled={filteredEntries.length === 0}
-                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-purple-600 hover:to-violet-700 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in disabled:opacity-50 disabled:cursor-not-allowed"
-                   style={{ animationDelay: '0.4s' }}
-                 >
-                   <FaFileExcel className="text-lg" /> Summary
-                 </button>
-                 <button
-                   onClick={exportSummaryPDF}
-                   disabled={filteredEntries.length === 0}
-                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-blue-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-indigo-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in disabled:opacity-50 disabled:cursor-not-allowed"
-                   style={{ animationDelay: '0.5s' }}
-                 >
-                   <FaFilePdf className="text-lg" /> Summary PDF
-                 </button>
-               </div>
+        <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white animate-slide-up">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-blue-100 rounded-full backdrop-blur-sm animate-bounce-in">
+              <FaUserClock className="text-blue-600 text-2xl" />
             </div>
-                         {/* Filter controls */}
-             <div className="p-6 bg-gradient-to-r from-slate-50 via-blue-50 to-indigo-50 border-b border-gray-200 animate-slide-up">
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">Time Entries Report</h1>
+          </div>
+          <div className="flex flex-wrap gap-3 mt-2 md:mt-0">
+            <button
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-green-600 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-green-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
+              style={{ animationDelay: '0.1s' }}
+            >
+              <FaFileCsv className="text-lg" /> CSV
+            </button>
+            <button
+              onClick={exportExcel}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
+              style={{ animationDelay: '0.2s' }}
+            >
+              <FaFileExcel className="text-lg" /> Excel
+            </button>
+            <button
+              onClick={exportPDF}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-red-600 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
+              style={{ animationDelay: '0.3s' }}
+            >
+              <FaFilePdf className="text-lg" /> PDF
+            </button>
+            <button
+              onClick={exportSummary}
+              disabled={filteredEntries.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-purple-600 hover:to-violet-700 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ animationDelay: '0.4s' }}
+            >
+              <FaFileExcel className="text-lg" /> Summary
+            </button>
+            <button
+              onClick={exportSummaryPDF}
+              disabled={filteredEntries.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-blue-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-indigo-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ animationDelay: '0.5s' }}
+            >
+              <FaFilePdf className="text-lg" /> Summary PDF
+            </button>
+          </div>
+        </div>
+        {/* Main content area */}
+        <div>
+          {/* Filter controls */}
+          <div className="p-6 bg-gradient-to-r from-slate-50 via-blue-50 to-indigo-50 border-b border-gray-200 animate-slide-up">
                <div className="flex items-center gap-3 mb-6">
                  <div className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-lg">
                    <FaFilter className="text-white text-lg" />
@@ -930,45 +866,45 @@ const Reports = () => {
 
             {/* Time entries table */}
             <div className="overflow-x-auto bg-white">
-                             {/* Table Header with Count */}
-               <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 py-4 border-b border-gray-200 animate-slide-up">
-                 <div className="flex items-center justify-between">
-                   <div className="text-white font-semibold flex items-center gap-2">
-                     <div className="p-1 bg-white/20 rounded">
-                       <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                       </svg>
-                     </div>
-                     {filtersLoading ? (
-                       <span className="flex items-center gap-2">
-                         <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-                         </svg>
-                         Applying filters...
-                       </span>
-                     ) : (
-                       `Showing ${filteredEntries.length} time entries`
-                     )}
-                   </div>
-                   <div className="text-blue-100 bg-white/20 px-3 py-1 rounded-full text-sm font-medium">
-                     Page {currentPage} of {totalPages}
-                   </div>
-                 </div>
-               </div>
+              {/* Table Header with Count */}
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 animate-slide-up">
+                <div className="flex items-center justify-between">
+                  <div className="text-gray-800 font-semibold flex items-center gap-2">
+                    <div className="p-1 bg-blue-100 rounded">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                    </div>
+                    {filtersLoading ? (
+                      <span className="flex items-center gap-2 text-blue-600">
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                        </svg>
+                        Applying filters...
+                      </span>
+                    ) : (
+                      <span className="text-gray-700">Showing {filteredEntries.length} time entries</span>
+                    )}
+                  </div>
+                  <div className="text-gray-600 bg-gray-200 px-3 py-1 rounded-full text-sm font-medium">
+                    Page {currentPage} of {totalPages}
+                  </div>
+                </div>
+              </div>
               <table className="min-w-full divide-y divide-gray-200">
-                                 <thead className="bg-gradient-to-r from-blue-600 to-indigo-600 sticky top-0 z-10 shadow-lg">
-                   <tr>
-                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Employee</th>
-                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Type</th>
-                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Date</th>
-                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Time</th>
-                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Location</th>
-                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Overtime</th>
-                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Notes</th>
-                     <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Coordinates</th>
-                   </tr>
-                 </thead>
+                <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Employee</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Type</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Time</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Location</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Overtime</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Notes</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Coordinates</th>
+                  </tr>
+                </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {currentEntries.length === 0 ? (
                     <tr>
@@ -981,11 +917,11 @@ const Reports = () => {
                       const date = formatDate(entry.timestamp);
                       const formattedTime = formatTime(entry.timestamp);
                       return (
-                                                 <tr
-                           key={entry.id}
-                           className={`transition-all duration-300 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 animate-fade-in table-row-hover ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
-                           style={{ animationDelay: `${idx * 40}ms` }}
-                         >
+                        <tr
+                          key={entry.id}
+                          className={`transition-all duration-300 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 animate-fade-in table-row-hover ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
+                          style={{ animationDelay: `${idx * 40}ms` }}
+                        >
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{entry.employee_name || 'You'}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${entry.entry_type === 'time_in' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{entry.entry_type === 'time_in' ? 'Time In' : 'Time Out'}</span>
@@ -1023,78 +959,9 @@ const Reports = () => {
             </div>
             {/* Pagination */}
             {renderPagination()}
-          </>
-        )}
-                 {activeTab === 'requests' && (
-           <div className="p-6 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 min-h-[300px] animate-slide-up">
-             <div className="flex items-center justify-between mb-6">
-               <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-700 bg-clip-text text-transparent flex items-center gap-3">
-                 <div className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-lg">
-                   <FaUserClock className="text-white text-lg" />
-                 </div>
-                 My Time Correction Requests
-               </h2>
-               <button
-                 onClick={() => setIsCorrectionDrawerOpen(true)}
-                 className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-blue-200 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 button-pulse animate-bounce-in"
-               >
-                 <span className="text-lg">+</span>
-                 <span className="font-semibold">Request Time Correction</span>
-               </button>
-             </div>
-            {requestsLoading ? (
-              <div className="flex justify-center items-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-              </div>
-            ) : myRequests.length === 0 ? (
-              <div className="text-center text-gray-400 py-12">No time correction requests found.</div>
-            ) : (
-                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                 {myRequests.map((req, idx) => (
-                   <div key={req.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border-2 border-gray-200 transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl hover:border-blue-300 animate-bounce-in card-glow" style={{ animationDelay: `${idx * 100}ms` }}>
-                     <div className="flex items-center gap-3 mb-4">
-                       <span className={`inline-block px-3 py-1.5 rounded-full text-sm font-bold ${
-                         req.status === 'approved' 
-                           ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg' 
-                           : req.status === 'pending' 
-                           ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-white shadow-lg' 
-                           : 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg'
-                       }`}>
-                         {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
-                       </span>
-                       <span className="text-sm text-gray-500 ml-auto bg-gray-100 px-3 py-1 rounded-full">
-                         {req.created_at ? new Date(req.created_at).toLocaleDateString() : ''}
-                       </span>
-                     </div>
-                     <div className="mb-3 text-lg text-gray-800 font-bold">{req.request_type ? req.request_type.replace('_', ' ').toUpperCase() : 'Request'}</div>
-                     <div className="mb-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                       <span className="font-semibold text-gray-700">For:</span> {req.date || req.for_date || ''}
-                     </div>
-                     <div className="mb-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                       <span className="font-semibold text-gray-700">Reason:</span> {req.reason || req.notes || '—'}
-                     </div>
-                     {req.admin_notes && (
-                       <div className="mb-3 text-sm text-blue-600 bg-blue-50 p-3 rounded-lg border-l-4 border-blue-400">
-                         <span className="font-semibold">Admin Notes:</span> {req.admin_notes}
-                       </div>
-                     )}
-                     <div className="flex gap-2 mt-4">
-                       {/* Add more actions if needed */}
-                     </div>
-                   </div>
-                 ))}
-               </div>
-            )}
           </div>
-        )}
+        </div>
       </div>
-      {/* Time Correction Request Drawer */}
-      <RequestTimeCorrectionDrawer
-        open={isCorrectionDrawerOpen}
-        onClose={handleCloseCorrectionDrawer}
-        onRequestSubmitted={handleRequestSubmitted}
-      />
-    </div>
   );
 };
 

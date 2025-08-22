@@ -3,6 +3,7 @@ import axios from '../utils/axiosInstance';
 import OvertimeRequestsList from './OvertimeRequestsList';
 import LeaveRequestList from './LeaveRequestList';
 import ChangeScheduleRequestList from './ChangeScheduleRequestList';
+import TimeCorrectionRequestList from './TimeCorrectionRequestList';
 
 import { shouldShowNavbar } from '../utils/deviceDetection';
 
@@ -14,12 +15,14 @@ const TABS = [
   { key: 'overtime', label: 'Overtime Request', icon: '⏰' },
   { key: 'leave', label: 'Leave Request', icon: '🏖️' },
   { key: 'change_schedule', label: 'Change Schedule', icon: '📅' },
+  { key: 'time_correction', label: 'Time Correction', icon: '🕐' },
 ];
 
 const API_ENDPOINTS = {
   overtime: 'overtime-requests/',
   leave: 'leave-requests/',
   change_schedule: 'change-schedule-requests/',
+  time_correction: 'time-correction-requests/',
 };
 
 // ============================================================================
@@ -176,6 +179,7 @@ const EmployeeRequestPage = () => {
   const overtimeData = useRequestData(API_ENDPOINTS.overtime);
   const leaveData = useRequestData(API_ENDPOINTS.leave);
   const changeScheduleData = useRequestData(API_ENDPOINTS.change_schedule);
+  const timeCorrectionData = useRequestData(API_ENDPOINTS.time_correction);
 
   // ========================================================================
   // EFFECTS
@@ -193,6 +197,9 @@ const EmployeeRequestPage = () => {
           break;
         case 'change_schedule':
           changeScheduleData.fetchData();
+          break;
+        case 'time_correction':
+          timeCorrectionData.fetchData();
           break;
         default:
           break;
@@ -227,6 +234,11 @@ const EmployeeRequestPage = () => {
     changeScheduleData.fetchData();
   };
 
+  const handleTimeCorrectionRequestCreated = (newRequest) => {
+    // Refresh time correction data when a new request is created
+    timeCorrectionData.fetchData();
+  };
+
   // ========================================================================
   // UTILITY FUNCTIONS
   // ========================================================================
@@ -250,6 +262,11 @@ const EmployeeRequestPage = () => {
         title: 'Change Schedule Request',
         ListComponent: ChangeScheduleRequestList,
         data: changeScheduleData,
+      },
+      time_correction: {
+        title: 'Time Correction Request',
+        ListComponent: TimeCorrectionRequestList,
+        data: timeCorrectionData,
       },
     };
     return configs[tabKey];
@@ -306,6 +323,7 @@ const EmployeeRequestPage = () => {
             activeRequestTab === 'overtime' ? handleOvertimeRequestCreated :
             activeRequestTab === 'leave' ? handleLeaveRequestCreated :
             activeRequestTab === 'change_schedule' ? handleChangeScheduleRequestCreated :
+            activeRequestTab === 'time_correction' ? handleTimeCorrectionRequestCreated :
             undefined
           }
         />

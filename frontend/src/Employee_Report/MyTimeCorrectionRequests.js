@@ -1,27 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import axiosInstance from '../axiosInstance';
 
-const MyTimeCorrectionRequests = ({ employee }) => {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+const MyTimeCorrectionRequests = ({ requests = [], isLoading = false, error = null, onRequestCreated }) => {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
-
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    axiosInstance.get('time-correction-requests/')
-      .then(res => {
-        setRequests(Array.isArray(res.data) ? res.data : res.data.results || []);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError('Failed to fetch your requests');
-        setLoading(false);
-      });
-  }, []);
 
   // Filtering logic
   const filteredRequests = requests.filter(item => {
@@ -40,6 +22,23 @@ const MyTimeCorrectionRequests = ({ employee }) => {
   useEffect(() => {
     setPage(1);
   }, [search, pageSize]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+        <div className="text-red-600 text-lg font-semibold mb-2">Error Loading Time Correction Requests</div>
+        <div className="text-red-500">{error.message || 'An error occurred while loading the data.'}</div>
+      </div>
+    );
+  }
 
   return (
     <section>
@@ -62,10 +61,8 @@ const MyTimeCorrectionRequests = ({ employee }) => {
           <option value={20}>20</option>
         </select>
       </div>
-      {loading && <div className="text-blue-600 animate-pulse">Loading...</div>}
-      {error && <div className="text-red-600">{error}</div>}
-      {!loading && !error && pagedRequests.length === 0 && <div className="text-gray-500">No requests found.</div>}
-      {!loading && !error && pagedRequests.length > 0 && (
+      {!pagedRequests.length && <div className="text-gray-500">No requests found.</div>}
+      {pagedRequests.length > 0 && (
         <>
           <div className="overflow-x-auto">
             <table className="min-w-full bg-white rounded-lg shadow-md">
