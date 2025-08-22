@@ -173,7 +173,7 @@ export const generateChangeScheduleRequestPDF = (request) => {
   const doc = new jsPDF();
   
   // Header
-  doc.setFillColor(59, 130, 246); // Blue
+  doc.setFillColor(147, 51, 234); // Purple
   doc.rect(0, 0, 210, 25, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(16);
@@ -186,8 +186,8 @@ export const generateChangeScheduleRequestPDF = (request) => {
   doc.setFont('helvetica', 'bold');
   doc.text('CHANGE SCHEDULE REQUEST REPORT', 105, 40, { align: 'center' });
   
-  // Blue line
-  doc.setDrawColor(59, 130, 246);
+  // Purple line
+  doc.setDrawColor(147, 51, 234);
   doc.setLineWidth(0.5);
   doc.line(20, 45, 190, 45);
   
@@ -201,73 +201,208 @@ export const generateChangeScheduleRequestPDF = (request) => {
   
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Name: ${request.employee_name || request.employee?.name || '-'}`, 20, yPosition);
+  doc.text(`Employee Name: ${request.employee_name || '-'}`, 20, yPosition);
   yPosition += 8;
-  doc.text(`Request Date: ${formatDate(request.created_at)}`, 20, yPosition);
-  yPosition += 15;
   
-  // Request Details
+  // Schedule Information
+  yPosition += 5;
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('Request Details:', 20, yPosition);
+  doc.text('Schedule Information:', 20, yPosition);
   yPosition += 10;
   
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
   doc.text(`Original Date: ${formatDate(request.original_date)}`, 20, yPosition);
   yPosition += 8;
+  doc.text(`Original Start Time: ${formatTime(request.original_start_time)}`, 20, yPosition);
+  yPosition += 8;
+  doc.text(`Original End Time: ${formatTime(request.original_end_time)}`, 20, yPosition);
+  yPosition += 8;
+  
+  yPosition += 5;
   doc.text(`Requested Date: ${formatDate(request.requested_date)}`, 20, yPosition);
   yPosition += 8;
-  doc.text(`Original Time: ${formatTime(request.original_time_in)} - ${formatTime(request.original_time_out)}`, 20, yPosition);
+  doc.text(`Requested Start Time: ${formatTime(request.requested_start_time)}`, 20, yPosition);
   yPosition += 8;
-  doc.text(`Requested Time: ${formatTime(request.requested_time_in)} - ${formatTime(request.requested_time_out)}`, 20, yPosition);
+  doc.text(`Requested End Time: ${formatTime(request.requested_end_time)}`, 20, yPosition);
   yPosition += 8;
-  doc.text(`Reason: ${request.reason || '-'}`, 20, yPosition);
-  yPosition += 15;
   
-  // Status Information
+  // Reason
+  yPosition += 5;
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('Status Information:', 20, yPosition);
+  doc.text('Reason:', 20, yPosition);
+  yPosition += 10;
+  
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text(request.reason || '-', 20, yPosition);
+  yPosition += 15;
+  
+  // Status and Approval Information
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Status and Approval:', 20, yPosition);
   yPosition += 10;
   
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
   doc.text(`Status: ${request.status || '-'}`, 20, yPosition);
   yPosition += 8;
+  doc.text(`Approver: ${request.approver_name || '-'}`, 20, yPosition);
+  yPosition += 8;
   doc.text(`Approved Date: ${request.status === 'approved' ? formatDate(request.approved_date) : '-'}`, 20, yPosition);
-  yPosition += 15;
+  yPosition += 8;
   
-  // Approver Comments
+  if (request.comments) {
+    yPosition += 5;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Comments:', 20, yPosition);
+    yPosition += 10;
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(request.comments, 20, yPosition);
+    yPosition += 15;
+  }
+  
+  // Timestamps
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('Approver Comments:', 20, yPosition);
+  doc.text('Timestamps:', 20, yPosition);
   yPosition += 10;
   
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
-  doc.text(request.comments || 'No comments', 20, yPosition);
+  doc.text(`Created: ${formatDate(request.created_at)}`, 20, yPosition);
+  yPosition += 8;
+  doc.text(`Updated: ${formatDate(request.updated_at)}`, 20, yPosition);
+  
+  return doc;
+};
+
+// Generate Time Correction Request PDF
+export const generateTimeCorrectionRequestPDF = (request) => {
+  const doc = new jsPDF();
+  
+  // Header
+  doc.setFillColor(249, 115, 22); // Orange
+  doc.rect(0, 0, 210, 25, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('GEO TIME SYSTEM', 105, 15, { align: 'center' });
+  
+  // Title
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(20);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TIME CORRECTION REQUEST REPORT', 105, 40, { align: 'center' });
+  
+  // Orange line
+  doc.setDrawColor(249, 115, 22);
+  doc.setLineWidth(0.5);
+  doc.line(20, 45, 190, 45);
+  
+  let yPosition = 60;
+  
+  // Employee Information
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Employee Information:', 20, yPosition);
+  yPosition += 10;
+  
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Employee Name: ${request.employee_name || '-'}`, 20, yPosition);
+  yPosition += 8;
+  
+  // Time Correction Information
+  yPosition += 5;
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Time Correction Information:', 20, yPosition);
+  yPosition += 10;
+  
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Date: ${formatDate(request.date)}`, 20, yPosition);
+  yPosition += 8;
+  doc.text(`Requested Time In: ${formatTime(request.requested_time_in)}`, 20, yPosition);
+  yPosition += 8;
+  doc.text(`Requested Time Out: ${formatTime(request.requested_time_out)}`, 20, yPosition);
+  yPosition += 8;
+  
+  // Reason
+  yPosition += 5;
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Reason:', 20, yPosition);
+  yPosition += 10;
+  
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text(request.reason || '-', 20, yPosition);
   yPosition += 15;
   
-  // Footer
-  doc.setDrawColor(156, 163, 175);
-  doc.setLineWidth(0.3);
-  doc.line(20, 180, 190, 180);
+  // Status and Approval Information
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Status and Approval:', 20, yPosition);
+  yPosition += 10;
   
-  const currentDate = new Date();
-  const footerText = `Generated on ${currentDate.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })} at ${currentDate.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  })}`;
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Status: ${request.status || '-'}`, 20, yPosition);
+  yPosition += 8;
+  doc.text(`Approver: ${request.approver_name || '-'}`, 20, yPosition);
+  yPosition += 8;
+  doc.text(`Approved Date: ${request.status === 'approved' ? formatDate(request.approved_date) : '-'}`, 20, yPosition);
+  yPosition += 8;
   
-  doc.setTextColor(107, 114, 128);
-  doc.setFontSize(10);
-  doc.text(footerText, 105, 190, { align: 'center' });
+  if (request.comments) {
+    yPosition += 5;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Comments:', 20, yPosition);
+    yPosition += 10;
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(request.comments, 20, yPosition);
+    yPosition += 15;
+  }
+  
+  // Response Message (if any)
+  if (request.response_message) {
+    yPosition += 5;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Response Message:', 20, yPosition);
+    yPosition += 10;
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(request.response_message, 20, yPosition);
+    yPosition += 15;
+  }
+  
+  // Timestamps
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Timestamps:', 20, yPosition);
+  yPosition += 10;
+  
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Submitted: ${formatDate(request.submitted_at)}`, 20, yPosition);
+  yPosition += 8;
+  if (request.reviewed_at) {
+    doc.text(`Reviewed: ${formatDate(request.reviewed_at)}`, 20, yPosition);
+    yPosition += 8;
+  }
   
   return doc;
 };
