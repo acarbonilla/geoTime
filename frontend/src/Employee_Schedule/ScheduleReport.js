@@ -245,8 +245,18 @@ const ScheduleReport = () => {
       });
       
       console.log('📊 Admin Style API response:', response.data);
-      setAdminStyleData(response.data.results || []);
-      toast.success('Admin Style data loaded successfully');
+      console.log('📊 Admin Style API results:', response.data.results);
+      console.log('📊 Admin Style API first record:', response.data.results?.[0]);
+      
+      if (response.data.results && Array.isArray(response.data.results)) {
+        setAdminStyleData(response.data.results);
+        toast.success('Admin Style data loaded successfully');
+      } else {
+        console.error('❌ Admin Style API returned invalid data structure:', response.data);
+        toast.error('Admin Style API returned invalid data structure');
+        setUseAdminStyleAPI(false);
+        setUseDailyTimeSummary(true);
+      }
     } catch (error) {
       console.error('❌ Error fetching Admin Style data:', error);
       toast.error('Failed to load Admin Style data');
@@ -2158,58 +2168,89 @@ const ScheduleReport = () => {
 
   // Summary calculation functions
   const getTotalBilledHours = () => {
-    if (useAdminStyleAPI && adminStyleData.length > 0) {
-      return adminStyleData.reduce((sum, record) => sum + (record.billed_hours || 0), 0);
-    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-      return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.billed_hours || 0), 0);
-    } else if (report && report.daily_records) {
-      return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (record.billed_hours || 0), 0);
+    try {
+      if (useAdminStyleAPI && adminStyleData && adminStyleData.length > 0) {
+        return adminStyleData.reduce((sum, record) => sum + (parseFloat(record.billed_hours) || 0), 0);
+      } else if (useDailyTimeSummary && dailyTimeSummaries && dailyTimeSummaries.length > 0) {
+        return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (parseFloat(record.billed_hours) || 0), 0);
+      } else if (report && report.daily_records) {
+        return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (parseFloat(record.billed_hours) || 0), 0);
+      }
+      return 0;
+    } catch (error) {
+      console.error('Error calculating total billed hours:', error);
+      return 0;
     }
-    return 0;
   };
 
   const getTotalLateMinutes = () => {
-    if (useAdminStyleAPI && adminStyleData.length > 0) {
-      return adminStyleData.reduce((sum, record) => sum + (record.late_minutes || 0), 0);
-    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-      return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.late_minutes || 0), 0);
-    } else if (report && report.daily_records) {
-      return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (record.late_minutes || 0), 0);
+    try {
+      if (useAdminStyleAPI && adminStyleData && adminStyleData.length > 0) {
+        return adminStyleData.reduce((sum, record) => sum + (parseFloat(record.late_minutes) || 0), 0);
+      } else if (useDailyTimeSummary && dailyTimeSummaries && dailyTimeSummaries.length > 0) {
+        return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (parseFloat(record.late_minutes) || 0), 0);
+      } else if (report && report.daily_records) {
+        return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (parseFloat(record.late_minutes) || 0), 0);
+      }
+      return 0;
+    } catch (error) {
+      console.error('Error calculating total late minutes:', error);
+      return 0;
     }
-    return 0;
   };
 
   const getTotalUndertimeMinutes = () => {
-    if (useAdminStyleAPI && adminStyleData.length > 0) {
-      return adminStyleData.reduce((sum, record) => sum + (record.undertime_minutes || 0), 0);
-    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-      return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.undertime_minutes || 0), 0);
-    } else if (report && report.daily_records) {
-      return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (record.undertime_minutes || 0), 0);
+    try {
+      if (useAdminStyleAPI && adminStyleData && adminStyleData.length > 0) {
+        return adminStyleData.reduce((sum, record) => sum + (parseFloat(record.undertime_minutes) || 0), 0);
+      } else if (useDailyTimeSummary && dailyTimeSummaries && dailyTimeSummaries.length > 0) {
+        return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (parseFloat(record.undertime_minutes) || 0), 0);
+      } else if (report && report.daily_records) {
+        return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (parseFloat(record.undertime_minutes) || 0), 0);
+      }
+      return 0;
+    } catch (error) {
+      console.error('Error calculating total undertime minutes:', error);
+      return 0;
     }
-    return 0;
   };
 
   const getTotalNightDifferential = () => {
-    if (useAdminStyleAPI && adminStyleData.length > 0) {
-      return adminStyleData.reduce((sum, record) => sum + (record.night_differential_hours || 0), 0).toFixed(2);
-    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-      return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.night_differential || 0), 0).toFixed(2);
-    } else if (report && report.daily_records) {
-      return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (record.night_differential || 0), 0).toFixed(2);
+    try {
+      if (useAdminStyleAPI && adminStyleData && adminStyleData.length > 0) {
+        const total = adminStyleData.reduce((sum, record) => sum + (parseFloat(record.night_differential_hours) || 0), 0);
+        return total.toFixed(2);
+      } else if (useDailyTimeSummary && dailyTimeSummaries && dailyTimeSummaries.length > 0) {
+        const total = getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (parseFloat(record.night_differential) || 0), 0);
+        return total.toFixed(2);
+      } else if (report && report.daily_records) {
+        const total = getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (parseFloat(record.night_differential) || 0), 0);
+        return total.toFixed(2);
+      }
+      return '0.00';
+    } catch (error) {
+      console.error('Error calculating total night differential:', error);
+      return '0.00';
     }
-    return '0.00';
   };
 
   const getTotalOvertime = () => {
-    if (useAdminStyleAPI && adminStyleData.length > 0) {
-      return adminStyleData.reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2);
-    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-      return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2);
-    } else if (report && report.daily_records) {
-      return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2);
+    try {
+      if (useAdminStyleAPI && adminStyleData && adminStyleData.length > 0) {
+        const total = adminStyleData.reduce((sum, record) => sum + (parseFloat(record.overtime_hours) || 0), 0);
+        return total.toFixed(2);
+      } else if (useDailyTimeSummary && dailyTimeSummaries && dailyTimeSummaries.length > 0) {
+        const total = getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (parseFloat(record.overtime_hours) || 0), 0);
+        return total.toFixed(2);
+      } else if (report && report.daily_records) {
+        const total = getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (parseFloat(record.overtime_hours) || 0), 0);
+        return total.toFixed(2);
+      }
+      return '0.00';
+    } catch (error) {
+      console.error('Error calculating total overtime:', error);
+      return '0.00';
     }
-    return '0.00';
   };
 
   return (
