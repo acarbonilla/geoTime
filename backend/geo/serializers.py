@@ -411,10 +411,31 @@ class EmployeeScheduleSerializer(serializers.ModelSerializer):
 
 class DailyTimeSummarySerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.user.get_full_name', read_only=True)
-    time_in_formatted = serializers.CharField(source='time_in', read_only=True)
-    time_out_formatted = serializers.CharField(source='time_out', read_only=True)
-    scheduled_time_in_formatted = serializers.CharField(source='scheduled_time_in', read_only=True)
-    scheduled_time_out_formatted = serializers.CharField(source='scheduled_time_out', read_only=True)
+    
+    def get_time_in_formatted(self, obj):
+        if obj.time_in:
+            return obj.time_in.strftime('%I:%M %p')
+        return '-'
+    
+    def get_time_out_formatted(self, obj):
+        if obj.time_out:
+            return obj.time_out.strftime('%I:%M %p')
+        return '-'
+    
+    def get_scheduled_time_in_formatted(self, obj):
+        if obj.scheduled_time_in:
+            return obj.scheduled_time_in.strftime('%I:%M %p')
+        return '-'
+    
+    def get_scheduled_time_out_formatted(self, obj):
+        if obj.scheduled_time_out:
+            return obj.scheduled_time_out.strftime('%I:%M %p')
+        return '-'
+    
+    time_in_formatted = serializers.SerializerMethodField()
+    time_out_formatted = serializers.SerializerMethodField()
+    scheduled_time_in_formatted = serializers.SerializerMethodField()
+    scheduled_time_out_formatted = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyTimeSummary

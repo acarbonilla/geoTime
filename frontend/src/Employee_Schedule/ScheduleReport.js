@@ -978,13 +978,39 @@ const ScheduleReport = () => {
       if (recordsForDate.length === 1) {
         // Single record for this date
         const record = recordsForDate[0];
+        
+        // Check if this is a night shift (spans midnight)
+        const isNightshift = record.scheduled_time_in && record.scheduled_time_out && 
+          (parseInt(record.scheduled_time_in.split(':')[0]) > parseInt(record.scheduled_time_out.split(':')[0]) ||
+           parseInt(record.scheduled_time_in.split(':')[0]) >= 18);
+        
+        // For night shifts, ensure time_out is displayed correctly
+        let displayTimeOut = record.time_out_formatted || '-';
+        let displayScheduledOut = record.scheduled_time_out_formatted || '-';
+        
+        // If it's a night shift and time_out is earlier than time_in, 
+        // it means it spans midnight - this is correct behavior
+        if (isNightshift && record.time_in && record.time_out) {
+          const timeInHour = parseInt(record.time_in.split(':')[0]);
+          const timeOutHour = parseInt(record.time_out.split(':')[0]);
+          
+          // If time_out hour is smaller than time_in hour, it spans midnight
+          if (timeOutHour < timeInHour) {
+            // This is correct - time_out is on the next day
+            // No need to modify the display
+          }
+        }
+        
         groupedRecords.push({
           ...record,
           displayDate: moment(record.date).format('MMM DD'),
           displayDay: moment(record.date).format('ddd'),
-          isNightshift: record.scheduled_time_in && record.scheduled_time_out && 
-            (parseInt(record.scheduled_time_in.split(':')[0]) > parseInt(record.scheduled_time_out.split(':')[0]) ||
-             parseInt(record.scheduled_time_in.split(':')[0]) >= 18)
+          isNightshift: isNightshift,
+          // Use the formatted time fields from the API
+          time_in_formatted: record.time_in_formatted || '-',
+          time_out_formatted: displayTimeOut,
+          scheduled_time_in_formatted: record.scheduled_time_in_formatted || '-',
+          scheduled_time_out_formatted: displayScheduledOut
         });
       } else {
         // Multiple records for this date - group them
@@ -1001,6 +1027,11 @@ const ScheduleReport = () => {
           displayDate: moment(firstRecord.date).format('MMM DD'),
           displayDay: moment(firstRecord.date).format('ddd'),
           isNightshift: isNightshift,
+          // Use the formatted time fields from the API
+          time_in_formatted: firstRecord.time_in_formatted || '-',
+          time_out_formatted: firstRecord.time_out_formatted || '-',
+          scheduled_time_in_formatted: firstRecord.scheduled_time_in_formatted || '-',
+          scheduled_time_out_formatted: firstRecord.scheduled_time_out_formatted || '-',
           // Use the first record's data as primary, but indicate multiple records exist
           hasMultipleRecords: true,
           recordCount: recordsForDate.length
