@@ -85,8 +85,8 @@ const ScheduleReport = () => {
   const [currentEmployeeId, setCurrentEmployeeId] = useState('');
   const [groupNightshifts, setGroupNightshifts] = useState(false);
   const [dailyTimeSummaries, setDailyTimeSummaries] = useState([]);
-  const [useDailyTimeSummary, setUseDailyTimeSummary] = useState(true);
-  const [useAdminStyleAPI, setUseAdminStyleAPI] = useState(false);
+  const [useDailyTimeSummary, setUseDailyTimeSummary] = useState(false);
+  const [useAdminStyleAPI, setUseAdminStyleAPI] = useState(true);
   const [adminStyleData, setAdminStyleData] = useState([]);
   const [error, setError] = useState(null);
 
