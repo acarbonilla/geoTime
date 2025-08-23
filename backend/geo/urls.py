@@ -17,6 +17,7 @@ from .views import (
     ScheduleTemplateViewSet,
     EmployeeScheduleViewSet,
     DailyTimeSummaryViewSet,
+    DailyTimeSummaryAdminViewSet,
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -37,6 +38,7 @@ router.register(r'change-schedule-requests', ChangeScheduleRequestViewSet, basen
 router.register(r'schedule-templates', ScheduleTemplateViewSet, basename='scheduletemplate')
 router.register(r'schedules', EmployeeScheduleViewSet, basename='schedule')
 router.register(r'daily-summaries', DailyTimeSummaryViewSet, basename='dailytimesummary')
+router.register(r'daily-summaries-admin', DailyTimeSummaryAdminViewSet, basename='dailytimesummaryadmin')
 
 # The API URLs are now determined automatically by the router
 urlpatterns = [

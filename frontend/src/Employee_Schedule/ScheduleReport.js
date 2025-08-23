@@ -86,6 +86,9 @@ const ScheduleReport = () => {
   const [groupNightshifts, setGroupNightshifts] = useState(false);
   const [dailyTimeSummaries, setDailyTimeSummaries] = useState([]);
   const [useDailyTimeSummary, setUseDailyTimeSummary] = useState(true);
+  const [useAdminStyleAPI, setUseAdminStyleAPI] = useState(false);
+  const [adminStyleData, setAdminStyleData] = useState([]);
+  const [error, setError] = useState(null);
 
 
 
@@ -169,29 +172,41 @@ const ScheduleReport = () => {
 
   const loadReport = async () => {
     if (!currentEmployeeId) {
-      toast.error('Employee information not available');
+      toast.error('Please select an employee first');
       return;
     }
 
     setLoading(true);
+    setError(null);
+
     try {
-      if (useDailyTimeSummary) {
-        // Use DailyTimeSummary API for consolidated data
+      if (useAdminStyleAPI) {
+        await loadAdminStyleData();
+      } else if (useDailyTimeSummary) {
         await loadDailyTimeSummaryData();
       } else {
-        // Fallback to old API
         const reportFilters = {
-          ...filters,
+          startDate: filters.startDate,
+          endDate: filters.endDate,
           employeeId: currentEmployeeId
         };
-        console.log('loadReport called with filters:', reportFilters);
+        console.log('Generating report with filters:', reportFilters);
         const data = await getTimeAttendanceReport(reportFilters);
-        console.log('Report data loaded:', data);
+        console.log('Report data received:', data);
+        console.log('Data structure:', {
+          hasEmployee: !!data.employee,
+          hasSummary: !!data.summary,
+          hasDailyRecords: !!data.daily_records,
+          dailyRecordsLength: data.daily_records?.length || 0,
+          summaryKeys: data.summary ? Object.keys(data.summary) : [],
+          firstRecord: data.daily_records?.[0]
+        });
+        
         setReport(data);
-        toast.success('Report loaded successfully');
       }
     } catch (error) {
       console.error('Error loading report:', error);
+      setError('Failed to load report. Please try again.');
       toast.error('Failed to load report');
     } finally {
       setLoading(false);
@@ -216,6 +231,28 @@ const ScheduleReport = () => {
       toast.error('Failed to load Daily Time Summary data');
       // Fallback to old API
       setUseDailyTimeSummary(false);
+    }
+  };
+
+  const loadAdminStyleData = async () => {
+    try {
+      const response = await axiosInstance.get(`/daily-summaries-admin/`, {
+        params: {
+          start_date: filters.startDate,
+          end_date: filters.endDate,
+          employee: currentEmployeeId
+        }
+      });
+      
+      console.log('📊 Admin Style API response:', response.data);
+      setAdminStyleData(response.data.results || []);
+      toast.success('Admin Style data loaded successfully');
+    } catch (error) {
+      console.error('❌ Error fetching Admin Style data:', error);
+      toast.error('Failed to load Admin Style data');
+      // Fallback to regular DailyTimeSummary API
+      setUseAdminStyleAPI(false);
+      setUseDailyTimeSummary(true);
     }
   };
 
@@ -944,7 +981,9 @@ const ScheduleReport = () => {
 
   // Get data for display (either DailyTimeSummary or legacy data)
   const getDisplayData = () => {
-    if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
+    if (useAdminStyleAPI && adminStyleData.length > 0) {
+      return adminStyleData;
+    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
       return dailyTimeSummaries;
     } else if (report && report.daily_records) {
       return report.daily_records;
@@ -1332,7 +1371,7 @@ const ScheduleReport = () => {
                 sum + parseFloat(entry.overtime), 0
               );
               return totalOvertime > 0 ? `${totalOvertime.toFixed(2)}h` : '-';
-          }
+            }
           }
           
           return '-';
@@ -2105,6 +2144,74 @@ const ScheduleReport = () => {
     return groupedRecords;
   };
 
+  // Helper function to get the appropriate data for summary calculations
+  const getSummaryData = () => {
+    if (useAdminStyleAPI && adminStyleData.length > 0) {
+      return adminStyleData;
+    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
+      return getGroupedDailyTimeSummaries();
+    } else if (report && report.daily_records) {
+      return getGroupedRecordsForExport(report.daily_records);
+    }
+    return [];
+  };
+
+  // Summary calculation functions
+  const getTotalBilledHours = () => {
+    if (useAdminStyleAPI && adminStyleData.length > 0) {
+      return adminStyleData.reduce((sum, record) => sum + (record.billed_hours || 0), 0);
+    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
+      return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.billed_hours || 0), 0);
+    } else if (report && report.daily_records) {
+      return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (record.billed_hours || 0), 0);
+    }
+    return 0;
+  };
+
+  const getTotalLateMinutes = () => {
+    if (useAdminStyleAPI && adminStyleData.length > 0) {
+      return adminStyleData.reduce((sum, record) => sum + (record.late_minutes || 0), 0);
+    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
+      return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.late_minutes || 0), 0);
+    } else if (report && report.daily_records) {
+      return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (record.late_minutes || 0), 0);
+    }
+    return 0;
+  };
+
+  const getTotalUndertimeMinutes = () => {
+    if (useAdminStyleAPI && adminStyleData.length > 0) {
+      return adminStyleData.reduce((sum, record) => sum + (record.undertime_minutes || 0), 0);
+    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
+      return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.undertime_minutes || 0), 0);
+    } else if (report && report.daily_records) {
+      return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (record.undertime_minutes || 0), 0);
+    }
+    return 0;
+  };
+
+  const getTotalNightDifferential = () => {
+    if (useAdminStyleAPI && adminStyleData.length > 0) {
+      return adminStyleData.reduce((sum, record) => sum + (record.night_differential_hours || 0), 0).toFixed(2);
+    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
+      return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.night_differential || 0), 0).toFixed(2);
+    } else if (report && report.daily_records) {
+      return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (record.night_differential || 0), 0).toFixed(2);
+    }
+    return '0.00';
+  };
+
+  const getTotalOvertime = () => {
+    if (useAdminStyleAPI && adminStyleData.length > 0) {
+      return adminStyleData.reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2);
+    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
+      return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2);
+    } else if (report && report.daily_records) {
+      return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2);
+    }
+    return '0.00';
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       <div className="max-w-7xl mx-auto p-6">
@@ -2170,42 +2277,57 @@ const ScheduleReport = () => {
           </div>
 
           {/* Data Source Toggle */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center space-x-2">
-              <DocumentChartBarIcon className="w-4 h-4 text-blue-600" />
-              <span>Data Source Options</span>
-            </label>
-            <div className="flex items-center space-x-3">
+          <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+            <h3 className="text-lg font-semibold mb-3 text-gray-800">Data Source</h3>
+            <div className="space-y-2">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="radio"
                   name="dataSource"
-                  value="dailyTimeSummary"
-                  checked={useDailyTimeSummary}
-                  onChange={() => setUseDailyTimeSummary(true)}
-                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  value="admin"
+                  checked={useAdminStyleAPI}
+                  onChange={() => {
+                    setUseAdminStyleAPI(true);
+                    setUseDailyTimeSummary(false);
+                  }}
+                  className="text-blue-600"
                 />
-                <span className="text-sm text-gray-700">Daily Time Summary (Recommended)</span>
-                <span className="text-xs text-gray-500">Uses pre-calculated backend data for single row night shifts</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Admin Style (Recommended) - Single row per date like Django admin
+                </span>
+              </label>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="dataSource"
+                  value="dailySummary"
+                  checked={useDailyTimeSummary && !useAdminStyleAPI}
+                  onChange={() => {
+                    setUseDailyTimeSummary(true);
+                    setUseAdminStyleAPI(false);
+                  }}
+                  className="text-blue-600"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Daily Time Summary - Consolidated backend data
+                </span>
               </label>
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="radio"
                   name="dataSource"
                   value="legacy"
-                  checked={!useDailyTimeSummary}
-                  onChange={() => setUseDailyTimeSummary(false)}
-                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  checked={!useDailyTimeSummary && !useAdminStyleAPI}
+                  onChange={() => {
+                    setUseDailyTimeSummary(false);
+                    setUseAdminStyleAPI(false);
+                  }}
+                  className="text-blue-600"
                 />
-                <span className="text-sm text-gray-700">Legacy API</span>
-                <span className="text-xs text-gray-500">Uses old API with frontend calculations</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Legacy API - Original time attendance report
+                </span>
               </label>
-            </div>
-            <div className="mt-2 text-xs text-gray-500">
-              {useDailyTimeSummary 
-                ? "Daily Time Summary provides consolidated data with all calculations done on the backend, ensuring accurate night shift display in single rows."
-                : "Legacy API shows individual time entries with frontend calculations."
-              }
             </div>
           </div>
 
@@ -2459,12 +2581,7 @@ const ScheduleReport = () => {
                     <div>
                       <p className="text-sm font-medium text-green-900">Total Hours</p>
                       <p className="text-lg font-semibold text-green-700">
-                        {(() => {
-                          if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-                            return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.billed_hours || 0), 0);
-                          }
-                          return calculateSummaryTotals(report.daily_records).totalBilledHours;
-                        })()} min
+                        {getTotalBilledHours()} min
                       </p>
                     </div>
                   </div>
@@ -2475,12 +2592,7 @@ const ScheduleReport = () => {
                     <div>
                       <p className="text-sm font-medium text-yellow-900">Late Minutes</p>
                       <p className="text-lg font-semibold text-yellow-700">
-                        {(() => {
-                          if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-                            return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.late_minutes || 0), 0);
-                          }
-                          return calculateSummaryTotals(report.daily_records).totalLateMinutes;
-                        })()} min
+                        {getTotalLateMinutes()} min
                       </p>
                     </div>
                   </div>
@@ -2491,12 +2603,7 @@ const ScheduleReport = () => {
                     <div>
                       <p className="text-sm font-medium text-purple-900">Night Differential</p>
                       <p className="text-lg font-semibold text-purple-700">
-                        {(() => {
-                          if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-                            return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.night_differential || 0), 0).toFixed(2);
-                          }
-                          return calculateSummaryTotals(report.daily_records).totalNightDifferential;
-                        })()}h
+                        {getTotalNightDifferential()}h
                       </p>
                     </div>
                   </div>
@@ -2659,7 +2766,10 @@ const ScheduleReport = () => {
                       // Get data based on selected source
                       let displayRecords = [];
                       
-                      if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
+                      if (useAdminStyleAPI && adminStyleData.length > 0) {
+                        // Use admin-style data (already formatted like Django admin)
+                        displayRecords = adminStyleData;
+                      } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
                         // Use grouped DailyTimeSummary data to prevent date repetition
                         displayRecords = getGroupedDailyTimeSummaries();
                       } else {
@@ -2688,7 +2798,10 @@ const ScheduleReport = () => {
                       
                       return displayRecords.map((record, index) => (
                         <tr key={index} className={`hover:bg-gray-50 transition-colors duration-200 ${
-                          useDailyTimeSummary ? (
+                          useAdminStyleAPI ? (
+                            // Admin-style row styling (like Django admin)
+                            record.is_nightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : ''
+                          ) : useDailyTimeSummary ? (
                             // DailyTimeSummary row styling
                             record.isNightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : ''
                           ) : (
@@ -2701,7 +2814,19 @@ const ScheduleReport = () => {
                         }`}>
                           <td className="px-6 py-4 text-sm font-medium text-gray-900">
                             <div className="flex flex-col">
-                              {useDailyTimeSummary ? (
+                              {useAdminStyleAPI ? (
+                                // Admin-style display (like Django admin)
+                                <>
+                                  <span className={record.is_nightshift ? "font-semibold text-blue-700" : ""}>
+                                    {record.display_date}
+                                  </span>
+                                  {record.is_nightshift && (
+                                    <div className="text-xs text-blue-600 font-normal">
+                                      🌙 Nightshift
+                                    </div>
+                                  )}
+                                </>
+                              ) : useDailyTimeSummary ? (
                                 // DailyTimeSummary display
                                 <>
                                   <span className={record.isNightshift ? "font-semibold text-blue-700" : ""}>
@@ -2771,7 +2896,14 @@ const ScheduleReport = () => {
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600">
                             <div className="flex flex-col">
-                              {useDailyTimeSummary ? (
+                              {useAdminStyleAPI ? (
+                                // Admin-style display (like Django admin)
+                                <>
+                                  <span className={record.is_nightshift ? "font-semibold text-blue-700" : ""}>
+                                    {record.display_day}
+                                  </span>
+                                </>
+                              ) : useDailyTimeSummary ? (
                                 // DailyTimeSummary display
                                 <>
                                   <span className={record.isNightshift ? "font-semibold text-blue-700" : ""}>
@@ -2817,7 +2949,20 @@ const ScheduleReport = () => {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-sm">
-                            {useDailyTimeSummary ? (
+                            {useAdminStyleAPI ? (
+                              // Admin-style status display (like Django admin)
+                              <>
+                                <span className={`status-pill ${getStatusColor(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date)}`}>
+                                  {getStatusIcon(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date)}
+                                  <span>{getStatusDisplay(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date)}</span>
+                                </span>
+                                {record.is_nightshift && (
+                                  <div className="nightshift-indicator text-xs text-blue-600 font-medium mt-1">
+                                    🌙 Nightshift
+                                  </div>
+                                )}
+                              </>
+                            ) : useDailyTimeSummary ? (
                               // DailyTimeSummary status display
                               <>
                                 <span className={`status-pill ${getStatusColor(record.status, record.scheduled_time_in_formatted, record.scheduled_time_out_formatted, record.time_in_formatted, record.date)}`}>
@@ -2856,7 +3001,10 @@ const ScheduleReport = () => {
                             )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useDailyTimeSummary ? (
+                            {useAdminStyleAPI ? (
+                              // Admin-style time display (like Django admin)
+                              record.time_in || '-'
+                            ) : useDailyTimeSummary ? (
                               // DailyTimeSummary time display
                               formatTime(record.time_in_formatted || record.time_in)
                             ) : (
@@ -2984,14 +3132,17 @@ const ScheduleReport = () => {
                                   }
                                 }
                                 
-                                // 5. If no time out found, show dash
+                                // 5. Final fallback
                                 return '-';
                               })()
                             )}
                           </td>
 
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useDailyTimeSummary ? (
+                            {useAdminStyleAPI ? (
+                              // Admin-style scheduled time display (like Django admin)
+                              record.scheduled_time_in || '-'
+                            ) : useDailyTimeSummary ? (
                               // DailyTimeSummary scheduled time display
                               formatTime(record.scheduled_time_in_formatted || record.scheduled_time_in)
                             ) : (
@@ -3009,7 +3160,10 @@ const ScheduleReport = () => {
                             )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useDailyTimeSummary ? (
+                            {useAdminStyleAPI ? (
+                              // Admin-style scheduled time display (like Django admin)
+                              record.scheduled_time_out || '-'
+                            ) : useDailyTimeSummary ? (
                               // DailyTimeSummary scheduled time display
                               formatTime(record.scheduled_time_out_formatted || record.scheduled_time_out)
                             ) : (

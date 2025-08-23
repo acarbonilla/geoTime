@@ -4112,3 +4112,114 @@ class DailyTimeSummaryViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
+class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint that mimics the Django admin display for DailyTimeSummary.
+    This provides the same data structure and formatting that the admin interface uses.
+    """
+    serializer_class = DailyTimeSummarySerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = DailyTimeSummary.objects.select_related(
+            'employee__user', 
+            'employee__department',
+            'time_in_entry',
+            'time_out_entry',
+            'schedule_reference'
+        ).order_by('-date', 'employee__user__first_name')
+        
+        # Apply date range filter
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+            
+        # Apply employee filter
+        employee_id = self.request.query_params.get('employee')
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+            
+        return queryset
+    
+    def list(self, request, *args, **kwargs):
+        """
+        Override list method to provide admin-style data structure
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Serialize the data
+        serializer = self.get_serializer(queryset, many=True)
+        data = serializer.data
+        
+        # Transform the data to match admin display format
+        admin_formatted_data = []
+        for record in data:
+            admin_record = {
+                'id': record['id'],
+                'employee_name': record['employee_name'],
+                'date': record['date'],
+                'status': record['status'],
+                'time_in': record['time_in_formatted'],
+                'time_out': record['time_out_formatted'],
+                'scheduled_time_in': record['scheduled_time_in_formatted'],
+                'scheduled_time_out': record['scheduled_time_out_formatted'],
+                'billed_hours': record['billed_hours'],
+                'late_minutes': record['late_minutes'],
+                'undertime_minutes': record['undertime_minutes'],
+                'night_differential_hours': record['night_differential_hours'],
+                'overtime_hours': record['overtime_hours'],
+                # Additional fields for enhanced display
+                'is_nightshift': self._is_nightshift(record),
+                'display_date': self._format_display_date(record['date']),
+                'display_day': self._format_display_day(record['date'])
+            }
+            admin_formatted_data.append(admin_record)
+        
+        return Response({
+            'count': len(admin_formatted_data),
+            'results': admin_formatted_data,
+            'admin_format': True
+        })
+    
+    def _is_nightshift(self, record):
+        """Determine if a record represents a night shift"""
+        scheduled_in = record.get('scheduled_time_in')
+        scheduled_out = record.get('scheduled_time_out')
+        
+        if not scheduled_in or not scheduled_out:
+            return False
+            
+        try:
+            # Parse time strings (format: "07:00 PM")
+            from datetime import datetime
+            time_in = datetime.strptime(scheduled_in, '%I:%M %p').time()
+            time_out = datetime.strptime(scheduled_out, '%I:%M %p').time()
+            
+            # Check if it's a night shift (spans midnight)
+            return (time_in.hour > time_out.hour) or (time_in.hour >= 18)
+        except:
+            return False
+    
+    def _format_display_date(self, date_str):
+        """Format date for display (e.g., 'Aug 23')"""
+        from datetime import datetime
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            return date_obj.strftime('%b %d')
+        except:
+            return date_str
+    
+    def _format_display_day(self, date_str):
+        """Format day for display (e.g., 'Sat')"""
+        from datetime import datetime
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            return date_obj.strftime('%a')
+        except:
+            return date_str
+
