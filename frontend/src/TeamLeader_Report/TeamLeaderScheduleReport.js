@@ -26,6 +26,21 @@ import {
 } from 'react-icons/fa';
 import moment from 'moment';
 
+/**
+ * TeamLeaderScheduleReport Component
+ * 
+ * This component now uses the DailyTimeSummary API approach (similar to admin.py) 
+ * instead of complex frontend grouping logic. This provides:
+ * 
+ * 1. Single-row display for night shifts (no grouping needed)
+ * 2. Pre-calculated metrics from the backend
+ * 3. Cleaner, more maintainable code
+ * 4. Better performance (no frontend calculations)
+ * 
+ * The DailyTimeSummary model contains all time-related data in one record,
+ * making it perfect for displaying night shift schedules that span midnight.
+ */
+
 const TeamLeaderScheduleReport = () => {
   // CSS styles for grouped nightshift rows
   const groupedNightshiftStyles = `
@@ -156,7 +171,7 @@ const TeamLeaderScheduleReport = () => {
 
     useEffect(() => {
     try {
-      console.log('TeamLeaderScheduleReport: Data fetch useEffect', { employee, viewMode });
+      console.log('TeamLeaderScheduleReport: Data fetch useEffect', { employee, viewMode, dateRange });
       if (employee) {
         // Always use fetchMemberReports for the new team_report endpoint
         fetchMemberReports();
@@ -269,69 +284,102 @@ const TeamLeaderScheduleReport = () => {
     }
   };
 
-
-
-
-  const fetchMemberReports = async () => {
+  // New function to fetch DailyTimeSummary data (admin-style approach)
+  const fetchDailyTimeSummaries = async (startDate, endDate, employeeId = null) => {
     try {
-      console.log('TeamLeaderScheduleReport: Fetching team report...', { params: { start_date: dateRange.startDate, end_date: dateRange.endDate } });
-      setMemberLoading(true);
-      const params = {
-        start_date: dateRange.startDate,
-        end_date: dateRange.endDate
-      };
-
-      // Add employee_id filter if a specific employee is selected
-      if (selectedEmployee && selectedEmployee !== 'all') {
-        console.log('TeamLeaderScheduleReport: Filtering by selected employee:', selectedEmployee);
-        params.employee_id = selectedEmployee;
-      }
-
-      // Use the new team_report endpoint for team leaders
-      const response = await axiosInstance.get('daily-summaries/team_report/', { params });
-      console.log('TeamLeaderScheduleReport: Team report response:', response.data);
+      setLoading(true);
+      setError(null);
       
-      // Transform the team report data to match existing structure
-      let memberReportsData = [];
-      if (response.data.team_members && Array.isArray(response.data.team_members)) {
-        // Flatten the team members' daily summaries into a single array
-        response.data.team_members.forEach(member => {
-          if (member.daily_summaries && Array.isArray(member.daily_summaries)) {
-            // Debug: Log the first daily summary to see its structure
-            if (member.daily_summaries.length > 0) {
-              console.log('TeamLeaderScheduleReport: Raw daily_summary from API (first record):', member.daily_summaries[0]);
-              console.log('TeamLeaderScheduleReport: Keys in raw daily_summary:', Object.keys(member.daily_summaries[0]));
-            }
-            
-            member.daily_summaries.forEach(summary => {
-              memberReportsData.push({
-                ...summary,
-                employee_id: member.employee_id,
-                employee_name: member.name,
-                department: member.department
-              });
-            });
-          }
-        });
+      let url = `daily-summaries/?start_date=${startDate}&end_date=${endDate}`;
+      if (employeeId && employeeId !== 'all') {
+        url += `&employee=${employeeId}`;
       }
       
-      setMemberReports(memberReportsData);
-      setError(null); // Clear any previous errors
+      console.log('🚀 Fetching DailyTimeSummary data from:', url);
+      console.log('📅 Requested date range:', { startDate, endDate, employeeId });
+      console.log('🌐 Current browser timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
+      console.log('🕐 Current browser time:', new Date().toISOString());
       
-      // Store team summary data for display
-      if (response.data.summary) {
-        setTeamSummary(response.data.summary);
-      }
-      if (response.data.team_leader) {
-        setTeamLeaderInfo(response.data.team_leader);
-      }
+      const response = await axiosInstance.get(url);
+      console.log('📊 DailyTimeSummary API response:', response.data);
+      console.log('📊 Response status:', response.status);
+      console.log('📊 Response headers:', response.headers);
+      
+      // Transform the data to match our table structure
+      const transformedData = response.data.map(summary => ({
+        id: summary.id,
+        date: summary.date,
+        employee_id: summary.employee_id,
+        employee_name: summary.employee_name,
+        status: summary.status,
+        time_in: summary.time_in,
+        time_out: summary.time_out,
+        scheduled_time_in: summary.scheduled_time_in,
+        scheduled_time_out: summary.scheduled_time_out,
+        billed_hours: summary.billed_hours,
+        late_minutes: summary.late_minutes,
+        undertime_minutes: summary.undertime_minutes,
+        night_differential_hours: summary.night_differential_hours,
+        overtime_hours: summary.overtime_hours,
+        // Calculate if this is a night shift
+        is_night_shift: summary.scheduled_time_in && summary.scheduled_time_out && 
+                       summary.scheduled_time_in > summary.scheduled_time_out,
+        // Format times for display
+        time_in_formatted: summary.time_in ? formatTime(summary.time_in) : '-',
+        time_out_formatted: summary.time_out ? formatTime(summary.time_out) : '-',
+        scheduled_time_in_formatted: summary.scheduled_time_in ? formatTime(summary.scheduled_time_in) : '-',
+        scheduled_time_out_formatted: summary.scheduled_time_out ? formatTime(summary.scheduled_time_out) : '-'
+      }));
+      
+      console.log('🔄 Transformed DailyTimeSummary data:', transformedData);
+      console.log('🌙 Night shift records:', transformedData.filter(r => r.is_night_shift));
+      
+      setIndividualMemberReports(transformedData);
+      
     } catch (error) {
-      console.error('TeamLeaderScheduleReport: Error fetching team report:', error);
-      setError('Failed to fetch team report');
-      setMemberReports([]);
+      console.error('❌ Error fetching DailyTimeSummary data:', error);
+      setError('Failed to fetch time summary data. Please try again.');
     } finally {
-      setMemberLoading(false);
+      setLoading(false);
     }
+  };
+
+  // Replace the old fetchMemberReports function with the new one
+  const fetchMemberReports = async () => {
+    if (!dateRange.startDate || !dateRange.endDate) {
+      setError('Please select a date range');
+      return;
+    }
+    
+    await fetchDailyTimeSummaries(dateRange.startDate, dateRange.endDate, selectedEmployee);
+  };
+
+  // Group data by date to avoid duplicate dates in the table
+  const getGroupedDataByDate = () => {
+    // First get the filtered data based on selected employee
+    const filteredReports = getFilteredMemberReports();
+    
+    if (!Array.isArray(filteredReports) || filteredReports.length === 0) {
+      return [];
+    }
+
+    // Group by date
+    const groupedByDate = {};
+    filteredReports.forEach(report => {
+      const dateKey = report.date;
+      if (!groupedByDate[dateKey]) {
+        groupedByDate[dateKey] = [];
+      }
+      groupedByDate[dateKey].push(report);
+    });
+
+    // Convert to array and sort by date
+    return Object.entries(groupedByDate)
+      .map(([date, reports]) => ({
+        date,
+        reports: reports.sort((a, b) => a.employee_name.localeCompare(b.employee_name))
+      }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
   };
 
   const handleMemberView = (member) => {
@@ -340,8 +388,8 @@ const TeamLeaderScheduleReport = () => {
   };
 
   const getMemberStats = (memberId) => {
-    // Ensure memberReports is an array before filtering
-    if (!Array.isArray(memberReports)) {
+    // Ensure individualMemberReports is an array before filtering
+    if (!Array.isArray(individualMemberReports)) {
       return {
         totalHours: 0,
         overtimeHours: 0,
@@ -350,7 +398,7 @@ const TeamLeaderScheduleReport = () => {
       };
     }
     
-    const memberSchedules = memberReports.filter(report => report.employee_id === memberId);
+    const memberSchedules = individualMemberReports.filter(report => report.employee_id === memberId);
     const totalHours = calculateTotalHours(memberSchedules);
     const overtimeHours = calculateOvertime(memberSchedules);
     const totalSchedules = memberSchedules.length;
@@ -385,21 +433,21 @@ const TeamLeaderScheduleReport = () => {
 
   // Get filtered member reports based on selected employee
   const getFilteredMemberReports = () => {
-    if (!Array.isArray(memberReports)) return [];
+    if (!Array.isArray(individualMemberReports)) return [];
     
     // If no specific employee is selected, return all reports
     if (!selectedEmployee || selectedEmployee === 'all') {
-      return memberReports;
+      return individualMemberReports;
     }
     
     // Filter reports for the selected employee
-    return memberReports.filter(report => report.employee_id === selectedEmployee);
+    return individualMemberReports.filter(report => report.employee_id === selectedEmployee);
   };
 
   const handleExport = async () => {
     try {
       // Use grouped reports for export to include night shift grouping
-      const exportData = getGroupedRecordsForExport(getFilteredMemberReports());
+      const exportData = individualMemberReports || [];
       
       if (exportData.length === 0) {
         setError('No data to export. Please generate a report first.');
@@ -1961,7 +2009,7 @@ const TeamLeaderScheduleReport = () => {
             </div>
             
             {/* Report Display */}
-            {Array.isArray(getFilteredMemberReports()) && getFilteredMemberReports().length > 0 && (
+            {Array.isArray(individualMemberReports) && individualMemberReports.length > 0 && (
               <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
                 {/* Report Header */}
                 <div className="mb-8">
@@ -2001,15 +2049,15 @@ const TeamLeaderScheduleReport = () => {
                 </div>
 
                 {/* Summary Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
                   <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-2xl text-center border border-blue-200 shadow-lg hover:shadow-xl transition-all duration-200">
                     <div className="flex justify-center mb-2">
                       <FaCalendarCheck className="w-8 h-8 text-blue-600" />
                     </div>
                     <div className="text-3xl font-bold text-blue-700">
                       {(() => {
-                        const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
-                        return groupedReports.length;
+                        const reports = individualMemberReports || [];
+                        return reports.length;
                       })()}
                     </div>
                     <div className="text-sm text-blue-800 font-medium">Days Worked</div>
@@ -2020,10 +2068,9 @@ const TeamLeaderScheduleReport = () => {
                     </div>
                     <div className="text-3xl font-bold text-green-700">
                       {(() => {
-                        const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
-                        return groupedReports.reduce((total, report) => {
-                          const metrics = calculateGroupedMetrics(report);
-                          return total + metrics.bh;
+                        const reports = individualMemberReports || [];
+                        return reports.reduce((total, report) => {
+                          return total + (report.billed_hours || 0);
                         }, 0);
                       })()}
                     </div>
@@ -2035,10 +2082,9 @@ const TeamLeaderScheduleReport = () => {
                     </div>
                     <div className="text-3xl font-bold text-orange-700">
                       {(() => {
-                        const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
-                        return groupedReports.reduce((total, report) => {
-                          const metrics = calculateGroupedMetrics(report);
-                          return total + metrics.lt;
+                        const reports = individualMemberReports || [];
+                        return reports.reduce((total, report) => {
+                          return total + (report.late_minutes || 0);
                         }, 0);
                       })()}
                     </div>
@@ -2050,10 +2096,9 @@ const TeamLeaderScheduleReport = () => {
                     </div>
                     <div className="text-3xl font-bold text-red-700">
                       {(() => {
-                        const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
-                        return groupedReports.reduce((total, report) => {
-                          const metrics = calculateGroupedMetrics(report);
-                          return total + metrics.ut;
+                        const reports = individualMemberReports || [];
+                        return reports.reduce((total, report) => {
+                          return total + (report.undertime_minutes || 0);
                         }, 0);
                       })()}
                     </div>
@@ -2065,14 +2110,27 @@ const TeamLeaderScheduleReport = () => {
                     </div>
                     <div className="text-3xl font-bold text-purple-700">
                       {(() => {
-                        const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
-                        return groupedReports.reduce((total, report) => {
-                          const metrics = calculateGroupedMetrics(report);
-                          return total + metrics.nd;
+                        const reports = individualMemberReports || [];
+                        return reports.reduce((total, report) => {
+                          return total + (report.night_differential_hours || 0);
                         }, 0);
                       })()}
                     </div>
                     <div className="text-sm text-purple-800 font-medium">Total ND</div>
+                  </div>
+                  <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-6 rounded-2xl text-center border border-indigo-200 shadow-lg hover:shadow-xl transition-all duration-200">
+                    <div className="flex justify-center mb-2">
+                      <FaClock className="w-8 h-8 text-indigo-600" />
+                    </div>
+                    <div className="text-3xl font-bold text-indigo-700">
+                      {(() => {
+                        const reports = individualMemberReports || [];
+                        return reports.reduce((total, report) => {
+                          return total + (report.overtime_hours || 0);
+                        }, 0);
+                      })()}
+                    </div>
+                    <div className="text-sm text-indigo-800 font-medium">Total OT</div>
                   </div>
                 </div>
 
@@ -2112,19 +2170,19 @@ const TeamLeaderScheduleReport = () => {
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
                       <p className="mt-4 text-gray-600">Generating report...</p>
                     </div>
-                  ) : !Array.isArray(memberReports) || memberReports.length === 0 ? (
+                  ) : !Array.isArray(individualMemberReports) || individualMemberReports.length === 0 ? (
                     <div className="px-6 py-12 text-center">
                       <div className="text-gray-400 text-6xl mb-4">📊</div>
                       <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        {Array.isArray(memberReports) && memberReports.length > 0 ? 'No schedules found for selected period' : 'No data found'}
+                        {Array.isArray(individualMemberReports) && individualMemberReports.length > 0 ? 'No schedules found for selected period' : 'No data found'}
                       </h3>
                       <p className="text-gray-500">
-                        {Array.isArray(memberReports) && memberReports.length > 0 
+                        {Array.isArray(individualMemberReports) && individualMemberReports.length > 0 
                           ? 'Try selecting a different cutoff period or adjusting the date range.' 
                           : 'Try adjusting your filters or date range.'
                         }
                       </p>
-                      {Array.isArray(memberReports) && memberReports.length > 0 && selectedCutoffPeriod && (
+                      {Array.isArray(individualMemberReports) && individualMemberReports.length > 0 && selectedCutoffPeriod && (
                         <button
                           onClick={() => {
                             setSelectedCutoffPeriod('');
@@ -2154,6 +2212,12 @@ const TeamLeaderScheduleReport = () => {
                             <div className="flex items-center space-x-2">
                               <CalendarDaysIcon className="w-4 h-4" />
                               <span>Day</span>
+                            </div>
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                            <div className="flex items-center space-x-2">
+                              <UserIcon className="w-4 h-4" />
+                              <span>Employee</span>
                             </div>
                           </th>
                           <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
@@ -2211,199 +2275,86 @@ const TeamLeaderScheduleReport = () => {
                               <span>ND</span>
                             </div>
                           </th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                            <div className="flex items-center space-x-2">
+                              <FaClock className="w-3 h-3" />
+                              <span>OT</span>
+                            </div>
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {(() => {
-                          // Get grouped records for night shift handling
-                          const groupedReports = getGroupedRecordsForExport(getFilteredMemberReports());
+                          // Use the grouped data function to prevent date repetition
+                          const groupedData = getGroupedDataByDate();
+                          console.log('📊 Rendering grouped reports from DailyTimeSummary:', groupedData);
                           
-                          // Debug: Log the raw data structure
-                          const filteredReports = getFilteredMemberReports();
-                          console.log('🔍 Raw reports data:', filteredReports);
-                          console.log('🔍 Grouped reports:', groupedReports);
-                          console.log('🔍 First report structure:', filteredReports.length > 0 ? {
-                            keys: Object.keys(filteredReports[0]),
-                            values: Object.values(filteredReports[0]),
-                            sample: filteredReports[0]
-                          } : 'No reports');
-                          
-                          return groupedReports.map((report, index) => {
-                            // Calculate metrics using the new function
-                            const metrics = calculateGroupedMetrics(report);
-                            
-                            // Debug: Log each record being processed
-                            console.log(`📊 Processing record ${index}:`, {
-                              date: report.date,
-                              time_in: report.time_in,
-                              time_out: report.time_out,
-                              scheduled_time_in: report.scheduled_time_in,
-                              scheduled_time_out: report.scheduled_time_out,
-                              metrics,
-                              rawRecord: report
-                            });
-                            
-                            // SIMPLE TEST: Try to calculate basic duration manually
-                            let testDuration = 0;
-                            if (report.time_in && report.time_out && report.time_in !== '-' && report.time_out !== '-') {
-                              try {
-                                // Simple test with moment.js
-                                const testStart = moment(`2000-01-01 ${report.time_in}`);
-                                const testEnd = moment(`2000-01-01 ${report.time_out}`);
-                                
-                                if (testStart.isValid() && testEnd.isValid()) {
-                                  testDuration = testEnd.diff(testStart, 'minutes');
-                                  console.log(`🧪 TEST CALCULATION: ${formatTime(report.time_in)} to ${formatTime(report.time_out)} = ${testDuration} minutes`);
-                                } else {
-                                  console.log(`❌ TEST CALCULATION FAILED: Invalid times`);
-                                }
-                              } catch (error) {
-                                console.log(`❌ TEST CALCULATION ERROR:`, error);
+                          return groupedData.map((dateGroup, dateIndex) => (
+                            dateGroup.reports.map((report, reportIndex) => {
+                              const reportDate = report.date ? new Date(report.date) : new Date();
+                              const dayName = reportDate.toLocaleDateString('en-US', { weekday: 'short' });
+                              
+                              // Simple row styling based on night shift status
+                              let rowClassName = "hover:bg-gray-50 transition-colors duration-200";
+                              if (report.is_night_shift) {
+                                rowClassName += " bg-blue-50 border-l-4 border-blue-400";
                               }
-                            }
-                            
-                            console.log(`🧪 Test duration result: ${testDuration} minutes`);
-                            
-                            // Safe date and time parsing with fallbacks
-                            const start = report.time_in ? new Date(`2000-01-01T${report.time_in}`) : null;
-                            const end = report.time_out ? new Date(`2000-01-01T${report.time_out}`) : null;
-                            const hours = start && end && !isNaN(start.getTime()) && !isNaN(end.getTime()) 
-                              ? (end - start) / (1000 * 60 * 60) 
-                              : 0;
-                            const reportDate = report.date ? new Date(report.date) : new Date();
-                            const dayName = reportDate.toLocaleDateString('en-US', { weekday: 'short' });
-                            
-                            // Determine row styling based on night shift status
-                            let rowClassName = "hover:bg-gray-50 transition-colors duration-200";
-                            if (report.isGrouped) {
-                              rowClassName += " grouped-nightshift-row bg-blue-50 border-l-4 border-blue-400";
-                            } else if (report.isNightshift) {
-                              rowClassName += " nightshift-row bg-blue-50 border-l-4 border-blue-400";
-                            } else if (report.hasPreviousNightshiftTimeout) {
-                              rowClassName += " previous-nightshift-timeout-row bg-green-50 border-l-4 border-green-400";
-                            }
-                            
-                            return (
-                              <tr key={`${report.id || report.date}-${index}`} className={rowClassName}>
-                                <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                                  <div className="flex flex-col">
-                                    {/* Show grouped date range for grouped records */}
-                                    {report.isGrouped ? (
-                                      <div className="flex flex-col">
-                                        <span className="font-semibold text-blue-700">
-                                          {report.date}
+                              
+                              return (
+                                <tr key={`${dateGroup.date}-${report.id || reportIndex}`} className={rowClassName}>
+                                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                                    {reportIndex === 0 ? <span>{reportDate.toLocaleDateString()}</span> : ''}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-gray-900">
+                                    {reportIndex === 0 ? <span>{dayName}</span> : ''}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                    {report.employee_name}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm">
+                                    <div className="flex flex-col space-y-1">
+                                      <span className={`inline-flex items-center space-x-2 px-3 py-1 text-xs font-medium rounded-full ${getStatusStyling(report.status)}`}>
+                                        {report.status}
+                                      </span>
+                                      {report.is_night_shift && (
+                                        <span className="inline-flex items-center space-x-2 px-2 py-1 text-xs font-medium rounded-full border border-blue-200 text-blue-800 bg-blue-100">
+                                          🌙 Nightshift
                                         </span>
-                                        <div className="text-xs text-blue-600 font-normal mt-1">
-                                          🌙 {report.groupSize} consecutive nightshifts {report.scheduled_time_in} - {report.scheduled_time_out}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      /* Show individual date for non-grouped records */
-                                      <span>{reportDate.toLocaleDateString()}</span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-900">
-                                  <div className="flex flex-col">
-                                    {/* Show grouped day range for grouped records */}
-                                    {report.isGrouped ? (
-                                      <div className="flex flex-col">
-                                        <span className="font-semibold text-blue-700">
-                                          {report.day}
-                                        </span>
-                                        <div className="text-xs text-blue-600 font-normal mt-1">
-                                          {report.groupSize} consecutive days
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      /* Show individual day for non-grouped records */
-                                      <span>{dayName}</span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 text-sm">
-                                  <div className="flex flex-col space-y-1">
-                                    <span className={`inline-flex items-center space-x-2 px-3 py-1 text-xs font-medium rounded-full ${getStatusStyling(getStatus(report))}`}>
-                                      {getStatus(report)}
-                                    </span>
-                                    {report.isGrouped ? (
-                                      <span className="inline-flex items-center space-x-2 px-2 py-1 text-xs font-medium rounded-full border border-blue-200 text-blue-800 bg-blue-100">
-                                        🌙 Nightshift
-                                      </span>
-                                    ) : report.isNightshift && (
-                                      <span className="inline-flex items-center space-x-2 px-2 py-1 text-xs font-medium rounded-full border border-blue-200 text-blue-800 bg-blue-100">
-                                        🌙 Nightshift
-                                      </span>
-                                    )}
-                                    {report.hasPreviousNightshiftTimeout && (
-                                      <span className="inline-flex items-center space-x-2 px-2 py-1 text-xs font-medium rounded-full border border-green-200 text-green-800 bg-green-100">
-                                        📝 Previous timeout used
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  {report.isGrouped ? '-' : formatTime(report.time_in)}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  <div className="flex flex-col">
-                                    {report.isGrouped ? '-' : formatTime(report.time_out)}
-                                    {!report.isGrouped && report.isNightshift && report.nextDayTimeout && (
-                                      <div className="text-xs text-blue-600 font-normal">
-                                        (Next day: {moment(report.nextDayDate).format('MMM DD')})
-                                      </div>
-                                    )}
-                                    {!report.isGrouped && report.hasPreviousNightshiftTimeout && report.previousNightshiftInfo && (
-                                      <div className="text-xs text-green-600 font-normal">
-                                        (Previous day: {moment(report.previousNightshiftInfo.date).format('MMM DD')})
-                                      </div>
-                                    )}
-                                  </div>
-                                </td>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                    {report.time_in_formatted}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                    {report.time_out_formatted}
+                                  </td>
 
-                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  {formatTime(report.scheduled_time_in) || '07:00 AM'}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  {formatTime(report.scheduled_time_out) || '04:00 PM'}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  <div className="flex flex-col">
-                                    {report.isGrouped ? '-' : (metrics.bh || '-')}
-                                    {!report.isGrouped && metrics.bh === 0 && report.time_in && report.time_out && report.scheduled_time_in && 
-                                     moment(`2000-01-01 ${report.time_in}`).isValid() && 
-                                     moment(`2000-01-01 ${report.scheduled_time_in}`).isValid() &&
-                                     moment(`2000-01-01 ${report.time_in}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) &&
-                                     moment(`2000-01-01 ${report.time_out}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) && (
-                                      <div className="text-xs text-red-600 font-normal">
-                                        ⚠️ Shift voided
-                                      </div>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  {report.isGrouped ? '-' : (metrics.lt || '-')}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  {report.isGrouped ? '-' : (metrics.ut || '-')}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                  <div className="flex flex-col">
-                                    {report.isGrouped ? '-' : (metrics.nd || '-')}
-                                    {!report.isGrouped && metrics.nd === 0 && report.time_in && report.time_out && report.scheduled_time_in && 
-                                     moment(`2000-01-01 ${report.time_in}`).isValid() && 
-                                     moment(`2000-01-01 ${report.scheduled_time_out}`).isValid() &&
-                                     moment(`2000-01-01 ${report.time_in}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) &&
-                                     moment(`2000-01-01 ${report.time_out}`).isBefore(moment(`2000-01-01 ${report.scheduled_time_in}`)) && (
-                                      <div className="text-xs text-red-600 font-normal">
-                                        ⚠️ Shift voided
-                                      </div>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          });
+                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                    {report.scheduled_time_in_formatted}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                    {report.scheduled_time_out_formatted}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                    {report.billed_hours || '-'}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                    {report.late_minutes || '-'}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                    {report.undertime_minutes || '-'}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                    {report.night_differential_hours || '-'}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                    {report.overtime_hours || '-'}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          ));
                         })()}
                       </tbody>
                     </table>
@@ -2413,7 +2364,7 @@ const TeamLeaderScheduleReport = () => {
             )}
 
             {/* No Report State */}
-            {(!Array.isArray(getFilteredMemberReports()) || getFilteredMemberReports().length === 0) && !loading && (
+            {(!Array.isArray(individualMemberReports) || individualMemberReports.length === 0) && !loading && (
               <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-12 text-center">
                 <div className="text-gray-500">
                   <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -2465,7 +2416,7 @@ const TeamLeaderScheduleReport = () => {
                       <div>
                         <div className="text-lg font-semibold text-green-600">
                           {selectedEmployee && selectedEmployee !== 'all' 
-                            ? getFilteredMemberReports().filter(r => r.status === 'present').length
+                          ? individualMemberReports.filter(r => r.status === 'present').length
                             : teamSummary.total_present
                           }
                         </div>
@@ -2480,7 +2431,7 @@ const TeamLeaderScheduleReport = () => {
                       <div>
                         <div className="text-lg font-semibold text-red-600">
                           {selectedEmployee && selectedEmployee !== 'all' 
-                            ? getFilteredMemberReports().filter(r => r.status === 'absent').length
+                          ? individualMemberReports.filter(r => r.status === 'absent').length
                             : teamSummary.total_absent
                           }
                         </div>
@@ -2495,7 +2446,7 @@ const TeamLeaderScheduleReport = () => {
                       <div>
                         <div className="text-lg font-semibold text-yellow-600">
                           {selectedEmployee && selectedEmployee !== 'all' 
-                            ? getFilteredMemberReports().filter(r => r.status === 'late').length
+                          ? individualMemberReports.filter(r => r.status === 'late').length
                             : teamSummary.total_late
                           }
                         </div>
@@ -2663,7 +2614,7 @@ const TeamLeaderScheduleReport = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {Array.isArray(memberReports) && memberReports
+                      {Array.isArray(individualMemberReports) && individualMemberReports
                         .filter(report => report.employee_id === selectedMember.id)
                         .map((report) => {
                           // Safe date and time parsing with fallbacks
@@ -2775,6 +2726,7 @@ const TeamLeaderScheduleReport = () => {
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Day</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time In</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time Out</th>
@@ -2788,72 +2740,77 @@ const TeamLeaderScheduleReport = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {individualMemberReports.map((entry, index) => (
-                        <tr key={index} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {moment(entry.date).format('MMM DD')}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {moment(entry.date).format('ddd')}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              {getStatusIcon(entry.status)}
-                              <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(entry.status)}`}>
-                                {getStatusDisplay(entry.status)}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {formatTime(entry.time_in)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {formatTime(entry.time_out)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {formatTime(entry.scheduled_time_in)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {formatTime(entry.scheduled_time_out)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <div className="flex flex-col">
-                              <span>{entry.billed_hours || '-'}</span>
-                              {entry.billed_hours === 0 && entry.time_in && entry.time_out && entry.scheduled_time_in && 
-                               moment(`2000-01-01 ${entry.time_in}`).isValid() && 
-                               moment(`2000-01-01 ${entry.scheduled_time_in}`).isValid() &&
-                               moment(`2000-01-01 ${entry.time_in}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) &&
-                               moment(`2000-01-01 ${entry.time_out}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) && (
-                                <div className="text-xs text-red-600 font-normal">
-                                  ⚠️ Shift voided
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {entry.late_minutes || '-'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {entry.undertime_minutes || '-'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <div className="flex flex-col">
-                              <span>{entry.night_differential_hours || '-'}</span>
-                              {entry.night_differential_hours === 0 && entry.time_in && entry.time_out && entry.scheduled_time_in && 
-                               moment(`2000-01-01 ${entry.time_in}`).isValid() && 
-                               moment(`2000-01-01 ${entry.scheduled_time_in}`).isValid() &&
-                               moment(`2000-01-01 ${entry.time_in}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) &&
-                               moment(`2000-01-01 ${entry.time_out}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) && (
-                                <div className="text-xs text-red-600 font-normal">
-                                  ⚠️ Shift voided
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {entry.overtime_hours || '-'}
-                          </td>
-                        </tr>
+                      {getGroupedDataByDate().map((dateGroup, dateIndex) => (
+                        dateGroup.reports.map((entry, reportIndex) => (
+                          <tr key={`${dateGroup.date}-${entry.id}`} className={`hover:bg-gray-50 ${reportIndex === 0 ? 'border-t-2 border-blue-200' : ''}`}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {reportIndex === 0 ? moment(entry.date).format('MMM DD') : ''}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {reportIndex === 0 ? moment(entry.date).format('ddd') : ''}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                              {entry.employee_name}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                {getStatusIcon(entry.status)}
+                                <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(entry.status)}`}>
+                                  {getStatusDisplay(entry.status)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {entry.time_in_formatted || formatTime(entry.time_in) || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {entry.time_out_formatted || formatTime(entry.time_out) || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {entry.scheduled_time_in_formatted || formatTime(entry.scheduled_time_in) || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {entry.scheduled_time_out_formatted || formatTime(entry.scheduled_time_out) || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <div className="flex flex-col">
+                                <span>{entry.billed_hours || '-'}</span>
+                                {entry.billed_hours === 0 && entry.time_in && entry.time_out && entry.scheduled_time_in && 
+                                 moment(`2000-01-01 ${entry.time_in}`).isValid() && 
+                                 moment(`2000-01-01 ${entry.scheduled_time_in}`).isValid() &&
+                                 moment(`2000-01-01 ${entry.time_in}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) &&
+                                 moment(`2000-01-01 ${entry.time_out}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) && (
+                                  <div className="text-xs text-red-600 font-normal">
+                                    ⚠️ Shift voided
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {entry.late_minutes || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {entry.undertime_minutes || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <div className="flex flex-col">
+                                <span>{entry.night_differential_hours || '-'}</span>
+                                {entry.night_differential_hours === 0 && entry.time_in && entry.time_out && entry.scheduled_time_in && 
+                                 moment(`2000-01-01 ${entry.time_in}`).isValid() && 
+                                 moment(`2000-01-01 ${entry.scheduled_time_in}`).isValid() &&
+                                 moment(`2000-01-01 ${entry.time_in}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) &&
+                                 moment(`2000-01-01 ${entry.time_out}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) && (
+                                  <div className="text-xs text-red-600 font-normal">
+                                    ⚠️ Shift voided
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {entry.overtime_hours || '-'}
+                            </td>
+                          </tr>
+                        ))
                       ))}
                     </tbody>
                   </table>

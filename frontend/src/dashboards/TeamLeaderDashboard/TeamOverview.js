@@ -14,7 +14,7 @@ const stats = [
     isButton: true,
   },
   {
-    label: 'Currently Active',
+    label: 'Currently Active',  // This now shows team members with open sessions (clocked in)
     icon: (
       <svg className="w-7 h-7 text-emerald-300" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -25,7 +25,7 @@ const stats = [
     valueKey: 'present',
   },
   {
-    label: 'No Shift Entry',
+    label: 'No Shift Entry',  // This shows team members with no time entries today
     icon: (
       <svg className="w-7 h-7 text-red-300" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -43,17 +43,17 @@ const stats = [
       </svg>
     ),
     color: 'bg-gradient-to-br from-amber-600 to-orange-700',
-    hoverColor: 'hover:from-amber-500 hover:to-orange-600',
+    hoverColor: 'hover:from-amber-500 hover:to-pink-600',
     valueKey: 'pendingApprovals',
   },
 ];
 
 const TeamOverview = ({ teamMembersCount, teamAttendance, pendingApprovals, onTeamMembersClick, onPresentTodayClick, onPendingApprovalsClick, onAbsentTodayClick }) => {
   const values = {
-    teamMembersCount,
-    present: teamAttendance?.present ?? 0,
-    absent: teamAttendance?.absent ?? 0,
-    pendingApprovals: pendingApprovals ?? 0,
+    teamMembersCount,  // Total number of team members
+    present: teamAttendance?.active ?? 0,  // Currently active (clocked in) team members
+    absent: teamAttendance?.absent ?? 0,   // Team members with no time entries today
+    pendingApprovals: pendingApprovals ?? 0,  // Pending approval requests
   };
 
   return (
@@ -112,7 +112,18 @@ const TeamOverview = ({ teamMembersCount, teamAttendance, pendingApprovals, onTe
               <div className="text-3xl font-bold text-white mb-1 group-hover:scale-110 transition-transform duration-300">
                 {values.present}
               </div>
-              <div className="text-emerald-100 text-sm font-medium opacity-90">{stats[1].label}</div>
+              <div className="text-emerald-100 text-sm font-medium opacity-90 flex items-center gap-2">
+                {stats[1].label}
+                <svg 
+                  className="w-4 h-4 text-emerald-200 opacity-70" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                  title="Shows team members currently clocked in (have open sessions)"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z" />
+                </svg>
+              </div>
             </div>
             <div className="text-emerald-200 opacity-60 group-hover:opacity-100 transition-opacity duration-300">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -596,13 +596,24 @@ class DashboardAPIView(APIView):
             }
 
     def _get_team_attendance(self, team_members):
-        """Get team attendance for today"""
+        """
+        Get team attendance for today
+        
+        Returns:
+        - present: Count of team members with any time entries today
+        - absent: Count of team members with no time entries today  
+        - late: Count of late team members (placeholder for future)
+        - active: Count of team members currently clocked in (have open sessions)
+                 This includes night shift workers who started yesterday and haven't clocked out
+        """
         today = timezone.now().date()
+        yesterday = today - timedelta(days=1)
         
         # Initialize counters
         present_count = 0
         absent_count = 0
         late_count = 0
+        active_count = 0  # NEW: Count of currently active team members
         
         # Detailed attendance data for other purposes
         attendance_data = []
@@ -615,12 +626,43 @@ class DashboardAPIView(APIView):
                 Q(timestamp__date=today) | Q(event_time__date=today)
             ).order_by('timestamp')
             
+            # Get yesterday's entries for night shift detection
+            yesterday_entries = TimeEntry.objects.filter(
+                employee=member
+            ).filter(
+                Q(timestamp__date=yesterday) | Q(event_time__date=yesterday)
+            ).order_by('timestamp')
+            
             if today_entries.exists():
                 first_entry = today_entries.first()
                 last_entry = today_entries.last()
                 
                 # Count as present if they have any time entries today
                 present_count += 1
+                
+                # Check if they are currently active (have an open session)
+                is_active = False
+                
+                # Check for open session from yesterday (night shift)
+                if yesterday_entries.exists():
+                    last_yest_in = yesterday_entries.filter(entry_type='time_in').last()
+                    last_yest_out = yesterday_entries.filter(entry_type='time_out').last()
+                    if last_yest_in and (not last_yest_out or last_yest_out.timestamp < last_yest_in.timestamp):
+                        # Check if there's a time-out today after the yesterday time-in
+                        today_out = today_entries.filter(entry_type='time_out', timestamp__gt=last_yest_in.timestamp).first()
+                        if not today_out:
+                            is_active = True
+                
+                # Check for open session today
+                if today_entries.exists():
+                    last_today_in = today_entries.filter(entry_type='time_in').last()
+                    last_today_out = today_entries.filter(entry_type='time_out').last()
+                    if last_today_in and (not last_today_out or last_today_out.timestamp < last_today_in.timestamp):
+                        is_active = True
+                
+                # Increment active count if they have an open session
+                if is_active:
+                    active_count += 1
                 
                 status = 'present'
                 if first_entry.entry_type == 'time_in':
@@ -632,6 +674,7 @@ class DashboardAPIView(APIView):
                     'employee_id': member.id,
                     'employee_name': member.full_name,
                     'status': status,
+                    'is_active': is_active,  # NEW: Add active status
                     'first_entry': first_entry.timestamp.strftime('%H:%M'),
                     'last_entry': last_entry.timestamp.strftime('%H:%M') if last_entry != first_entry else None
                 })
@@ -641,6 +684,7 @@ class DashboardAPIView(APIView):
                     'employee_id': member.id,
                     'employee_name': member.full_name,
                     'status': 'absent',
+                    'is_active': False,  # NEW: Add active status
                     'first_entry': None,
                     'last_entry': None
                 })
@@ -650,6 +694,7 @@ class DashboardAPIView(APIView):
             'present': present_count,
             'absent': absent_count,
             'late': late_count,
+            'active': active_count,  # NEW: Return active count
             'detailed_data': attendance_data
         }
 
@@ -3131,6 +3176,12 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(date__gte=start_date)
         if end_date:
             queryset = queryset.filter(date__lte=end_date)
+        if employee_id and not request.user.is_staff:  # Only filter by employee for non-staff
+            try:
+                employee_profile = Employee.objects.get(employee_id=employee_id)
+                queryset = queryset.filter(employee=employee_profile)
+            except Employee.DoesNotExist:
+                queryset = DailyTimeSummary.objects.none()  # Return empty if employee not found
         
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -3624,6 +3675,7 @@ class DailyTimeSummaryViewSet(viewsets.ReadOnlyModelViewSet):
         # Filter by date range if provided
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        employee_id = request.query_params.get('employee')  # Added this to check for employee filtering
         
         queryset = self.get_queryset()
         
@@ -3631,6 +3683,12 @@ class DailyTimeSummaryViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(date__gte=start_date)
         if end_date:
             queryset = queryset.filter(date__lte=end_date)
+        if employee_id and not request.user.is_staff:  # Only filter by employee for non-staff
+            try:
+                employee_profile = Employee.objects.get(employee_id=employee_id)
+                queryset = queryset.filter(employee=employee_profile)
+            except Employee.DoesNotExist:
+                queryset = DailyTimeSummary.objects.none()  # Return empty if employee not found
         
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
