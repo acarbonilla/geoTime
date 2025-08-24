@@ -89,6 +89,8 @@ const ScheduleReport = () => {
   const [useAdminStyleAPI, setUseAdminStyleAPI] = useState(true);
   const [adminStyleData, setAdminStyleData] = useState([]);
   const [error, setError] = useState(null);
+  const [consecutivePatterns, setConsecutivePatterns] = useState([]);
+  const [showPatternPanel, setShowPatternPanel] = useState(false);
 
   // Debug state changes
   useEffect(() => {
@@ -498,6 +500,17 @@ const ScheduleReport = () => {
       if (response.data.results && Array.isArray(response.data.results)) {
         console.log('✅ Setting adminStyleData with', response.data.results.length, 'records');
         setAdminStyleData(response.data.results);
+        
+        // Extract consecutive patterns if available
+        if (response.data.consecutive_patterns && Array.isArray(response.data.consecutive_patterns)) {
+          console.log('🌙 Found consecutive nightshift patterns:', response.data.consecutive_patterns.length);
+          setConsecutivePatterns(response.data.consecutive_patterns);
+          setShowPatternPanel(response.data.consecutive_patterns.length > 0);
+        } else {
+          setConsecutivePatterns([]);
+          setShowPatternPanel(false);
+        }
+        
         console.log('✅ adminStyleData state should now contain', response.data.results.length, 'records');
         toast.success('Admin Style data loaded successfully');
       } else {
@@ -3773,6 +3786,104 @@ const ScheduleReport = () => {
           </div>
         )}
 
+        {/* Consecutive Nightshift Pattern Detection Panel */}
+        {showPatternPanel && consecutivePatterns.length > 0 && (
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl shadow-xl border border-indigo-200 p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                  <span className="text-indigo-600 text-xl">🌙</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-indigo-900">
+                    Consecutive Nightshift Pattern Detection
+                  </h3>
+                  <p className="text-sm text-indigo-600">
+                    Found {consecutivePatterns.length} pattern(s) that can be corrected together
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPatternPanel(false)}
+                className="text-indigo-400 hover:text-indigo-600 transition-colors"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {consecutivePatterns.map((pattern, index) => (
+                <div key={pattern.id} className="bg-white rounded-lg border border-indigo-200 p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                      Pattern {index + 1}
+                    </span>
+                    <span className="text-sm text-indigo-600 font-medium">
+                      {pattern.total_days} days
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="text-sm">
+                      <span className="font-medium text-gray-700">Date Range:</span>
+                      <span className="ml-2 text-gray-600">
+                        {moment(pattern.start_date).format('MMM DD')} - {moment(pattern.end_date).format('MMM DD')}
+                      </span>
+                    </div>
+                    
+                    <div className="text-sm">
+                      <span className="font-medium text-gray-700">Schedule:</span>
+                      <span className="ml-2 text-gray-600">
+                        {pattern.scheduled_start_time} - {pattern.scheduled_end_time}
+                      </span>
+                    </div>
+                    
+                    <div className="text-sm">
+                      <span className="font-medium text-gray-700">Missing Timeouts:</span>
+                      <span className="ml-2 text-red-600 font-medium">
+                        {pattern.missing_timeouts} days
+                      </span>
+                    </div>
+                    
+                    <div className="text-sm text-gray-600">
+                      {pattern.description}
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 flex space-x-2">
+                    <button
+                      onClick={() => window.handleBulkCorrection(pattern)}
+                      className="flex-1 bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors"
+                    >
+                      🌙 Bulk Correct
+                    </button>
+                    <button
+                      onClick={() => window.viewPatternDetails(pattern)}
+                      className="flex-1 bg-white text-indigo-600 border border-indigo-300 px-3 py-2 rounded-md text-sm font-medium hover:bg-indigo-50 transition-colors"
+                    >
+                      📋 View Details
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+              <div className="flex items-start space-x-3">
+                <InformationCircleIcon className="w-5 h-5 text-indigo-600 mt-0.5" />
+                <div className="text-sm text-indigo-700">
+                  <p className="font-medium mb-1">💡 Smart Pattern Detection</p>
+                  <p>
+                    This system automatically detects consecutive nightshift patterns that can be corrected together. 
+                    Instead of submitting 5 separate correction requests, you can now correct all {consecutivePatterns.length} pattern(s) 
+                    with a single bulk correction request, saving time for both you and your Team Leader.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* No Report State */}
         {!report && !loading && (
           <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-12 text-center">
@@ -3807,6 +3918,57 @@ const ScheduleReport = () => {
           </div>
         )}
       </div>
+      
+      {/* Handler functions for pattern detection */}
+      {(() => {
+        const handleBulkCorrection = (pattern) => {
+          console.log('🌙 Bulk correction requested for pattern:', pattern);
+          
+          // Show confirmation dialog
+          const confirmed = window.confirm(
+            `Are you sure you want to create a bulk correction request for ${pattern.total_days} consecutive nightshifts?\n\n` +
+            `Date Range: ${moment(pattern.start_date).format('MMM DD')} - ${moment(pattern.end_date).format('MMM DD')}\n` +
+            `Schedule: ${pattern.scheduled_start_time} - ${pattern.scheduled_end_time}\n\n` +
+            `This will create a single correction request instead of ${pattern.total_days} individual requests.`
+          );
+          
+          if (confirmed) {
+            // Navigate to TimeCorrectionRequestForm with pattern data
+            const patternData = encodeURIComponent(JSON.stringify(pattern));
+            window.location.href = `/time-correction-request?pattern=${patternData}`;
+          }
+        };
+
+        const viewPatternDetails = (pattern) => {
+          console.log('📋 Viewing pattern details:', pattern);
+          
+          // Create a detailed view modal or expand the pattern card
+          const details = `
+🌙 Consecutive Nightshift Pattern Details
+
+Pattern ID: ${pattern.id}
+Date Range: ${moment(pattern.start_date).format('MMM DD, YYYY')} - ${moment(pattern.end_date).format('MMM DD, YYYY')}
+Total Days: ${pattern.total_days}
+Missing Timeouts: ${pattern.missing_timeouts}
+Schedule: ${pattern.scheduled_start_time} - ${pattern.scheduled_end_time}
+
+Description: ${pattern.description}
+
+Affected Records:
+${pattern.records.map((record, index) => 
+  `${index + 1}. ${record.date}: ${record.time_in || 'No time in'} - ${record.time_out || 'Missing timeout'}`
+).join('\n')}
+
+This pattern can be corrected with a single bulk correction request instead of ${pattern.total_days} individual requests.
+          `;
+          
+          alert(details);
+        };
+
+        // Make functions available globally for the buttons
+        window.handleBulkCorrection = handleBulkCorrection;
+        window.viewPatternDetails = viewPatternDetails;
+      })()}
       
       {/* Add custom styles for nightshift rows */}
       <style dangerouslySetInnerHTML={{

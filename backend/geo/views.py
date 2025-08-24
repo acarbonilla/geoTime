@@ -4177,6 +4177,9 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         # Group nightshift records that span midnight
         grouped_data = self._group_nightshift_records(data)
         
+        # Detect consecutive nightshift patterns for bulk correction
+        consecutive_patterns = self.detect_consecutive_nightshift_patterns(data)
+        
         # Transform the data to match admin display format
         admin_formatted_data = []
         for record in grouped_data:
@@ -4211,7 +4214,32 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         return Response({
             'count': len(admin_formatted_data),
             'results': admin_formatted_data,
-            'admin_format': True
+            'consecutive_patterns': consecutive_patterns,
+            'admin_format': True,
+            'has_patterns': len(consecutive_patterns) > 0
+        })
+    
+    @action(detail=False, methods=['get'])
+    def detect_patterns(self, request):
+        """
+        Dedicated endpoint for detecting consecutive nightshift patterns.
+        This can be called independently to get just the patterns.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        data = serializer.data
+        
+        # Detect patterns
+        patterns = self.detect_consecutive_nightshift_patterns(data)
+        
+        return Response({
+            'patterns': patterns,
+            'total_patterns': len(patterns),
+            'has_patterns': len(patterns) > 0,
+            'date_range': {
+                'start_date': request.query_params.get('start_date'),
+                'end_date': request.query_params.get('end_date')
+            }
         })
     
     def _group_nightshift_records(self, data):
@@ -4333,6 +4361,129 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
             pass
         
         return False
+    
+    def detect_consecutive_nightshift_patterns(self, data):
+        """
+        Detect patterns of consecutive incomplete nightshifts that can be corrected together.
+        This helps identify when multiple days need time corrections for the same pattern.
+        """
+        if not data:
+            return []
+            
+        patterns = []
+        i = 0
+        
+        while i < len(data):
+            current = data[i]
+            
+            # Check if current record starts a consecutive nightshift pattern
+            if self._is_nightshift(current) and self._is_incomplete_shift(current):
+                pattern = self._extract_consecutive_pattern(data, i)
+                if pattern and pattern['length'] > 1:
+                    patterns.append(pattern)
+                    i += pattern['length']  # Skip processed records
+                else:
+                    i += 1
+            else:
+                i += 1
+        
+        return patterns
+    
+    def _extract_consecutive_pattern(self, data, start_index):
+        """
+        Extract a consecutive nightshift pattern starting at start_index.
+        Returns pattern details or None if no pattern found.
+        """
+        if start_index >= len(data):
+            return None
+            
+        current = data[start_index]
+        pattern_records = [current]
+        current_date = self._parse_date(current['date'])
+        
+        # Look ahead for consecutive days with similar nightshift patterns
+        i = start_index + 1
+        while i < len(data):
+            next_record = data[i]
+            next_date = self._parse_date(next_record['date'])
+            
+            # Check if this is the next consecutive day
+            if not self._is_consecutive_day(current_date, next_date):
+                break
+                
+            # Check if this day also has an incomplete nightshift
+            if self._is_nightshift(next_record) and self._is_incomplete_shift(next_record):
+                # Check if the nightshift patterns are similar (same schedule times)
+                if self._has_similar_nightshift_pattern(current, next_record):
+                    pattern_records.append(next_record)
+                    current_date = next_date
+                    i += 1
+                else:
+                    break
+            else:
+                break
+        
+        # Only return pattern if we have multiple days
+        if len(pattern_records) > 1:
+            return {
+                'id': f"pattern_{start_index}",
+                'start_date': pattern_records[0]['date'],
+                'end_date': pattern_records[-1]['date'],
+                'length': len(pattern_records),
+                'records': pattern_records,
+                'pattern_type': 'consecutive_nightshift',
+                'scheduled_start_time': pattern_records[0].get('scheduled_time_in', ''),
+                'scheduled_end_time': pattern_records[0].get('scheduled_time_out', ''),
+                'total_days': len(pattern_records),
+                'missing_timeouts': len([r for r in pattern_records if not r.get('time_out') or r.get('time_out') == '-']),
+                'description': f"{len(pattern_records)} consecutive nightshifts from {pattern_records[0]['date']} to {pattern_records[-1]['date']}"
+            }
+        
+        return None
+    
+    def _is_consecutive_day(self, date1, date2):
+        """Check if date2 is the next consecutive day after date1"""
+        from datetime import timedelta
+        return date2 == date1 + timedelta(days=1)
+    
+    def _has_similar_nightshift_pattern(self, record1, record2):
+        """
+        Check if two records have similar nightshift patterns.
+        This helps identify consecutive days that should be corrected together.
+        """
+        # Check if both have similar scheduled times
+        scheduled_in1 = record1.get('scheduled_time_in')
+        scheduled_out1 = record1.get('scheduled_time_out')
+        scheduled_in2 = record2.get('scheduled_time_in')
+        scheduled_out2 = record2.get('scheduled_time_out')
+        
+        if not all([scheduled_in1, scheduled_out1, scheduled_in2, scheduled_out2]):
+            return False
+        
+        try:
+            # Parse times and check if they're within 1 hour of each other
+            from datetime import datetime
+            time1_in = datetime.strptime(scheduled_in1, '%I:%M %p').time()
+            time1_out = datetime.strptime(scheduled_out1, '%I:%M %p').time()
+            time2_in = datetime.strptime(scheduled_in2, '%I:%M %p').time()
+            time2_out = datetime.strptime(scheduled_out2, '%I:%M %p').time()
+            
+            # Check if times are within 1 hour (allowing for slight variations)
+            time_diff_in = abs((time2_in.hour * 60 + time2_in.minute) - (time1_in.hour * 60 + time1_in.minute))
+            time_diff_out = abs((time2_out.hour * 60 + time2_out.minute) - (time1_out.hour * 60 + time1_out.minute))
+            
+            return time_diff_in <= 60 and time_diff_out <= 60
+            
+        except:
+            return False
+    
+    def _parse_date(self, date_str):
+        """Parse date string to datetime.date object"""
+        from datetime import datetime
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d').date()
+        except:
+            return None
     
     def _format_display_date(self, date_str):
         """Format date for display (e.g., 'Aug 23')"""
