@@ -349,7 +349,9 @@ const Reports = () => {
       const headers = [['Name', 'Type', 'Date', 'Time', 'Location']];
       
       const data = filteredEntries.map(entry => {
-        const { date, time } = formatExportDateTime(entry.timestamp);
+        // Use event_time for the actual working time, fallback to timestamp if event_time is not available
+        const timeSource = entry.event_time || entry.timestamp;
+        const { date, time } = formatExportDateTime(timeSource);
         const entryType = entry.entry_type === 'time_in' ? 'Time In' : 
                         entry.entry_type === 'time_out' ? 'Time Out' : 
                         entry.entry_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -578,8 +580,10 @@ const Reports = () => {
     try {
       const headers = ['Employee', 'Type', 'Date', 'Time', 'Location', 'Overtime', 'Notes', 'Coordinates'];
       const rows = filteredEntries.map(entry => {
-        const date = formatDate(entry.timestamp);
-        const time = formatTime(entry.timestamp);
+        // Use event_time for the actual working time, fallback to timestamp if event_time is not available
+        const timeSource = entry.event_time || entry.timestamp;
+        const date = formatDate(timeSource);
+        const time = formatTime(timeSource);
         return [
           entry.employee_name || 'You',
           entry.entry_type === 'time_in' ? 'Time In' : 'Time Out',
@@ -914,8 +918,10 @@ const Reports = () => {
                     </tr>
                   ) : (
                     currentEntries.map((entry, idx) => {
-                      const date = formatDate(entry.timestamp);
-                      const formattedTime = formatTime(entry.timestamp);
+                      // Use event_time for the actual working time, fallback to timestamp if event_time is not available
+                      const timeSource = entry.event_time || entry.timestamp;
+                      const date = formatDate(timeSource);
+                      const formattedTime = formatTime(timeSource);
                       return (
                         <tr
                           key={entry.id}

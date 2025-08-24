@@ -382,7 +382,7 @@ const TeamTimeEntries = ({ isOpen, onClose }) => {
           entries: memberEntries,
           entryCount,
           status,
-          lastActivity: lastEntry ? format(parseISO(lastEntry.timestamp), 'h:mm a') : 'N/A',
+          lastActivity: lastEntry ? format(parseISO(lastEntry.event_time || lastEntry.timestamp), 'h:mm a') : 'N/A',
           totalHours: totalHours > 0 ? `${totalHours} hrs` : 'N/A',
         };
       });
@@ -737,7 +737,7 @@ const TeamTimeEntries = ({ isOpen, onClose }) => {
                                     </div>
                                     <div className="flex items-center space-x-3">
                                       <span className="text-sm text-gray-600">
-                                        {format(parseISO(entry.timestamp), 'MMM dd, yyyy h:mm a')}
+                                        {format(parseISO(entry.event_time || entry.timestamp), 'MMM dd, yyyy h:mm a')}
                                             </span>
                                       {hasApprovedCorrection(entry.id) && (
                                         <Tooltip text="This entry has an approved correction.">

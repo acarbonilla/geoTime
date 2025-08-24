@@ -731,7 +731,9 @@ const TeamLeaderReports = ({ employee }) => {
   const exportCSV = () => {
     const header = ['Employee', 'Department', 'Entry Type', 'Date', 'Time', 'Location', 'Overtime', 'Notes', 'Coordinates'];
     const rows = filteredEntries.map(e => {
-      const { date, time } = formatExportDateTime(e.timestamp);
+      // Use event_time for the actual working time, fallback to timestamp if event_time is not available
+      const timeSource = e.event_time || e.timestamp;
+      const { date, time } = formatExportDateTime(timeSource);
       const coordinates = e.latitude && e.longitude ? `${e.latitude}, ${e.longitude}` : 'No location';
       return [
         e.employee_name,
@@ -752,7 +754,9 @@ const TeamLeaderReports = ({ employee }) => {
 
   const exportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(filteredEntries.map(e => {
-      const { date, time } = formatExportDateTime(e.timestamp);
+      // Use event_time for the actual working time, fallback to timestamp if event_time is not available
+      const timeSource = e.event_time || e.timestamp;
+      const { date, time } = formatExportDateTime(timeSource);
       const coordinates = e.latitude && e.longitude ? `${e.latitude}, ${e.longitude}` : 'No location';
       return {
         Employee: e.employee_name,
@@ -780,7 +784,9 @@ const TeamLeaderReports = ({ employee }) => {
         'Employee', 'Department', 'Entry Type', 'Date', 'Time', 'Location', 'Overtime', 'Notes', 'Coordinates'
       ]],
       body: filteredEntries.map(e => {
-        const { date, time } = formatExportDateTime(e.timestamp);
+        // Use event_time for the actual working time, fallback to timestamp if event_time is not available
+        const timeSource = e.event_time || e.timestamp;
+        const { date, time } = formatExportDateTime(timeSource);
         return [
           e.employee_name,
           e.department_name,
@@ -1360,20 +1366,21 @@ const TeamLeaderReports = ({ employee }) => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
                     {filteredEntries.map((e, idx) => {
-                      const ts = e.timestamp || '';
+                      // Use event_time for the actual working time, fallback to timestamp if event_time is not available
+                      const timeSource = e.event_time || e.timestamp || '';
                       let date = '', time = '', formattedTime = '';
-                      if (ts) {
-                        let tsISO = ts.replace(/\.(\d+)([\+\-]\d{2}:\d{2})$/, '$2');
+                      if (timeSource) {
+                        let tsISO = timeSource.replace(/\.(\d+)([\+\-]\d{2}:\d{2})$/, '$2');
                         const dt = new Date(tsISO);
                         if (!isNaN(dt)) {
                           date = dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
                           formattedTime = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' });
                         } else {
-                          if (ts.includes('T')) {
-                            [date, time] = ts.split('T');
+                          if (timeSource.includes('T')) {
+                            [date, time] = timeSource.split('T');
                             formattedTime = time ? time.split('.')[0] : '';
                           } else {
-                            formattedTime = ts;
+                            formattedTime = timeSource;
                           }
                         }
                       }

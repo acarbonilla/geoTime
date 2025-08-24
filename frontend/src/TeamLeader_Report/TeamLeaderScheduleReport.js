@@ -2291,68 +2291,68 @@ const TeamLeaderScheduleReport = () => {
                           
                           return groupedData.map((dateGroup, dateIndex) => (
                             dateGroup.reports.map((report, reportIndex) => {
-                              const reportDate = report.date ? new Date(report.date) : new Date();
-                              const dayName = reportDate.toLocaleDateString('en-US', { weekday: 'short' });
-                              
+                            const reportDate = report.date ? new Date(report.date) : new Date();
+                            const dayName = reportDate.toLocaleDateString('en-US', { weekday: 'short' });
+                            
                               // Simple row styling based on night shift status
-                              let rowClassName = "hover:bg-gray-50 transition-colors duration-200";
+                            let rowClassName = "hover:bg-gray-50 transition-colors duration-200";
                               if (report.is_night_shift) {
                                 rowClassName += " bg-blue-50 border-l-4 border-blue-400";
-                              }
-                              
-                              return (
+                            }
+                            
+                            return (
                                 <tr key={`${dateGroup.date}-${report.id || reportIndex}`} className={rowClassName}>
-                                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                                <td className="px-6 py-4 text-sm font-medium text-gray-900">
                                     {reportIndex === 0 ? <span>{reportDate.toLocaleDateString()}</span> : ''}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-gray-900">
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900">
                                     {reportIndex === 0 ? <span>{dayName}</span> : ''}
                                   </td>
                                   <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                     {report.employee_name}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm">
-                                    <div className="flex flex-col space-y-1">
+                                </td>
+                                <td className="px-6 py-4 text-sm">
+                                  <div className="flex flex-col space-y-1">
                                       <span className={`inline-flex items-center space-x-2 px-3 py-1 text-xs font-medium rounded-full ${getStatusStyling(report.status)}`}>
                                         {report.status}
-                                      </span>
+                                    </span>
                                       {report.is_night_shift && (
-                                        <span className="inline-flex items-center space-x-2 px-2 py-1 text-xs font-medium rounded-full border border-blue-200 text-blue-800 bg-blue-100">
-                                          🌙 Nightshift
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                      <span className="inline-flex items-center space-x-2 px-2 py-1 text-xs font-medium rounded-full border border-blue-200 text-blue-800 bg-blue-100">
+                                        🌙 Nightshift
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                     {report.time_in_formatted}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                     {report.time_out_formatted}
-                                  </td>
+                                </td>
 
-                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                     {report.scheduled_time_in_formatted}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                     {report.scheduled_time_out_formatted}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                     {report.billed_hours || '-'}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                     {report.late_minutes || '-'}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                     {report.undertime_minutes || '-'}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                     {report.night_differential_hours || '-'}
                                   </td>
                                   <td className="px-6 py-4 text-sm text-gray-900 font-medium">
                                     {report.overtime_hours || '-'}
-                                  </td>
-                                </tr>
-                              );
+                                </td>
+                              </tr>
+                            );
                             })
                           ));
                         })()}
@@ -2743,73 +2743,73 @@ const TeamLeaderScheduleReport = () => {
                       {getGroupedDataByDate().map((dateGroup, dateIndex) => (
                         dateGroup.reports.map((entry, reportIndex) => (
                           <tr key={`${dateGroup.date}-${entry.id}`} className={`hover:bg-gray-50 ${reportIndex === 0 ? 'border-t-2 border-blue-200' : ''}`}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {reportIndex === 0 ? moment(entry.date).format('MMM DD') : ''}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {reportIndex === 0 ? moment(entry.date).format('ddd') : ''}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                               {entry.employee_name}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                {getStatusIcon(entry.status)}
-                                <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(entry.status)}`}>
-                                  {getStatusDisplay(entry.status)}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              {getStatusIcon(entry.status)}
+                              <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(entry.status)}`}>
+                                {getStatusDisplay(entry.status)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {entry.time_in_formatted || formatTime(entry.time_in) || '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {entry.time_out_formatted || formatTime(entry.time_out) || '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {entry.scheduled_time_in_formatted || formatTime(entry.scheduled_time_in) || '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {entry.scheduled_time_out_formatted || formatTime(entry.scheduled_time_out) || '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              <div className="flex flex-col">
-                                <span>{entry.billed_hours || '-'}</span>
-                                {entry.billed_hours === 0 && entry.time_in && entry.time_out && entry.scheduled_time_in && 
-                                 moment(`2000-01-01 ${entry.time_in}`).isValid() && 
-                                 moment(`2000-01-01 ${entry.scheduled_time_in}`).isValid() &&
-                                 moment(`2000-01-01 ${entry.time_in}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) &&
-                                 moment(`2000-01-01 ${entry.time_out}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) && (
-                                  <div className="text-xs text-red-600 font-normal">
-                                    ⚠️ Shift voided
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {entry.late_minutes || '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {entry.undertime_minutes || '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              <div className="flex flex-col">
-                                <span>{entry.night_differential_hours || '-'}</span>
-                                {entry.night_differential_hours === 0 && entry.time_in && entry.time_out && entry.scheduled_time_in && 
-                                 moment(`2000-01-01 ${entry.time_in}`).isValid() && 
-                                 moment(`2000-01-01 ${entry.scheduled_time_in}`).isValid() &&
-                                 moment(`2000-01-01 ${entry.time_in}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) &&
-                                 moment(`2000-01-01 ${entry.time_out}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) && (
-                                  <div className="text-xs text-red-600 font-normal">
-                                    ⚠️ Shift voided
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {entry.overtime_hours || '-'}
-                            </td>
-                          </tr>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <div className="flex flex-col">
+                              <span>{entry.billed_hours || '-'}</span>
+                              {entry.billed_hours === 0 && entry.time_in && entry.time_out && entry.scheduled_time_in && 
+                               moment(`2000-01-01 ${entry.time_in}`).isValid() && 
+                               moment(`2000-01-01 ${entry.scheduled_time_in}`).isValid() &&
+                               moment(`2000-01-01 ${entry.time_in}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) &&
+                               moment(`2000-01-01 ${entry.time_out}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) && (
+                                <div className="text-xs text-red-600 font-normal">
+                                  ⚠️ Shift voided
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {entry.late_minutes || '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {entry.undertime_minutes || '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <div className="flex flex-col">
+                              <span>{entry.night_differential_hours || '-'}</span>
+                              {entry.night_differential_hours === 0 && entry.time_in && entry.time_out && entry.scheduled_time_in && 
+                               moment(`2000-01-01 ${entry.time_in}`).isValid() && 
+                               moment(`2000-01-01 ${entry.scheduled_time_in}`).isValid() &&
+                               moment(`2000-01-01 ${entry.time_in}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) &&
+                               moment(`2000-01-01 ${entry.time_out}`).isBefore(moment(`2000-01-01 ${entry.scheduled_time_in}`)) && (
+                                <div className="text-xs text-red-600 font-normal">
+                                  ⚠️ Shift voided
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {entry.overtime_hours || '-'}
+                          </td>
+                        </tr>
                         ))
                       ))}
                     </tbody>

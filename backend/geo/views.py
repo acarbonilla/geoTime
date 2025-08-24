@@ -2234,11 +2234,11 @@ class TimeCorrectionRequestViewSet(viewsets.ModelViewSet):
                 print(f"[DEBUG] Starting transaction")
                 # Update the correction request
                 correction_request.status = 'approved'
-                correction_request.approver = approver
+                correction_request.approver = user  # Set to User object, not Employee
                 correction_request.approved_date = timezone.now()
                 correction_request.reviewed_by = approver
                 correction_request.reviewed_at = timezone.now()
-                correction_request.response_message = comments
+                correction_request.comments = comments
                 correction_request.save()
                 print(f"[DEBUG] Updated correction request status to approved")
                 
@@ -2323,84 +2323,102 @@ class TimeCorrectionRequestViewSet(viewsets.ModelViewSet):
             employee = correction_request.employee
             date = correction_request.date
             
-            # Find existing TimeEntry records for this employee and date
-            # Include both timestamp and event_time date filtering
-            time_entries = TimeEntry.objects.filter(
-                employee=employee
-            ).filter(
-                Q(timestamp__date=date) | Q(event_time__date=date)
-            ).order_by('timestamp')
-            
-            print(f"Found {time_entries.count()} existing time entries for {employee.full_name} on {date}")
+            print(f"[DEBUG] Applying time correction for {employee.full_name} on {date}")
+            print(f"[DEBUG] Requested time in: {correction_request.requested_time_in}")
+            print(f"[DEBUG] Requested time out: {correction_request.requested_time_out}")
             
             # Apply time in correction if requested
             if correction_request.requested_time_in:
-                print(f"Processing time in correction: {correction_request.requested_time_in}")
-                # Find or create time in entry
-                time_in_entry = time_entries.filter(entry_type='time_in').first()
+                print(f"[DEBUG] Processing time in correction: {correction_request.requested_time_in}")
+                
+                # Create datetime in the correct timezone
+                corrected_datetime = timezone.datetime.combine(date, correction_request.requested_time_in)
+                corrected_time = timezone.make_aware(corrected_datetime, timezone=timezone.get_current_timezone())
+                
+                # Find existing time in entry for this date
+                time_in_entry = TimeEntry.objects.filter(
+                    employee=employee,
+                    entry_type='time_in',
+                    event_time__date=date
+                ).first()
                 
                 if time_in_entry:
                     # Update existing time in entry
-                    print(f"Updating existing time in entry: {time_in_entry.id}")
-                    # Create datetime in the correct timezone
-                    corrected_datetime = timezone.datetime.combine(date, correction_request.requested_time_in)
-                    corrected_time = timezone.make_aware(corrected_datetime, timezone=timezone.get_current_timezone())
+                    print(f"[DEBUG] Updating existing time in entry: {time_in_entry.id}")
+                    original_time = time_in_entry.event_time
                     time_in_entry.event_time = corrected_time
-                    time_in_entry.notes = f"Corrected via approved request. Original: {time_in_entry.timestamp}"
+                    time_in_entry.notes = f"Corrected via approved request. Original: {original_time}"
+                    time_in_entry.updated_by = correction_request.approver
                     time_in_entry.save()
-                    print(f"Updated time in entry with event_time: {time_in_entry.event_time}")
+                    print(f"[DEBUG] Updated time in entry with event_time: {time_in_entry.event_time}")
                 else:
                     # Create new time in entry
-                    print(f"Creating new time in entry")
-                    # Create datetime in the correct timezone
-                    corrected_datetime = timezone.datetime.combine(date, correction_request.requested_time_in)
-                    corrected_time = timezone.make_aware(corrected_datetime, timezone=timezone.get_current_timezone())
+                    print(f"[DEBUG] Creating new time in entry")
                     new_time_in = TimeEntry.objects.create(
                         employee=employee,
                         entry_type='time_in',
-                        timestamp=corrected_time,
-                        event_time=corrected_time,
-                        notes=f"Created via approved time correction request"
+                        timestamp=timezone.now(),  # Current timestamp for record creation
+                        event_time=corrected_time,  # The actual corrected time
+                        notes=f"Created via approved time correction request",
+                        updated_by=correction_request.approver
                     )
-                    print(f"Created new time in entry: {new_time_in.id}")
-                    print(f"Created time in entry with event_time: {new_time_in.event_time}")
+                    print(f"[DEBUG] Created new time in entry: {new_time_in.id}")
+                    print(f"[DEBUG] Created time in entry with event_time: {new_time_in.event_time}")
             
             # Apply time out correction if requested
             if correction_request.requested_time_out:
-                print(f"Processing time out correction: {correction_request.requested_time_out}")
-                # Find or create time out entry
-                time_out_entry = time_entries.filter(entry_type='time_out').first()
+                print(f"[DEBUG] Processing time out correction: {correction_request.requested_time_out}")
+                
+                # Create datetime in the correct timezone
+                corrected_datetime = timezone.datetime.combine(date, correction_request.requested_time_out)
+                corrected_time = timezone.make_aware(corrected_datetime, timezone=timezone.get_current_timezone())
+                
+                # Find existing time out entry for this date
+                time_out_entry = TimeEntry.objects.filter(
+                    employee=employee,
+                    entry_type='time_out',
+                    event_time__date=date
+                ).first()
                 
                 if time_out_entry:
                     # Update existing time out entry
-                    print(f"Updating existing time out entry: {time_out_entry.id}")
-                    # Create datetime in the correct timezone
-                    corrected_datetime = timezone.datetime.combine(date, correction_request.requested_time_out)
-                    corrected_time = timezone.make_aware(corrected_datetime, timezone=timezone.get_current_timezone())
+                    print(f"[DEBUG] Updating existing time out entry: {time_out_entry.id}")
+                    original_time = time_out_entry.event_time
                     time_out_entry.event_time = corrected_time
-                    time_out_entry.notes = f"Corrected via approved request. Original: {time_out_entry.timestamp}"
+                    time_out_entry.notes = f"Corrected via approved request. Original: {original_time}"
+                    time_out_entry.updated_by = correction_request.approver
                     time_out_entry.save()
-                    print(f"Updated time out entry with event_time: {time_out_entry.event_time}")
+                    print(f"[DEBUG] Updated time out entry with event_time: {time_out_entry.event_time}")
                 else:
                     # Create new time out entry
-                    print(f"Creating new time out entry")
-                    # Create datetime in the correct timezone
-                    corrected_datetime = timezone.datetime.combine(date, correction_request.requested_time_out)
-                    corrected_time = timezone.make_aware(corrected_datetime, timezone=timezone.get_current_timezone())
+                    print(f"[DEBUG] Creating new time out entry")
                     new_time_out = TimeEntry.objects.create(
                         employee=employee,
                         entry_type='time_out',
-                        timestamp=corrected_time,
-                        event_time=corrected_time,
-                        notes=f"Created via approved time correction request"
+                        timestamp=timezone.now(),  # Current timestamp for record creation
+                        event_time=corrected_time,  # The actual corrected time
+                        notes=f"Created via approved time correction request",
+                        updated_by=correction_request.approver
                     )
-                    print(f"Created new time out entry: {new_time_out.id}")
-                    print(f"Created time out entry with event_time: {new_time_out.event_time}")
+                    print(f"[DEBUG] Created new time out entry: {new_time_out.id}")
+                    print(f"[DEBUG] Created time out entry with event_time: {new_time_out.event_time}")
             
-            print(f"Time correction applied successfully for employee {employee.full_name} on {date}")
+            # Force regeneration of daily summary to ensure corrected times are reflected
+            print(f"[DEBUG] Forcing regeneration of daily summary for {date}")
+            from .utils import calculate_daily_summary
+            try:
+                updated_summary = calculate_daily_summary(employee, date)
+                print(f"[DEBUG] Daily summary regenerated successfully: {updated_summary}")
+                print(f"[DEBUG] Updated summary time_in: {updated_summary.time_in}")
+                print(f"[DEBUG] Updated summary time_out: {updated_summary.time_out}")
+            except Exception as summary_error:
+                print(f"[WARNING] Error regenerating daily summary: {str(summary_error)}")
+            
+            print(f"[DEBUG] Time correction applied successfully for employee {employee.full_name} on {date}")
             
         except Exception as e:
-            print(f"Error applying time correction: {str(e)}")
+            print(f"[ERROR] Error applying time correction: {str(e)}")
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
             raise e
 
 
