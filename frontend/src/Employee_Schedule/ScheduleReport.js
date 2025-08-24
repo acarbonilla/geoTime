@@ -1215,13 +1215,46 @@ const ScheduleReport = () => {
     return [];
   };
 
-  // Group DailyTimeSummary data by date to prevent repetition
+  // Enhanced grouping for DailyTimeSummary data with nightshift support
   const getGroupedDailyTimeSummaries = () => {
     if (!dailyTimeSummaries || dailyTimeSummaries.length === 0) {
       return [];
     }
 
-    // Group records by date
+    // First, check if the API already provided grouped nightshift data
+    const hasGroupedData = dailyTimeSummaries.some(record => 
+      record.is_grouped_nightshift || record.spans_midnight
+    );
+
+    if (hasGroupedData) {
+      // API already grouped the data, just format it for display
+      return dailyTimeSummaries.map(record => {
+        if (record.is_grouped_nightshift && record.spans_midnight) {
+          // This is a grouped nightshift record
+          return {
+            ...record,
+            displayDate: record.grouped_display_date || `${moment(record.date).format('MMM DD')} - ${moment(record.next_day_date).format('MMM DD')}`,
+            displayDay: record.grouped_display_day || `${moment(record.date).format('ddd')} - ${moment(record.next_day_date).format('ddd')}`,
+            isNightshift: true,
+            hasMidnightSpan: true,
+            // Use the timeout from next day if available
+            time_out_formatted: record.time_out_from_next_day || record.time_out_formatted || '-',
+            // Mark as grouped for special handling
+            isGroupedNightshift: true
+          };
+        } else {
+          // Regular record
+          return {
+            ...record,
+            displayDate: moment(record.date).format('MMM DD'),
+            displayDay: moment(record.date).format('ddd'),
+            isNightshift: record.is_nightshift || false
+          };
+        }
+      });
+    }
+
+    // Fallback: Group records by date (original logic)
     const groupedByDate = {};
     
     dailyTimeSummaries.forEach(record => {
@@ -3066,6 +3099,7 @@ const ScheduleReport = () => {
                         <tr key={index} className={`hover:bg-gray-50 transition-colors duration-200 ${
                           useAdminStyleAPI ? (
                             // Admin-style row styling (like Django admin)
+                            record.is_grouped_nightshift && record.spans_midnight ? 'nightshift-row bg-indigo-50 border-l-4 border-indigo-500' :
                             record.is_nightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : ''
                           ) : useDailyTimeSummary ? (
                             // DailyTimeSummary row styling
@@ -3083,14 +3117,24 @@ const ScheduleReport = () => {
                               {useAdminStyleAPI ? (
                                 // Admin-style display (like Django admin)
                                 <>
-                                  <span className={record.is_nightshift ? "font-semibold text-blue-700" : ""}>
-                                    {record.display_date}
-                                  </span>
-                                  {record.is_nightshift && (
+                                  {record.is_grouped_nightshift && record.spans_midnight ? (
+                                    <span className="font-semibold text-blue-700">
+                                      {record.grouped_display_date || `${moment(record.date).format('MMM DD')} - ${moment(record.next_day_date).format('MMM DD')}`}
+                                    </span>
+                                  ) : (
+                                    <span className={record.is_nightshift ? "font-semibold text-blue-700" : ""}>
+                                      {record.display_date}
+                                    </span>
+                                  )}
+                                  {record.is_grouped_nightshift && record.spans_midnight ? (
+                                    <div className="text-xs text-blue-600 font-normal">
+                                      🌙 Nightshift (Spans Midnight)
+                                    </div>
+                                  ) : record.is_nightshift ? (
                                     <div className="text-xs text-blue-600 font-normal">
                                       🌙 Nightshift
                                     </div>
-                                  )}
+                                  ) : null}
                                 </>
                               ) : useDailyTimeSummary ? (
                                 // DailyTimeSummary display
@@ -3165,9 +3209,15 @@ const ScheduleReport = () => {
                               {useAdminStyleAPI ? (
                                 // Admin-style display (like Django admin)
                                 <>
-                                  <span className={record.is_nightshift ? "font-semibold text-blue-700" : ""}>
-                                    {record.display_day}
-                                  </span>
+                                  {record.is_grouped_nightshift && record.spans_midnight ? (
+                                    <span className="font-semibold text-blue-700">
+                                      {record.grouped_display_day || `${moment(record.date).format('ddd')} - ${moment(record.next_day_date).format('ddd')}`}
+                                    </span>
+                                  ) : (
+                                    <span className={record.is_nightshift ? "font-semibold text-blue-700" : ""}>
+                                      {record.display_day}
+                                    </span>
+                                  )}
                                 </>
                               ) : useDailyTimeSummary ? (
                                 // DailyTimeSummary display
@@ -3288,7 +3338,24 @@ const ScheduleReport = () => {
                             )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useDailyTimeSummary ? (
+                            {useAdminStyleAPI ? (
+                              // Admin-style time out display (like Django admin)
+                              (() => {
+                                // Handle grouped nightshifts that span midnight
+                                if (record.is_grouped_nightshift && record.spans_midnight && record.time_out_from_next_day) {
+                                  return (
+                                    <div className="text-blue-600">
+                                      <span className="font-medium">{record.time_out_from_next_day}</span>
+                                      <div className="text-xs text-blue-500">
+                                        (Next day: {moment(record.next_day_date).format('MMM DD')})
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                // Regular display
+                                return record.time_out || '-';
+                              })()
+                            ) : useDailyTimeSummary ? (
                               // DailyTimeSummary time out display
                               formatTime(record.time_out_formatted || record.time_out)
                             ) : (
@@ -3751,6 +3818,15 @@ const ScheduleReport = () => {
           
           .nightshift-row:hover {
             background-color: #dbeafe !important;
+          }
+          
+          .nightshift-row.bg-indigo-50 {
+            background-color: #eef2ff !important;
+            border-left: 4px solid #6366f1 !important;
+          }
+          
+          .nightshift-row.bg-indigo-50:hover {
+            background-color: #e0e7ff !important;
           }
           
           .nightshift-indicator {
