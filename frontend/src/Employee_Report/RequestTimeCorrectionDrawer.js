@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import RequestTimeCorrectionForm from './RequestTimeCorrectionForm';
 
-const RequestTimeCorrectionDrawer = ({ open, onClose, employee }) => {
+const RequestTimeCorrectionDrawer = ({ open, onClose, employee, pattern = null }) => {
   const drawerRef = useRef();
 
   // Close on overlay click
@@ -23,7 +23,9 @@ const RequestTimeCorrectionDrawer = ({ open, onClose, employee }) => {
         className={`fixed right-0 top-0 h-full w-full md:w-2/3 lg:w-1/2 bg-white shadow-xl transform transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex justify-between items-center p-4 border-b">
-          <h2 className="text-xl font-bold">Request Time Correction</h2>
+          <h2 className="text-xl font-bold">
+            {pattern ? '🌙 Bulk Nightshift Correction' : 'Request Time Correction'}
+          </h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-red-600 text-2xl font-bold focus:outline-none"
@@ -33,7 +35,7 @@ const RequestTimeCorrectionDrawer = ({ open, onClose, employee }) => {
           </button>
         </div>
         <div className="p-4 overflow-y-auto h-[calc(100vh-64px)]">
-          <RequestTimeCorrectionForm employee={employee} />
+          <RequestTimeCorrectionForm employee={employee} pattern={pattern} />
         </div>
       </div>
     </div>

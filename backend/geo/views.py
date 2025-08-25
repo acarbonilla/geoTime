@@ -4160,7 +4160,23 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         # Apply employee filter
         employee_id = self.request.query_params.get('employee')
         if employee_id:
-            queryset = queryset.filter(employee_id=employee_id)
+            # Handle both employee_id (string) and database id (number)
+            try:
+                # First try to filter by employee_id (string field)
+                queryset = queryset.filter(employee__employee_id=employee_id)
+            except:
+                try:
+                    # If that fails, try to filter by database id (number field)
+                    queryset = queryset.filter(employee_id=int(employee_id))
+                except (ValueError, TypeError):
+                    # If both fail, try to find employee by employee_id first
+                    from .models import Employee
+                    try:
+                        employee = Employee.objects.get(employee_id=employee_id)
+                        queryset = queryset.filter(employee=employee)
+                    except Employee.DoesNotExist:
+                        # If employee not found, return empty queryset
+                        return queryset.none()
             
         return queryset
     
@@ -4168,56 +4184,87 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Override list method to provide admin-style data structure with nightshift grouping
         """
-        queryset = self.filter_queryset(self.get_queryset())
-        
-        # Serialize the data
-        serializer = self.get_serializer(queryset, many=True)
-        data = serializer.data
-        
-        # Group nightshift records that span midnight
-        grouped_data = self._group_nightshift_records(data)
-        
-        # Detect consecutive nightshift patterns for bulk correction
-        consecutive_patterns = self.detect_consecutive_nightshift_patterns(data)
-        
-        # Transform the data to match admin display format
-        admin_formatted_data = []
-        for record in grouped_data:
-            admin_record = {
-                'id': record['id'],
-                'employee_name': record['employee_name'],
-                'date': record['date'],
-                'status': record['status'],
-                'time_in': record['time_in_formatted'],
-                'time_out': record['time_out_formatted'],
-                'scheduled_time_in': record['scheduled_time_in_formatted'],
-                'scheduled_time_out': record['scheduled_time_out_formatted'],
-                'billed_hours': record['billed_hours'],
-                'late_minutes': record['late_minutes'],
-                'undertime_minutes': record['undertime_minutes'],
-                'night_differential_hours': record['night_differential_hours'],
-                'overtime_hours': record['overtime_hours'],
-                # Additional fields for enhanced display
-                'is_nightshift': self._is_nightshift(record),
-                'display_date': self._format_display_date(record['date']),
-                'display_day': self._format_display_day(record['date']),
-                # Nightshift grouping fields
-                'is_grouped_nightshift': record.get('is_grouped_nightshift', False),
-                'spans_midnight': record.get('spans_midnight', False),
-                'next_day_date': record.get('next_day_date'),
-                'time_out_from_next_day': record.get('time_out_from_next_day'),
-                'grouped_display_date': record.get('grouped_display_date'),
-                'grouped_display_day': record.get('grouped_display_day')
-            }
-            admin_formatted_data.append(admin_record)
-        
-        return Response({
-            'count': len(admin_formatted_data),
-            'results': admin_formatted_data,
-            'consecutive_patterns': consecutive_patterns,
-            'admin_format': True,
-            'has_patterns': len(consecutive_patterns) > 0
-        })
+        try:
+            print("🔍 Admin Style API: Starting request processing...")
+            
+            # Get the queryset and apply filters
+            print("🔍 Admin Style API: Getting queryset...")
+            queryset = self.filter_queryset(self.get_queryset())
+            print(f"🔍 Admin Style API: Queryset count: {queryset.count()}")
+            
+            # Serialize the data
+            print("🔍 Admin Style API: Serializing data...")
+            serializer = self.get_serializer(queryset, many=True)
+            data = serializer.data
+            print(f"🔍 Admin Style API: Serialized data count: {len(data)}")
+            
+            # Group nightshift records that span midnight
+            print("🔍 Admin Style API: Grouping nightshift records...")
+            grouped_data = self._group_nightshift_records(data)
+            print(f"🔍 Admin Style API: Grouped data count: {len(grouped_data)}")
+            
+            # Detect consecutive nightshift patterns for bulk correction
+            print("🔍 Admin Style API: Detecting patterns...")
+            try:
+                consecutive_patterns = self.detect_consecutive_nightshift_patterns(data)
+                print(f"🔍 Admin Style API: Found {len(consecutive_patterns)} patterns")
+            except Exception as e:
+                print(f"Pattern detection error: {e}")
+                consecutive_patterns = []  # Fallback to empty array
+            
+            # Transform the data to match admin display format
+            print("🔍 Admin Style API: Transforming data...")
+            admin_formatted_data = []
+            for record in grouped_data:
+                try:
+                    admin_record = {
+                        'id': record.get('id'),
+                        'employee_name': record.get('employee_name'),
+                        'date': record.get('date'),
+                        'status': record.get('status'),
+                        'time_in': record.get('time_in_formatted'),
+                        'time_out': record.get('time_out_formatted'),
+                        'scheduled_time_in': record.get('scheduled_time_in_formatted'),
+                        'scheduled_time_out': record.get('scheduled_time_out_formatted'),
+                        'billed_hours': record.get('billed_hours'),
+                        'late_minutes': record.get('late_minutes'),
+                        'undertime_minutes': record.get('undertime_minutes'),
+                        'night_differential_hours': record.get('night_differential_hours'),
+                        'overtime_hours': record.get('overtime_hours'),
+                        # Additional fields for enhanced display
+                        'is_nightshift': self._is_nightshift(record),
+                        'display_date': self._format_display_date(record.get('date', '')),
+                        'display_day': self._format_display_day(record.get('date', '')),
+                        # Nightshift grouping fields
+                        'is_grouped_nightshift': record.get('is_grouped_nightshift', False),
+                        'spans_midnight': record.get('spans_midnight', False),
+                        'next_day_date': record.get('next_day_date'),
+                        'time_out_from_next_day': record.get('time_out_from_next_day'),
+                        'grouped_display_date': record.get('grouped_display_date'),
+                        'grouped_display_day': record.get('grouped_display_day')
+                    }
+                    admin_formatted_data.append(admin_record)
+                except Exception as record_error:
+                    print(f"Error processing record: {record_error}")
+                    continue
+            
+            print(f"🔍 Admin Style API: Final formatted data count: {len(admin_formatted_data)}")
+            
+            return Response({
+                'count': len(admin_formatted_data),
+                'results': admin_formatted_data,
+                'consecutive_patterns': consecutive_patterns,
+                'admin_format': True,
+                'has_patterns': len(consecutive_patterns) > 0
+            })
+        except Exception as e:
+            print(f"❌ Admin Style API error: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Admin Style API failed: {str(e)}'}, 
+                status=500
+            )
     
     @action(detail=False, methods=['get'])
     def detect_patterns(self, request):
@@ -4225,22 +4272,50 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         Dedicated endpoint for detecting consecutive nightshift patterns.
         This can be called independently to get just the patterns.
         """
-        queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
-        data = serializer.data
-        
-        # Detect patterns
-        patterns = self.detect_consecutive_nightshift_patterns(data)
-        
-        return Response({
-            'patterns': patterns,
-            'total_patterns': len(patterns),
-            'has_patterns': len(patterns) > 0,
-            'date_range': {
-                'start_date': request.query_params.get('start_date'),
-                'end_date': request.query_params.get('end_date')
-            }
-        })
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            serializer = self.get_serializer(queryset, many=True)
+            data = serializer.data
+            
+            # Detect patterns
+            patterns = self.detect_consecutive_nightshift_patterns(data)
+            
+            return Response({
+                'patterns': patterns,
+                'total_patterns': len(patterns),
+                'has_patterns': len(patterns) > 0,
+                'date_range': {
+                    'start_date': request.query_params.get('start_date'),
+                    'end_date': request.query_params.get('end_date')
+                }
+            })
+        except Exception as e:
+            print(f"❌ Pattern detection endpoint error: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Pattern detection failed: {str(e)}'}, 
+                status=500
+            )
+    
+    @action(detail=False, methods=['get'])
+    def test_endpoint(self, request):
+        """
+        Simple test endpoint to verify the ViewSet is working
+        """
+        try:
+            return Response({
+                'message': 'DailyTimeSummaryAdminViewSet is working!',
+                'status': 'success'
+            })
+        except Exception as e:
+            print(f"❌ Test endpoint error: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Test endpoint failed: {str(e)}'}, 
+                status=500
+            )
     
     def _group_nightshift_records(self, data):
         """
@@ -4367,27 +4442,35 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         Detect patterns of consecutive incomplete nightshifts that can be corrected together.
         This helps identify when multiple days need time corrections for the same pattern.
         """
-        if not data:
-            return []
+        try:
+            if not data:
+                return []
+                
+            patterns = []
+            i = 0
             
-        patterns = []
-        i = 0
-        
-        while i < len(data):
-            current = data[i]
+            while i < len(data):
+                try:
+                    current = data[i]
+                    
+                    # Check if current record starts a consecutive nightshift pattern
+                    if self._is_nightshift(current) and self._is_incomplete_shift(current):
+                        pattern = self._extract_consecutive_pattern(data, i)
+                        if pattern and pattern['length'] > 1:
+                            patterns.append(pattern)
+                            i += pattern['length']  # Skip processed records
+                        else:
+                            i += 1
+                    else:
+                        i += 1
+                except Exception as e:
+                    print(f"Error processing record {i}: {e}")
+                    i += 1  # Skip problematic record
             
-            # Check if current record starts a consecutive nightshift pattern
-            if self._is_nightshift(current) and self._is_incomplete_shift(current):
-                pattern = self._extract_consecutive_pattern(data, i)
-                if pattern and pattern['length'] > 1:
-                    patterns.append(pattern)
-                    i += pattern['length']  # Skip processed records
-                else:
-                    i += 1
-            else:
-                i += 1
-        
-        return patterns
+            return patterns
+        except Exception as e:
+            print(f"Pattern detection failed: {e}")
+            return []  # Return empty array on any error
     
     def _extract_consecutive_pattern(self, data, start_index):
         """

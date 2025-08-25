@@ -45,6 +45,7 @@ import {
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import RequestTimeCorrectionDrawer from '../Employee_Report/RequestTimeCorrectionDrawer';
 
 // Try to import jspdf-autotable with error handling
 let autoTableAvailable = false;
@@ -91,6 +92,10 @@ const ScheduleReport = () => {
   const [error, setError] = useState(null);
   const [consecutivePatterns, setConsecutivePatterns] = useState([]);
   const [showPatternPanel, setShowPatternPanel] = useState(false);
+  
+  // Time correction drawer states
+  const [showTimeCorrectionDrawer, setShowTimeCorrectionDrawer] = useState(false);
+  const [selectedPattern, setSelectedPattern] = useState(null);
 
   // Debug state changes
   useEffect(() => {
@@ -1013,8 +1018,14 @@ const ScheduleReport = () => {
         totalNightDifferential += (record.night_differential || 0);
       } else {
         // Calculate billed hours
-        if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-          const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+        if (getFieldValue(record, 'time_in', 'time_in_formatted') && getFieldValue(record, 'time_in', 'time_in_formatted') !== '-' && getFieldValue(record, 'time_out', 'time_out_formatted') && getFieldValue(record, 'time_out', 'time_out_formatted') !== '-') {
+          const bhMinutes = calculateBilledHours(
+            getFieldValue(record, 'time_in', 'time_in_formatted'), 
+            getFieldValue(record, 'time_out', 'time_out_formatted'), 
+            getFieldValue(record, 'scheduled_in', 'scheduled_time_in_formatted'), 
+            getFieldValue(record, 'scheduled_out', 'scheduled_time_out_formatted'), 
+            record.date
+          );
           totalBilledHours += bhMinutes;
         }
 
@@ -1025,15 +1036,27 @@ const ScheduleReport = () => {
         }
 
         // Calculate undertime minutes (now uses dynamic BH calculation with proper break consideration)
-        if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
-            record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
-          const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+        if (getFieldValue(record, 'time_in', 'time_in_formatted') && getFieldValue(record, 'time_in', 'time_in_formatted') !== '-' && getFieldValue(record, 'time_out', 'time_out_formatted') && getFieldValue(record, 'time_out', 'time_out_formatted') !== '-' && 
+            getFieldValue(record, 'scheduled_in', 'scheduled_time_in_formatted') && getFieldValue(record, 'scheduled_in', 'scheduled_time_in_formatted') !== '-' && getFieldValue(record, 'scheduled_out', 'scheduled_time_out_formatted') && getFieldValue(record, 'scheduled_out', 'scheduled_time_out_formatted') !== '-') {
+          const utMinutes = calculateUndertimeMinutes(
+            getFieldValue(record, 'time_in', 'time_in_formatted'), 
+            getFieldValue(record, 'time_out', 'time_out_formatted'), 
+            getFieldValue(record, 'scheduled_in', 'scheduled_time_in_formatted'), 
+            getFieldValue(record, 'scheduled_out', 'scheduled_time_out_formatted'), 
+            record.date
+          );
           totalUndertimeMinutes += utMinutes;
         }
 
         // Calculate night differential
-        if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-          const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+        if (getFieldValue(record, 'time_in', 'time_in_formatted') && getFieldValue(record, 'time_in', 'time_in_formatted') !== '-' && getFieldValue(record, 'time_out', 'time_out_formatted') && getFieldValue(record, 'time_out', 'time_out_formatted') !== '-') {
+          const ndHours = calculateNightDifferential(
+            getFieldValue(record, 'time_in', 'time_in_formatted'), 
+            getFieldValue(record, 'time_out', 'time_out_formatted'), 
+            getFieldValue(record, 'scheduled_in', 'scheduled_time_in_formatted'), 
+            getFieldValue(record, 'scheduled_out', 'scheduled_time_out_formatted'), 
+            record.date
+          );
           totalNightDifferential += ndHours;
         }
       }
@@ -1226,6 +1249,34 @@ const ScheduleReport = () => {
       return report.daily_records;
     }
     return [];
+  };
+
+  // Helper function to get field values based on API type
+  const getFieldValue = (record, fieldName, formattedFieldName) => {
+    if (useAdminStyleAPI) {
+      // Admin Style API uses different field names
+      switch (fieldName) {
+        case 'time_in':
+          return record.time_in;
+        case 'time_out':
+          return record.time_out;
+        case 'scheduled_in':
+          return record.scheduled_time_in;
+        case 'scheduled_out':
+          return record.scheduled_time_out;
+        case 'displayDate':
+          return record.display_date;
+        case 'displayDay':
+          return record.display_day;
+        case 'isNightshift':
+          return record.is_nightshift;
+        default:
+          return record[fieldName] || record[formattedFieldName];
+      }
+    } else {
+      // Legacy/DailyTimeSummary APIs use formatted field names
+      return record[formattedFieldName] || record[fieldName];
+    }
   };
 
   // Enhanced grouping for DailyTimeSummary data with nightshift support
@@ -3096,15 +3147,15 @@ const ScheduleReport = () => {
                         // DEBUG: Log the current record structure
                         console.log(`🔍 Processing display record ${i}:`, {
                           date: currentRecord.date,
-                          time_in: currentRecord.time_in || currentRecord.time_in_formatted,
-                          time_out: currentRecord.time_out || currentRecord.time_out_formatted,
-                          scheduled_in: currentRecord.scheduled_in || currentRecord.scheduled_time_in_formatted,
-                          scheduled_out: currentRecord.scheduled_out || currentRecord.scheduled_time_out_formatted,
+                          time_in: useAdminStyleAPI ? currentRecord.time_in : (currentRecord.time_in || currentRecord.time_in_formatted),
+                          time_out: useAdminStyleAPI ? currentRecord.time_out : (currentRecord.time_out || currentRecord.time_out_formatted),
+                          scheduled_in: useAdminStyleAPI ? currentRecord.scheduled_time_in : (currentRecord.scheduled_in || currentRecord.scheduled_time_in_formatted),
+                          scheduled_out: useAdminStyleAPI ? currentRecord.scheduled_time_out : (currentRecord.scheduled_out || currentRecord.scheduled_time_out_formatted),
                           hasTimeEntries: !!currentRecord.time_entries,
                           timeEntriesCount: currentRecord.time_entries?.length || 0,
-                          displayDate: currentRecord.displayDate,
-                          displayDay: currentRecord.displayDay,
-                          isNightshift: currentRecord.isNightshift
+                          displayDate: useAdminStyleAPI ? currentRecord.display_date : currentRecord.displayDate,
+                          displayDay: useAdminStyleAPI ? currentRecord.display_day : currentRecord.displayDay,
+                          isNightshift: useAdminStyleAPI ? currentRecord.is_nightshift : currentRecord.isNightshift
                         });
                       }
                       
@@ -3932,11 +3983,11 @@ const ScheduleReport = () => {
             `This will create a single correction request instead of ${pattern.total_days} individual requests.`
           );
           
-          if (confirmed) {
-            // Navigate to TimeCorrectionRequestForm with pattern data
-            const patternData = encodeURIComponent(JSON.stringify(pattern));
-            window.location.href = `/time-correction-request?pattern=${patternData}`;
-          }
+                  if (confirmed) {
+          // Open the time correction drawer with pattern data
+          setSelectedPattern(pattern);
+          setShowTimeCorrectionDrawer(true);
+        }
         };
 
         const viewPatternDetails = (pattern) => {
@@ -4033,6 +4084,17 @@ This pattern can be corrected with a single bulk correction request instead of $
           }
         `
       }} />
+      
+      {/* Time Correction Drawer */}
+      <RequestTimeCorrectionDrawer
+        open={showTimeCorrectionDrawer}
+        onClose={() => {
+          setShowTimeCorrectionDrawer(false);
+          setSelectedPattern(null);
+        }}
+        employee={null} // Will be set from user context
+        pattern={selectedPattern}
+      />
     </div>
   );
 };
