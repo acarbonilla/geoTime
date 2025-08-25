@@ -84,10 +84,6 @@ const ScheduleReport = () => {
   const [hasAutoDetected, setHasAutoDetected] = useState(false);
 
   const [currentEmployeeId, setCurrentEmployeeId] = useState('');
-  const [groupNightshifts, setGroupNightshifts] = useState(false);
-  const [dailyTimeSummaries, setDailyTimeSummaries] = useState([]);
-  const [useDailyTimeSummary, setUseDailyTimeSummary] = useState(false);
-  const [useAdminStyleAPI, setUseAdminStyleAPI] = useState(true);
   const [adminStyleData, setAdminStyleData] = useState([]);
   const [error, setError] = useState(null);
   const [consecutivePatterns, setConsecutivePatterns] = useState([]);
@@ -100,12 +96,10 @@ const ScheduleReport = () => {
   // Debug state changes
   useEffect(() => {
     console.log('🔍 State changed:', {
-      useAdminStyleAPI,
-      useDailyTimeSummary,
       adminStyleDataLength: adminStyleData.length,
       adminStyleDataFirstRecord: adminStyleData[0] || 'No records'
     });
-  }, [useAdminStyleAPI, useDailyTimeSummary, adminStyleData]);
+  }, [adminStyleData]);
 
 
 
@@ -198,66 +192,46 @@ const ScheduleReport = () => {
                 // Automatically generate report when cut-off period is selected
                 if (currentEmployeeId) {
                   console.log('🔍 Auto-generating report with cut-off period change, states:', {
-                    useAdminStyleAPI,
-                    useDailyTimeSummary,
                     currentEmployeeId
                   });
                   
-                  // Use the same logic as loadReport to respect the current API selection
-                  if (useAdminStyleAPI) {
-                    console.log('🚀 Auto-generating with Admin Style API...');
-                    // Call the function directly without dependency
-                    try {
-                      const response = await axiosInstance.get(`/daily-summaries-admin/`, {
-                        params: {
-                          start_date: newFilters.startDate,
-                          end_date: newFilters.endDate,
-                          employee: currentEmployeeId
-                        }
-                      });
-                      
-                      if (response.data.results && Array.isArray(response.data.results)) {
-                        setAdminStyleData(response.data.results);
-                        toast.success('Admin Style data loaded automatically');
+                  // Always use Admin Style API now
+                  console.log('🚀 Auto-generating with Admin Style API...');
+                  // Call the function directly without dependency
+                  try {
+                    const response = await axiosInstance.get(`/daily-summaries-admin/`, {
+                      params: {
+                        start_date: newFilters.startDate,
+                        end_date: newFilters.endDate,
+                        employee: currentEmployeeId
                       }
-                    } catch (error) {
-                      console.error('Error in auto-detection Admin Style API:', error);
+                    });
+                    
+                    if (response.data.results && Array.isArray(response.data.results)) {
+                      setAdminStyleData(response.data.results);
+                      toast.success('Admin Style data loaded automatically');
                     }
-                  } else if (useDailyTimeSummary) {
-                    console.log('📊 Auto-generating with Daily Time Summary API...');
-                    // Call the function directly without dependency
-                    try {
-                      const response = await axiosInstance.get(`/daily-summaries/`, {
-                        params: {
-                          start_date: newFilters.startDate,
-                          end_date: newFilters.endDate,
-                          employee: currentEmployeeId
-                        }
-                      });
-                      setDailyTimeSummaries(response.data);
-                      toast.success('Daily Time Summary data loaded automatically');
-                    } catch (error) {
-                      console.error('Error in auto-detection Daily Time Summary API:', error);
-                    }
-                  } else {
-                    console.log('🔄 Auto-generating with Legacy API...');
-                    setLoading(true);
-                    try {
-                      const reportFilters = {
-                        ...newFilters,
-                        employeeId: currentEmployeeId
-                      };
-                      console.log('Generating report with filters:', reportFilters);
-                      const data = await getTimeAttendanceReport(reportFilters);
-                      console.log('Report data received:', data);
-                      setReport(data);
-                      toast.success('Report generated automatically');
-                    } catch (error) {
-                      console.error('Error loading report:', error);
-                      toast.error(`Failed to generate report: ${error.message || 'Unknown error'}`);
-                    } finally {
-                      setLoading(false);
-                    }
+                  } catch (error) {
+                    console.error('Error in auto-detection Admin Style API:', error);
+                  }
+                } else {
+                  console.log('🔄 Auto-generating with Legacy API...');
+                  setLoading(true);
+                  try {
+                    const reportFilters = {
+                      ...newFilters,
+                      employeeId: currentEmployeeId
+                    };
+                    console.log('Generating report with filters:', reportFilters);
+                    const data = await getTimeAttendanceReport(reportFilters);
+                    console.log('Report data received:', data);
+                    setReport(data);
+                    toast.success('Report generated automatically');
+                  } catch (error) {
+                    console.error('Error loading report:', error);
+                    toast.error(`Failed to generate report: ${error.message || 'Unknown error'}`);
+                  } finally {
+                    setLoading(false);
                   }
                 }
               }
@@ -275,7 +249,7 @@ const ScheduleReport = () => {
     return () => {
       isMounted = false;
     };
-  }, [currentEmployeeId, hasAutoDetected, useAdminStyleAPI, useDailyTimeSummary]); // Removed problematic dependencies
+  }, [currentEmployeeId, hasAutoDetected]); // Removed problematic dependencies
 
   // Auto-load report when component mounts and employee ID is set
   useEffect(() => {
@@ -294,106 +268,48 @@ const ScheduleReport = () => {
       
       // Load report with default dates
       setTimeout(() => {
-        // Call loadReport directly without dependency
-        if (useAdminStyleAPI) {
-          console.log('🚀 Auto-loading with Admin Style API...');
-          axiosInstance.get(`/daily-summaries-admin/`, {
-            params: {
-              start_date: startDate,
-              end_date: endDate,
-              employee: currentEmployeeId
-            }
-          }).then(response => {
-            if (response.data.results && Array.isArray(response.data.results)) {
-              setAdminStyleData(response.data.results);
-              toast.success('Admin Style data loaded automatically');
-            }
-          }).catch(error => {
-            console.error('Error in auto-load Admin Style API:', error);
-          });
-        } else if (useDailyTimeSummary) {
-          console.log('📊 Auto-loading with Daily Time Summary API...');
-          axiosInstance.get(`/daily-summaries/`, {
-            params: {
-              start_date: startDate,
-              end_date: endDate,
-              employee: currentEmployeeId
-            }
-          }).then(response => {
-            setDailyTimeSummaries(response.data);
-            toast.success('Daily Time Summary data loaded automatically');
-          }).catch(error => {
-            console.error('Error in auto-load Daily Time Summary API:', error);
-          });
-        } else {
-          console.log('🔄 Auto-loading with Legacy API...');
-          const reportFilters = {
-            startDate,
-            endDate,
-            employeeId: currentEmployeeId
-          };
-          getTimeAttendanceReport(reportFilters).then(data => {
-            setReport(data);
-            toast.success('Report loaded automatically');
-          }).catch(error => {
-            console.error('Error in auto-load Legacy API:', error);
-          });
-        }
-      }, 100);
-    }
-  }, [currentEmployeeId, hasAutoDetected, useAdminStyleAPI, useDailyTimeSummary]); // Removed loadReport dependency
-
-  // Auto-reload report when filters change
-  useEffect(() => {
-    if (currentEmployeeId && filters.startDate && filters.endDate) {
-      console.log('🔄 Filters changed, auto-reloading report...');
-      // Call loadReport directly without dependency
-      if (useAdminStyleAPI) {
-        console.log('🔄 Auto-reloading with Admin Style API...');
+        // Always use Admin Style API now
+        console.log('🚀 Auto-loading with Admin Style API...');
         axiosInstance.get(`/daily-summaries-admin/`, {
           params: {
-            start_date: filters.startDate,
-            end_date: filters.endDate,
+            start_date: startDate,
+            end_date: endDate,
             employee: currentEmployeeId
           }
         }).then(response => {
           if (response.data.results && Array.isArray(response.data.results)) {
             setAdminStyleData(response.data.results);
-            toast.success('Admin Style data reloaded automatically');
+            toast.success('Admin Style data loaded automatically');
           }
         }).catch(error => {
-          console.error('Error in auto-reload Admin Style API:', error);
+          console.error('Error in auto-load Admin Style API:', error);
         });
-      } else if (useDailyTimeSummary) {
-        console.log('🔄 Auto-reloading with Daily Time Summary API...');
-        axiosInstance.get(`/daily-summaries/`, {
-          params: {
-            start_date: filters.startDate,
-            end_date: filters.endDate,
-            employee: currentEmployeeId
-          }
-        }).then(response => {
-          setDailyTimeSummaries(response.data);
-          toast.success('Daily Time Summary data reloaded automatically');
-        }).catch(error => {
-          console.error('Error in auto-reload Daily Time Summary API:', error);
-        });
-      } else {
-        console.log('🔄 Auto-reloading with Legacy API...');
-        const reportFilters = {
-          startDate: filters.startDate,
-          endDate: filters.endDate,
-          employeeId: currentEmployeeId
-        };
-        getTimeAttendanceReport(reportFilters).then(data => {
-          setReport(data);
-          toast.success('Report reloaded automatically');
-        }).catch(error => {
-          console.error('Error in auto-reload Legacy API:', error);
-        });
-      }
+      }, 100);
     }
-  }, [filters.startDate, filters.endDate, currentEmployeeId, useAdminStyleAPI, useDailyTimeSummary]); // Removed loadReport dependency
+  }, [currentEmployeeId, hasAutoDetected]); // Removed loadReport dependency
+
+  // Auto-reload report when filters change
+  useEffect(() => {
+    if (currentEmployeeId && filters.startDate && filters.endDate) {
+      console.log('🔄 Filters changed, auto-reloading report...');
+      // Always use Admin Style API now
+      console.log('🔄 Auto-reloading with Admin Style API...');
+      axiosInstance.get(`/daily-summaries-admin/`, {
+        params: {
+          start_date: filters.startDate,
+          end_date: filters.endDate,
+          employee: currentEmployeeId
+        }
+      }).then(response => {
+        if (response.data.results && Array.isArray(response.data.results)) {
+          setAdminStyleData(response.data.results);
+          toast.success('Admin Style data reloaded automatically');
+        }
+      }).catch(error => {
+        console.error('Error in auto-reload Admin Style API:', error);
+      });
+    }
+  }, [filters.startDate, filters.endDate, currentEmployeeId]); // Removed loadReport dependency
 
   const getCurrentCutOffPeriod = () => {
     const today = moment();
@@ -422,8 +338,6 @@ const ScheduleReport = () => {
     }
 
     console.log('🔍 loadReport called with states:', {
-      useAdminStyleAPI,
-      useDailyTimeSummary,
       currentEmployeeId
     });
 
@@ -431,60 +345,15 @@ const ScheduleReport = () => {
     setError(null);
 
     try {
-      if (useAdminStyleAPI) {
-        console.log('🚀 Calling Admin Style API...');
-        await loadAdminStyleData();
-      } else if (useDailyTimeSummary) {
-        console.log('📊 Calling Daily Time Summary API...');
-        await loadDailyTimeSummaryData();
-      } else {
-        console.log('🔄 Calling Legacy API...');
-      const reportFilters = {
-          startDate: filters.startDate,
-          endDate: filters.endDate,
-        employeeId: currentEmployeeId
-      };
-        console.log('Generating report with filters:', reportFilters);
-      const data = await getTimeAttendanceReport(reportFilters);
-        console.log('Report data received:', data);
-      console.log('Data structure:', {
-        hasEmployee: !!data.employee,
-        hasSummary: !!data.summary,
-        hasDailyRecords: !!data.daily_records,
-        dailyRecordsLength: data.daily_records?.length || 0,
-        summaryKeys: data.summary ? Object.keys(data.summary) : [],
-        firstRecord: data.daily_records?.[0]
-      });
-      
-        setReport(data);
-      }
+      // Always use Admin Style API now
+      console.log('🚀 Calling Admin Style API...');
+      await loadAdminStyleData();
     } catch (error) {
       console.error('Error loading report:', error);
       setError('Failed to load report. Please try again.');
       toast.error('Failed to load report');
     } finally {
       setLoading(false);
-    }
-  }, [currentEmployeeId, useAdminStyleAPI, useDailyTimeSummary, filters.startDate, filters.endDate]);
-
-  const loadDailyTimeSummaryData = useCallback(async () => {
-    try {
-      const response = await axiosInstance.get(`/daily-summaries/`, {
-        params: {
-          start_date: filters.startDate,
-          end_date: filters.endDate,
-          employee: currentEmployeeId
-        }
-      });
-      
-      console.log('📊 DailyTimeSummary API response:', response.data);
-      setDailyTimeSummaries(response.data);
-      toast.success('Daily Time Summary data loaded successfully');
-    } catch (error) {
-      console.error('❌ Error fetching DailyTimeSummary data:', error);
-      toast.error('Failed to load Daily Time Summary data');
-      // Fallback to old API
-      setUseDailyTimeSummary(false);
     }
   }, [currentEmployeeId, filters.startDate, filters.endDate]);
 
@@ -521,15 +390,10 @@ const ScheduleReport = () => {
       } else {
         console.error('❌ Admin Style API returned invalid data structure:', response.data);
         toast.error('Admin Style API returned invalid data structure');
-        setUseAdminStyleAPI(false);
-        setUseDailyTimeSummary(true);
       }
     } catch (error) {
       console.error('❌ Error fetching Admin Style data:', error);
       toast.error('Failed to load Admin Style data');
-      // Fallback to regular DailyTimeSummary API
-      setUseAdminStyleAPI(false);
-      setUseDailyTimeSummary(true);
     }
   }, [currentEmployeeId, filters.startDate, filters.endDate]);
 
@@ -591,41 +455,15 @@ const ScheduleReport = () => {
       // Automatically generate report when cut-off period is selected
       if (currentEmployeeId) {
         console.log('🔍 Auto-generating report with cut-off period change, states:', {
-          useAdminStyleAPI,
-          useDailyTimeSummary,
           currentEmployeeId
         });
         
-        // Use the same logic as loadReport to respect the current API selection
-        if (useAdminStyleAPI) {
-          console.log('🚀 Auto-generating with Admin Style API...');
-          await loadAdminStyleData();
-        } else if (useDailyTimeSummary) {
-          console.log('📊 Auto-generating with Daily Time Summary API...');
-          await loadDailyTimeSummaryData();
-        } else {
-          console.log('🔄 Auto-generating with Legacy API...');
-          setLoading(true);
-          try {
-            const reportFilters = {
-              ...newFilters,
-              employeeId: currentEmployeeId
-            };
-            console.log('Generating report with filters:', reportFilters);
-            const data = await getTimeAttendanceReport(reportFilters);
-            console.log('Report data received:', data);
-            setReport(data);
-            toast.success('Report generated automatically');
-          } catch (error) {
-            console.error('Error loading report:', error);
-            toast.error(`Failed to generate report: ${error.message || 'Unknown error'}`);
-          } finally {
-            setLoading(false);
-          }
-        }
+        // Always use Admin Style API now
+        console.log('🚀 Auto-generating with Admin Style API...');
+        await loadAdminStyleData();
       }
     }
-  }, [currentEmployeeId, useAdminStyleAPI, useDailyTimeSummary, filters, loadAdminStyleData, loadDailyTimeSummaryData]);
+  }, [currentEmployeeId, filters, loadAdminStyleData]);
 
   const formatTime = (time) => {
     if (!time || time === '-') return '-';
@@ -1018,12 +856,12 @@ const ScheduleReport = () => {
         totalNightDifferential += (record.night_differential || 0);
       } else {
         // Calculate billed hours
-        if (getFieldValue(record, 'time_in', 'time_in_formatted') && getFieldValue(record, 'time_in', 'time_in_formatted') !== '-' && getFieldValue(record, 'time_out', 'time_out_formatted') && getFieldValue(record, 'time_out', 'time_out_formatted') !== '-') {
+        if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
           const bhMinutes = calculateBilledHours(
-            getFieldValue(record, 'time_in', 'time_in_formatted'), 
-            getFieldValue(record, 'time_out', 'time_out_formatted'), 
-            getFieldValue(record, 'scheduled_in', 'scheduled_time_in_formatted'), 
-            getFieldValue(record, 'scheduled_out', 'scheduled_time_out_formatted'), 
+            record.time_in, 
+            record.time_out, 
+            record.scheduled_time_in, 
+            record.scheduled_time_out, 
             record.date
           );
           totalBilledHours += bhMinutes;
@@ -1036,25 +874,25 @@ const ScheduleReport = () => {
         }
 
         // Calculate undertime minutes (now uses dynamic BH calculation with proper break consideration)
-        if (getFieldValue(record, 'time_in', 'time_in_formatted') && getFieldValue(record, 'time_in', 'time_in_formatted') !== '-' && getFieldValue(record, 'time_out', 'time_out_formatted') && getFieldValue(record, 'time_out', 'time_out_formatted') !== '-' && 
-            getFieldValue(record, 'scheduled_in', 'scheduled_time_in_formatted') && getFieldValue(record, 'scheduled_in', 'scheduled_time_in_formatted') !== '-' && getFieldValue(record, 'scheduled_out', 'scheduled_time_out_formatted') && getFieldValue(record, 'scheduled_out', 'scheduled_time_out_formatted') !== '-') {
+        if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
+            record.scheduled_time_in && record.scheduled_time_in !== '-' && record.scheduled_time_out && record.scheduled_time_out !== '-') {
           const utMinutes = calculateUndertimeMinutes(
-            getFieldValue(record, 'time_in', 'time_in_formatted'), 
-            getFieldValue(record, 'time_out', 'time_out_formatted'), 
-            getFieldValue(record, 'scheduled_in', 'scheduled_time_in_formatted'), 
-            getFieldValue(record, 'scheduled_out', 'scheduled_time_out_formatted'), 
+            record.time_in, 
+            record.time_out, 
+            record.scheduled_time_in, 
+            record.scheduled_time_out, 
             record.date
           );
           totalUndertimeMinutes += utMinutes;
         }
 
         // Calculate night differential
-        if (getFieldValue(record, 'time_in', 'time_in_formatted') && getFieldValue(record, 'time_in', 'time_in_formatted') !== '-' && getFieldValue(record, 'time_out', 'time_out_formatted') && getFieldValue(record, 'time_out', 'time_out_formatted') !== '-') {
+        if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
           const ndHours = calculateNightDifferential(
-            getFieldValue(record, 'time_in', 'time_in_formatted'), 
-            getFieldValue(record, 'time_out', 'time_out_formatted'), 
-            getFieldValue(record, 'scheduled_in', 'scheduled_time_in_formatted'), 
-            getFieldValue(record, 'scheduled_out', 'scheduled_time_out_formatted'), 
+            record.time_in, 
+            record.time_out, 
+            record.scheduled_time_in, 
+            record.scheduled_time_out, 
             record.date
           );
           totalNightDifferential += ndHours;
@@ -1239,169 +1077,21 @@ const ScheduleReport = () => {
     }
   };
 
-  // Get data for display (either DailyTimeSummary or legacy data)
+  // Get data for display (always Admin Style API now)
   const getDisplayData = () => {
-    if (useAdminStyleAPI && adminStyleData.length > 0) {
+    if (adminStyleData.length > 0) {
       return adminStyleData;
-    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-      return dailyTimeSummaries;
-    } else if (report && report.daily_records) {
-      return report.daily_records;
+          } else if (report?.daily_records) {
+        return report.daily_records || [];
     }
     return [];
   };
 
-  // Helper function to get field values based on API type
-  const getFieldValue = (record, fieldName, formattedFieldName) => {
-    if (useAdminStyleAPI) {
-      // Admin Style API uses different field names
-      switch (fieldName) {
-        case 'time_in':
-          return record.time_in;
-        case 'time_out':
-          return record.time_out;
-        case 'scheduled_in':
-          return record.scheduled_time_in;
-        case 'scheduled_out':
-          return record.scheduled_time_out;
-        case 'displayDate':
-          return record.display_date;
-        case 'displayDay':
-          return record.display_day;
-        case 'isNightshift':
-          return record.is_nightshift;
-        default:
-          return record[fieldName] || record[formattedFieldName];
-      }
-    } else {
-      // Legacy/DailyTimeSummary APIs use formatted field names
-      return record[formattedFieldName] || record[fieldName];
-    }
-  };
 
-  // Enhanced grouping for DailyTimeSummary data with nightshift support
-  const getGroupedDailyTimeSummaries = () => {
-    if (!dailyTimeSummaries || dailyTimeSummaries.length === 0) {
-      return [];
-    }
 
-    // First, check if the API already provided grouped nightshift data
-    const hasGroupedData = dailyTimeSummaries.some(record => 
-      record.is_grouped_nightshift || record.spans_midnight
-    );
-
-    if (hasGroupedData) {
-      // API already grouped the data, just format it for display
-      return dailyTimeSummaries.map(record => {
-        if (record.is_grouped_nightshift && record.spans_midnight) {
-          // This is a grouped nightshift record
-          return {
-            ...record,
-            displayDate: record.grouped_display_date || `${moment(record.date).format('MMM DD')} - ${moment(record.next_day_date).format('MMM DD')}`,
-            displayDay: record.grouped_display_day || `${moment(record.date).format('ddd')} - ${moment(record.next_day_date).format('ddd')}`,
-            isNightshift: true,
-            hasMidnightSpan: true,
-            // Use the timeout from next day if available
-            time_out_formatted: record.time_out_from_next_day || record.time_out_formatted || '-',
-            // Mark as grouped for special handling
-            isGroupedNightshift: true
-          };
-        } else {
-          // Regular record
-          return {
-            ...record,
-            displayDate: moment(record.date).format('MMM DD'),
-            displayDay: moment(record.date).format('ddd'),
-            isNightshift: record.is_nightshift || false
-          };
-        }
-      });
-    }
-
-    // Fallback: Group records by date (original logic)
-    const groupedByDate = {};
-    
-    dailyTimeSummaries.forEach(record => {
-      const dateKey = record.date;
-      if (!groupedByDate[dateKey]) {
-        groupedByDate[dateKey] = [];
-      }
-      groupedByDate[dateKey].push(record);
-    });
-
-    // Convert grouped data to display format
-    const groupedRecords = [];
-    
-    Object.keys(groupedByDate).forEach(dateKey => {
-      const recordsForDate = groupedByDate[dateKey];
-      
-      if (recordsForDate.length === 1) {
-        // Single record for this date
-        const record = recordsForDate[0];
-        
-        // Check if this is a night shift (spans midnight)
-        const isNightshift = record.scheduled_time_in && record.scheduled_time_out && 
-          (parseInt(record.scheduled_time_in.split(':')[0]) > parseInt(record.scheduled_time_out.split(':')[0]) ||
-           parseInt(record.scheduled_time_in.split(':')[0]) >= 18);
-        
-        // For night shifts, ensure time_out is displayed correctly
-        let displayTimeOut = record.time_out_formatted || '-';
-        let displayScheduledOut = record.scheduled_time_out_formatted || '-';
-        
-        // If it's a night shift and time_out is earlier than time_in, 
-        // it means it spans midnight - this is correct behavior
-        if (isNightshift && record.time_in && record.time_out) {
-          const timeInHour = parseInt((record.event_time || record.time_in).split(':')[0]);
-          const timeOutHour = parseInt(record.time_out.split(':')[0]);
-          
-          // If time_out hour is smaller than time_in hour, it spans midnight
-          if (timeOutHour < timeInHour) {
-            // This is correct - time_out is on the next day
-            // No need to modify the display
-          }
-        }
-        
-        groupedRecords.push({
-          ...record,
-          displayDate: moment(record.date).format('MMM DD'),
-          displayDay: moment(record.date).format('ddd'),
-          isNightshift: isNightshift,
-          // Use the formatted time fields from the API
-          time_in_formatted: record.time_in_formatted || '-',
-          time_out_formatted: displayTimeOut,
-          scheduled_time_in_formatted: record.scheduled_time_in_formatted || '-',
-          scheduled_time_out_formatted: displayScheduledOut
-        });
-      } else {
-        // Multiple records for this date - group them
-        const firstRecord = recordsForDate[0];
-        const isNightshift = recordsForDate.some(record => 
-          record.scheduled_time_in && record.scheduled_time_out && 
-          (parseInt(record.scheduled_time_in.split(':')[0]) > parseInt(record.scheduled_time_out.split(':')[0]) ||
-           parseInt(record.scheduled_time_in.split(':')[0]) >= 18)
-        );
-        
-        // Create a consolidated record for this date
-        const consolidatedRecord = {
-          ...firstRecord,
-          displayDate: moment(firstRecord.date).format('MMM DD'),
-          displayDay: moment(firstRecord.date).format('ddd'),
-          isNightshift: isNightshift,
-          // Use the formatted time fields from the API
-          time_in_formatted: firstRecord.time_in_formatted || '-',
-          time_out_formatted: firstRecord.time_out_formatted || '-',
-          scheduled_time_in_formatted: firstRecord.scheduled_time_in_formatted || '-',
-          scheduled_time_out_formatted: firstRecord.scheduled_time_out_formatted || '-',
-          // Use the first record's data as primary, but indicate multiple records exist
-          hasMultipleRecords: true,
-          recordCount: recordsForDate.length
-        };
-        
-        groupedRecords.push(consolidatedRecord);
-      }
-    });
-
-    return groupedRecords;
+  // Enhanced grouping for Admin Style data with nightshift support
+  const getAdminStyleData = () => {
+    return adminStyleData;
   };
 
   // ENHANCED: Shared function for night shift grouping - used by all export functions
@@ -1412,99 +1102,82 @@ const ScheduleReport = () => {
       return [];
     }
 
+    // Always use Admin Style API logic now
+    console.log('🔍 Using Admin Style API logic - processing single nightshifts first');
+    const processedRecords = processSingleNightshiftsSpanningMidnight(dailyRecords);
+    console.log('🔍 Single nightshifts processed, applying basic formatting');
+    
     let groupedRecords = [];
     
-    if (groupNightshifts) {
-      // Process single nightshifts that span midnight first, then group consecutive ones
-      console.log('🔍 Grouping nightshifts - processing single nightshifts first');
-      const processedRecords = processSingleNightshiftsSpanningMidnight(dailyRecords);
-      console.log('🔍 Single nightshifts processed, now grouping consecutive ones');
-      groupedRecords = groupRecordsWithConsecutiveNightshifts(processedRecords);
-    } else {
-      // Process single nightshifts that span midnight first
-      console.log('🔍 Separate days view - processing single nightshifts first');
-      const processedRecords = processSingleNightshiftsSpanningMidnight(dailyRecords);
-      console.log('🔍 Single nightshifts processed, applying basic formatting');
+    // Apply basic formatting
+    for (let i = 0; i < processedRecords.length; i++) {
+      const currentRecord = processedRecords[i];
       
-      // Then apply basic formatting
-      for (let i = 0; i < processedRecords.length; i++) {
-        const currentRecord = processedRecords[i];
-        
-        // Add record as-is with basic formatting
-        const simpleRecord = {
-          ...currentRecord,
-          displayDate: moment(currentRecord.date).format('MMM DD'),
-          displayDay: currentRecord.day,
-          displayTimeOut: currentRecord.displayTimeOut || formatTime(currentRecord.time_out) || '-'
-        };
-        
-        groupedRecords.push(simpleRecord);
-      }
+      // Add record as-is with basic formatting
+      const simpleRecord = {
+        ...currentRecord,
+        displayDate: moment(currentRecord.date).format('MMM DD'),
+        displayDay: currentRecord.day,
+        displayTimeOut: currentRecord.displayTimeOut || formatTime(currentRecord.time_out) || '-'
+      };
+      
+      groupedRecords.push(simpleRecord);
     }
     
     return groupedRecords;
   };
 
   const handleDownloadCSV = () => {
-    if (!report) {
+    if (!report && adminStyleData.length === 0) {
       toast.error('No report data to download.');
       return;
     }
 
-    if (!report.daily_records || report.daily_records.length === 0) {
+    if ((!report?.daily_records || report.daily_records.length === 0) && adminStyleData.length === 0) {
       toast.error('No daily records available for download.');
       return;
     }
 
     try {
       // Prepare data for CSV export
-      const csvData = (useDailyTimeSummary && dailyTimeSummaries.length > 0 ? 
-        getGroupedDailyTimeSummaries() : getDisplayData()).map(record => ({
-        Date: record.displayDate,
-        Day: record.displayDay,
-        Status: useDailyTimeSummary ? (() => {
-          const baseStatus = getStatusDisplay(record.status, record.scheduled_time_in_formatted, record.scheduled_time_out_formatted, record.time_in_formatted, record.date);
-          if (record.isNightshift) {
+      const csvData = (adminStyleData.length > 0 ? 
+        getAdminStyleData() : getDisplayData()).map(record => ({
+        Date: record.display_date || record.displayDate,
+        Day: record.display_day || record.displayDay,
+        Status: (() => {
+          const baseStatus = getStatusDisplay(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date);
+          if (record.is_nightshift) {
             return `${baseStatus} 🌙 Nightshift`;
-          }
-          return baseStatus;
-        })() : (() => {
-          const baseStatus = getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date);
-          if (record.isNightshift) {
-            return `${baseStatus} 🌙 Nightshift`;
-          }
-          if (record.hasPreviousNightshiftTimeout) {
-            return `${baseStatus} 📝 Previous timeout used`;
           }
           return baseStatus;
         })(),
-        'Time In': useDailyTimeSummary ? formatTime(record.time_in_formatted || record.time_in) : formatTime(record.event_time || record.time_in),
-        'Time Out': useDailyTimeSummary ? formatTime(record.time_out_formatted || record.time_out) : record.displayTimeOut,
-        'Scheduled In': useDailyTimeSummary ? formatTime(record.scheduled_time_in_formatted || record.scheduled_time_in) : formatTime(record.scheduled_in),
-        'Scheduled Out': useDailyTimeSummary ? formatTime(record.scheduled_time_out_formatted || record.scheduled_time_out) : formatTime(record.scheduled_out),
-        'BH (min)': useDailyTimeSummary ? (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-' : (() => {
+        'Time In': formatTime(record.time_in),
+        'Time Out': record.time_out || '-',
+        'Scheduled In': formatTime(record.scheduled_time_in),
+        'Scheduled Out': formatTime(record.scheduled_time_out),
+        'BH (min)': (() => {
           // CRITICAL FIX: Check backend status first
           if (record.status === 'incomplete' || record.status === 'shift_void') {
             return (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-';
           }
           if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
+            const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_time_in, record.scheduled_time_out, record.date);
             return bhMinutes > 0 ? bhMinutes : '-';
           }
           return '-';
         })(),
-        'LT': useDailyTimeSummary ? (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-' : (() => {
+        'LT': (() => {
           // CRITICAL FIX: Check backend status first
           if (record.status === 'incomplete' || record.status === 'shift_void') {
             return (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-';
           }
-          if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
+          if (record.time_in && record.time_in !== '-' && record.scheduled_time_in && record.scheduled_time_in !== '-') {
             const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
             return lateMinutes > 0 ? lateMinutes : '-';
           }
           return '-';
         })(),
-        'UT': useDailyTimeSummary ? (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-' : (() => {
+        'UT': (() => {
           // CRITICAL FIX: Check backend status first
           if (record.status === 'incomplete' || record.status === 'shift_void') {
             return (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-';
@@ -1516,7 +1189,7 @@ const ScheduleReport = () => {
           }
           return '-';
         })(),
-        'ND': useDailyTimeSummary ? (record.night_differential || 0) > 0 ? (record.night_differential || 0).toFixed(2) : '-' : (() => {
+        'ND': (() => {
           // CRITICAL FIX: Check backend status first
           if (record.status === 'incomplete' || record.status === 'shift_void') {
             return (record.night_differential || 0) > 0 ? `${record.night_differential}h` : '-';
@@ -1527,8 +1200,8 @@ const ScheduleReport = () => {
           }
           return '-';
         })(),
-        'OT': useDailyTimeSummary ? (record.overtime_hours || 0) > 0 ? (record.overtime_hours || 0).toFixed(2) : '-' : (() => {
-          // OT calculation from DailyTimeSummary or TimeEntry
+        'OT': (() => {
+          // OT calculation from Admin Style API
           if (record.overtime_hours && record.overtime_hours > 0) {
             return `${record.overtime_hours}h`;
           }
@@ -1552,21 +1225,21 @@ const ScheduleReport = () => {
       }));
 
       // Create summary data
-      const calculatedTotals = useDailyTimeSummary && dailyTimeSummaries.length > 0 ? {
-        totalBilledHours: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.billed_hours || 0), 0),
-        totalLateMinutes: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.late_minutes || 0), 0),
-        totalUndertimeMinutes: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.undertime_minutes || 0), 0),
-        totalNightDifferential: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.night_differential || 0), 0).toFixed(2),
-        totalOvertime: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2)
-      } : calculateSummaryTotals(report.daily_records);
+      const calculatedTotals = adminStyleData.length > 0 ? {
+        totalBilledHours: getAdminStyleData().reduce((sum, record) => sum + (record.billed_hours || 0), 0),
+        totalLateMinutes: getAdminStyleData().reduce((sum, record) => sum + (record.late_minutes || 0), 0),
+        totalUndertimeMinutes: getAdminStyleData().reduce((sum, record) => sum + (record.undertime_minutes || 0), 0),
+        totalNightDifferential: getAdminStyleData().reduce((sum, record) => sum + (record.night_differential || 0), 0).toFixed(2),
+        totalOvertime: getAdminStyleData().reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2)
+      } : calculateSummaryTotals(report?.daily_records || []);
       const summaryData = [
-        { 'Employee Name': report.employee?.name || 'N/A' },
-        { 'Employee ID': report.employee?.employee_id || 'N/A' },
-        { 'Department': report.employee?.department || 'N/A' },
-        { 'Period': report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A' },
+        { 'Employee Name': report?.employee?.name || 'Current User' },
+        { 'Employee ID': report?.employee?.employee_id || currentEmployeeId || 'N/A' },
+        { 'Department': report?.employee?.department || 'N/A' },
+        { 'Period': report?.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : `${moment(filters.startDate).format('MMM DD')} - ${moment(filters.endDate).format('MMM DD, YYYY')}` },
         {},
         { 'Summary Statistics': '' },
-        { 'Days Worked': report.summary?.days_worked || 0 },
+        { 'Days Worked': report?.summary?.days_worked || adminStyleData.length || 0 },
         { 'Total BH (min)': calculatedTotals.totalBilledHours },
         { 'Total LT (min)': calculatedTotals.totalLateMinutes },
         { 'Total UT (min)': calculatedTotals.totalUndertimeMinutes },
@@ -1594,30 +1267,24 @@ const ScheduleReport = () => {
   };
 
   const handleDownloadExcel = () => {
-    if (!report) {
+    if (!report && adminStyleData.length === 0) {
       toast.error('No report data to download.');
       return;
     }
 
-    if (!report.daily_records || report.daily_records.length === 0) {
+    if ((!report?.daily_records || report.daily_records.length === 0) && adminStyleData.length === 0) {
       toast.error('No daily records available for download.');
       return;
     }
 
     try {
       // Prepare data for Excel export
-      const excelData = (useDailyTimeSummary && dailyTimeSummaries.length > 0 ? 
-        getGroupedDailyTimeSummaries() : getDisplayData()).map(record => ({
+      const excelData = (adminStyleData.length > 0 ? 
+        getAdminStyleData() : getDisplayData()).map(record => ({
         Date: record.displayDate,
         Day: record.displayDay,
-        Status: useDailyTimeSummary ? (() => {
-          const baseStatus = getStatusDisplay(record.status, record.scheduled_time_in_formatted, record.scheduled_time_out_formatted, record.time_in_formatted, record.date);
-          if (record.isNightshift) {
-            return `${baseStatus} 🌙 Nightshift`;
-          }
-          return baseStatus;
-        })() : (() => {
-          const baseStatus = getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date);
+        Status: (() => {
+          const baseStatus = getStatusDisplay(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date);
           if (record.isNightshift) {
             return `${baseStatus} 🌙 Nightshift`;
           }
@@ -1626,11 +1293,11 @@ const ScheduleReport = () => {
           }
           return baseStatus;
         })(),
-        'Time In': useDailyTimeSummary ? formatTime(record.time_in_formatted || record.time_in) : formatTime(record.event_time || record.time_in),
-        'Time Out': useDailyTimeSummary ? formatTime(record.time_out_formatted || record.time_out) : record.displayTimeOut,
-        'Scheduled In': useDailyTimeSummary ? formatTime(record.scheduled_time_in_formatted || record.scheduled_time_in) : formatTime(record.scheduled_in),
-        'Scheduled Out': useDailyTimeSummary ? formatTime(record.scheduled_time_out_formatted || record.scheduled_time_out) : formatTime(record.scheduled_out),
-        'BH (min)': useDailyTimeSummary ? (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-' : (() => {
+        'Time In': formatTime(record.event_time || record.time_in),
+        'Time Out': record.displayTimeOut,
+        'Scheduled In': formatTime(record.scheduled_time_in),
+        'Scheduled Out': formatTime(record.scheduled_time_out),
+        'BH (min)': (() => {
           // CRITICAL FIX: Check backend status first
           if (record.status === 'incomplete' || record.status === 'shift_void') {
             return (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-';
@@ -1641,7 +1308,7 @@ const ScheduleReport = () => {
           }
           return '-';
         })(),
-        'LT': useDailyTimeSummary ? (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-' : (() => {
+        'LT': (() => {
           // CRITICAL FIX: Check backend status first
           if (record.status === 'incomplete' || record.status === 'shift_void') {
             return (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-';
@@ -1652,7 +1319,7 @@ const ScheduleReport = () => {
           }
           return '-';
         })(),
-        'UT': useDailyTimeSummary ? (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-' : (() => {
+        'UT': (() => {
           // CRITICAL FIX: Check backend status first
           if (record.status === 'incomplete' || record.status === 'shift_void') {
             return (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-';
@@ -1664,7 +1331,7 @@ const ScheduleReport = () => {
           }
           return '-';
         })(),
-        'ND': useDailyTimeSummary ? (record.night_differential || 0) > 0 ? (record.night_differential || 0).toFixed(2) : '-' : (() => {
+        'ND': (() => {
           // CRITICAL FIX: Check backend status first
           if (record.status === 'incomplete' || record.status === 'shift_void') {
             return (record.night_differential || 0) > 0 ? `${record.night_differential}h` : '-';
@@ -1675,8 +1342,8 @@ const ScheduleReport = () => {
           }
           return '-';
         })(),
-        'OT': useDailyTimeSummary ? (record.overtime_hours || 0) > 0 ? (record.overtime_hours || 0).toFixed(2) : '-' : (() => {
-          // OT calculation from DailyTimeSummary or TimeEntry
+        'OT': (() => {
+          // OT calculation from Admin Style API
           if (record.overtime_hours && record.overtime_hours > 0) {
             return `${record.overtime_hours}h`;
           }
@@ -1702,21 +1369,15 @@ const ScheduleReport = () => {
       const worksheet = XLSX.utils.json_to_sheet(excelData);
       
       // Create summary sheet
-      const calculatedTotals = useDailyTimeSummary && dailyTimeSummaries.length > 0 ? {
-        totalBilledHours: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.billed_hours || 0), 0),
-        totalLateMinutes: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.late_minutes || 0), 0),
-        totalUndertimeMinutes: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.undertime_minutes || 0), 0),
-        totalNightDifferential: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.night_differential || 0), 0).toFixed(2),
-        totalOvertime: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2)
-      } : calculateSummaryTotals(report.daily_records);
+      const calculatedTotals = calculateSummaryTotals(report?.daily_records || []);
       const summaryData = [
-        { 'Employee Name': report.employee?.name || 'N/A' },
-        { 'Employee ID': report.employee?.employee_id || 'N/A' },
-        { 'Department': report.employee?.department || 'N/A' },
-        { 'Period': report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A' },
+        { 'Employee Name': report?.employee?.name || 'Current User' },
+        { 'Employee ID': report?.employee?.employee_id || currentEmployeeId || 'N/A' },
+        { 'Department': report?.employee?.department || 'N/A' },
+        { 'Period': report?.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : `${moment(filters.startDate).format('MMM DD')} - ${moment(filters.endDate).format('MMM DD, YYYY')}` },
         {},
         { 'Summary Statistics': '' },
-        { 'Days Worked': report.summary?.days_worked || 0 },
+        { 'Days Worked': report?.summary?.days_worked || adminStyleData.length || 0 },
         { 'Total BH (min)': calculatedTotals.totalBilledHours },
         { 'Total LT (min)': calculatedTotals.totalLateMinutes },
         { 'Total UT (min)': calculatedTotals.totalUndertimeMinutes },
@@ -1739,12 +1400,12 @@ const ScheduleReport = () => {
   };
 
   const handleDownloadPDF = async () => {
-    if (!report) {
+    if (!report && adminStyleData.length === 0) {
       toast.error('No report data to download.');
       return;
     }
 
-    if (!report.daily_records || report.daily_records.length === 0) {
+    if ((!report?.daily_records || report.daily_records.length === 0) && adminStyleData.length === 0) {
       toast.error('No daily records available for download.');
       return;
     }
@@ -1779,35 +1440,22 @@ const ScheduleReport = () => {
             // Add employee info - even smaller font and tighter spacing
             doc.setFontSize(10);
             doc.setTextColor(0, 0, 0); // Black color for text
-            doc.text(`Employee: ${report.employee?.name || 'N/A'} (${report.employee?.employee_id || 'N/A'})`, 14, 24);
-            doc.text(`Department: ${report.employee?.department || 'N/A'}`, 14, 28);
+            doc.text(`Employee: ${report?.employee?.name || 'Current User'} (${report?.employee?.employee_id || currentEmployeeId || 'N/A'})`, 14, 24);
+            doc.text(`Department: ${report?.employee?.department || 'N/A'}`, 14, 28);
             doc.text(`Period: ${report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A'}`, 14, 32);
             
             // Add summary stats - even smaller font and tighter spacing
-            const calculatedTotals = useDailyTimeSummary && dailyTimeSummaries.length > 0 ? {
-              totalBilledHours: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.billed_hours || 0), 0),
-              totalLateMinutes: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.late_minutes || 0), 0),
-              totalUndertimeMinutes: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.undertime_minutes || 0), 0),
-              totalNightDifferential: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.night_differential || 0), 0).toFixed(2),
-              totalOvertime: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2)
-            } : calculateSummaryTotals(report.daily_records);
+            const calculatedTotals = calculateSummaryTotals(report?.daily_records || []);
             doc.setFontSize(9);
             doc.text(`Days: ${report.summary?.days_worked || 0} | BH: ${calculatedTotals.totalBilledHours}min | LT: ${calculatedTotals.totalLateMinutes}min | UT: ${calculatedTotals.totalUndertimeMinutes}min | ND: ${calculatedTotals.totalNightDifferential} | OT: ${calculatedTotals.totalOvertime}h`, 14, 36);
 
             // Prepare table data
-            const tableData = (useDailyTimeSummary && dailyTimeSummaries.length > 0 ? 
-              getGroupedDailyTimeSummaries() : getDisplayData()).map(record => {
+            const tableData = getDisplayData().map(record => {
               try {
                 return [
                   record.displayDate,
                   record.displayDay,
-                  useDailyTimeSummary ? (() => {
-                    const baseStatus = getStatusDisplay(record.status, record.scheduled_time_in_formatted, record.scheduled_time_out_formatted, record.time_in_formatted, record.date);
-                    if (record.isNightshift) {
-                      return `${baseStatus} [NIGHTSHIFT]`;
-                    }
-                    return baseStatus;
-                  })() : (() => {
+                  (() => {
                     const baseStatus = getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date);
                     if (record.isNightshift) {
                       return `${baseStatus} [NIGHTSHIFT]`;
@@ -1817,11 +1465,11 @@ const ScheduleReport = () => {
                     }
                     return baseStatus;
                   })(),
-                  useDailyTimeSummary ? formatTime(record.time_in_formatted || record.time_in) : formatTime(record.event_time || record.time_in) || '-',
-                  useDailyTimeSummary ? formatTime(record.time_out_formatted || record.time_out) : record.displayTimeOut || '-',
-                  useDailyTimeSummary ? formatTime(record.scheduled_time_in_formatted || record.scheduled_time_in) : formatTime(record.scheduled_in) || '-',
-                  useDailyTimeSummary ? formatTime(record.scheduled_time_out_formatted || record.scheduled_time_out) : formatTime(record.scheduled_out) || '-',
-                  useDailyTimeSummary ? (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-' : (() => {
+                  formatTime(record.time_in_formatted || record.time_in),
+                  formatTime(record.time_out_formatted || record.time_out),
+                  formatTime(record.scheduled_time_in_formatted || record.scheduled_time_in),
+                  formatTime(record.scheduled_time_out_formatted || record.scheduled_time_out),
+                  (() => {
                     // CRITICAL FIX: Check backend status first
                     if (record.status === 'incomplete' || record.status === 'shift_void') {
                       return (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-';
@@ -1832,7 +1480,7 @@ const ScheduleReport = () => {
                     }
                     return '-';
                   })(),
-                  useDailyTimeSummary ? (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-' : (() => {
+                  (() => {
                     // CRITICAL FIX: Check backend status first
                     if (record.status === 'incomplete' || record.status === 'shift_void') {
                       return (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-';
@@ -1843,7 +1491,7 @@ const ScheduleReport = () => {
                     }
                     return '-';
                   })(),
-                  useDailyTimeSummary ? (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-': (() => {
+                  (() => {
                     // CRITICAL FIX: Check backend status first
                     if (record.status === 'incomplete' || record.status === 'shift_void') {
                       return (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-';
@@ -1855,7 +1503,7 @@ const ScheduleReport = () => {
                     }
                     return '-';
                   })(),
-                  useDailyTimeSummary ? (record.night_differential || 0) > 0 ? (record.night_differential || 0).toFixed(2) : '-' : (() => {
+                  (() => {
                     try {
                       // CRITICAL FIX: Check backend status first
                       if (record.status === 'incomplete' || record.status === 'shift_void') {
@@ -1870,8 +1518,8 @@ const ScheduleReport = () => {
                       return '-';
                     }
                   })(),
-                  useDailyTimeSummary ? (record.overtime_hours || 0) > 0 ? (record.overtime_hours || 0).toFixed(2) : '-' : (() => {
-                    // OT calculation from DailyTimeSummary or TimeEntry
+                  (() => {
+                    // OT calculation from Admin Style API
                     if (record.overtime_hours && record.overtime_hours > 0) {
                       return `${record.overtime_hours}h`;
                     }
@@ -1977,18 +1625,12 @@ const ScheduleReport = () => {
       // Add employee info - even smaller font and tighter spacing
       doc.setFontSize(10);
       doc.setTextColor(0, 0, 0); // Black color for text
-      doc.text(`Employee: ${report.employee?.name || 'N/A'} (${report.employee?.employee_id || 'N/A'})`, 14, 24);
-      doc.text(`Department: ${report.employee?.department || 'N/A'}`, 14, 28);
+      doc.text(`Employee: ${report?.employee?.name || 'Current User'} (${report?.employee?.employee_id || currentEmployeeId || 'N/A'})`, 14, 24);
+      doc.text(`Department: ${report?.employee?.department || 'N/A'}`, 14, 28);
       doc.text(`Period: ${report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A'}`, 14, 32);
       
       // Add summary stats - even smaller font and tighter spacing
-      const calculatedTotals = useDailyTimeSummary && dailyTimeSummaries.length > 0 ? {
-        totalBilledHours: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.billed_hours || 0), 0),
-        totalLateMinutes: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.late_minutes || 0), 0),
-        totalUndertimeMinutes: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.undertime_minutes || 0), 0),
-        totalNightDifferential: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.night_differential || 0), 0).toFixed(2),
-        totalOvertime: getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (record.overtime_hours || 0), 0).toFixed(2)
-      } : calculateSummaryTotals(report.daily_records);
+      const calculatedTotals = calculateSummaryTotals(report?.daily_records || []);
       doc.setFontSize(9);
       doc.text(`Days: ${report.summary?.days_worked || 0} | BH: ${calculatedTotals.totalBilledHours}min | LT: ${calculatedTotals.totalLateMinutes}min | UT: ${calculatedTotals.totalUndertimeMinutes}min | ND: ${calculatedTotals.totalNightDifferential} | OT: ${calculatedTotals.totalOvertime}h`, 14, 36);
       
@@ -2012,8 +1654,7 @@ const ScheduleReport = () => {
       // Add data rows - optimized for single page
       doc.setFontSize(7);
       doc.setFont(undefined, 'normal'); // Normal font for data
-      (useDailyTimeSummary && dailyTimeSummaries.length > 0 ? 
-        getGroupedDailyTimeSummaries() : getDisplayData()).forEach((record, index) => {
+      getDisplayData().forEach((record, index) => {
         // Check if we need a new page (landscape height is ~200)
         if (yPosition > 190) {
           doc.addPage();
@@ -2100,7 +1741,7 @@ const ScheduleReport = () => {
               }
             })(),
             (() => {
-              // OT calculation from DailyTimeSummary or TimeEntry
+              // OT calculation from Admin Style API
               if (record.overtime_hours && record.overtime_hours > 0) {
                 return `${record.overtime_hours}h`;
               }
@@ -2467,12 +2108,10 @@ const ScheduleReport = () => {
 
   // Helper function to get the appropriate data for summary calculations
   const getSummaryData = () => {
-    if (useAdminStyleAPI && adminStyleData.length > 0) {
+    if (adminStyleData.length > 0) {
       return adminStyleData;
-    } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-      return getGroupedDailyTimeSummaries();
-    } else if (report && report.daily_records) {
-      return getGroupedRecordsForExport(report.daily_records);
+          } else if (report?.daily_records) {
+        return getGroupedRecordsForExport(report.daily_records || []);
     }
     return [];
   };
@@ -2480,12 +2119,10 @@ const ScheduleReport = () => {
   // Summary calculation functions
   const getTotalBilledHours = () => {
     try {
-      if (useAdminStyleAPI && adminStyleData && adminStyleData.length > 0) {
+      if (adminStyleData && adminStyleData.length > 0) {
         return adminStyleData.reduce((sum, record) => sum + (parseFloat(record.billed_hours) || 0), 0);
-      } else if (useDailyTimeSummary && dailyTimeSummaries && dailyTimeSummaries.length > 0) {
-        return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (parseFloat(record.billed_hours) || 0), 0);
-      } else if (report && report.daily_records) {
-        return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (parseFloat(record.billed_hours) || 0), 0);
+      } else if (report?.daily_records) {
+        return getGroupedRecordsForExport(report.daily_records || []).reduce((sum, record) => sum + (parseFloat(record.billed_hours) || 0), 0);
       }
       return 0;
     } catch (error) {
@@ -2496,12 +2133,10 @@ const ScheduleReport = () => {
 
   const getTotalLateMinutes = () => {
     try {
-      if (useAdminStyleAPI && adminStyleData && adminStyleData.length > 0) {
+      if (adminStyleData && adminStyleData.length > 0) {
         return adminStyleData.reduce((sum, record) => sum + (parseFloat(record.late_minutes) || 0), 0);
-      } else if (useDailyTimeSummary && dailyTimeSummaries && dailyTimeSummaries.length > 0) {
-        return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (parseFloat(record.late_minutes) || 0), 0);
-      } else if (report && report.daily_records) {
-        return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (parseFloat(record.late_minutes) || 0), 0);
+      } else if (report?.daily_records) {
+        return getGroupedRecordsForExport(report.daily_records || []).reduce((sum, record) => sum + (parseFloat(record.late_minutes) || 0), 0);
       }
       return 0;
     } catch (error) {
@@ -2512,12 +2147,10 @@ const ScheduleReport = () => {
 
   const getTotalUndertimeMinutes = () => {
     try {
-      if (useAdminStyleAPI && adminStyleData && adminStyleData.length > 0) {
+      if (adminStyleData && adminStyleData.length > 0) {
         return adminStyleData.reduce((sum, record) => sum + (parseFloat(record.undertime_minutes) || 0), 0);
-      } else if (useDailyTimeSummary && dailyTimeSummaries && dailyTimeSummaries.length > 0) {
-        return getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (parseFloat(record.undertime_minutes) || 0), 0);
-      } else if (report && report.daily_records) {
-        return getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (parseFloat(record.undertime_minutes) || 0), 0);
+      } else if (report?.daily_records) {
+        return getGroupedRecordsForExport(report.daily_records || []).reduce((sum, record) => sum + (parseFloat(record.undertime_minutes) || 0), 0);
       }
       return 0;
     } catch (error) {
@@ -2528,14 +2161,11 @@ const ScheduleReport = () => {
 
   const getTotalNightDifferential = () => {
     try {
-      if (useAdminStyleAPI && adminStyleData && adminStyleData.length > 0) {
+      if (adminStyleData && adminStyleData.length > 0) {
         const total = adminStyleData.reduce((sum, record) => sum + (parseFloat(record.night_differential_hours) || 0), 0);
         return total.toFixed(2);
-      } else if (useDailyTimeSummary && dailyTimeSummaries && dailyTimeSummaries.length > 0) {
-        const total = getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (parseFloat(record.night_differential) || 0), 0);
-        return total.toFixed(2);
-      } else if (report && report.daily_records) {
-        const total = getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (parseFloat(record.night_differential) || 0), 0);
+      } else if (report?.daily_records) {
+        const total = getGroupedRecordsForExport(report.daily_records || []).reduce((sum, record) => sum + (parseFloat(record.night_differential) || 0), 0);
         return total.toFixed(2);
       }
       return '0.00';
@@ -2547,14 +2177,11 @@ const ScheduleReport = () => {
 
   const getTotalOvertime = () => {
     try {
-      if (useAdminStyleAPI && adminStyleData && adminStyleData.length > 0) {
+      if (adminStyleData && adminStyleData.length > 0) {
         const total = adminStyleData.reduce((sum, record) => sum + (parseFloat(record.overtime_hours) || 0), 0);
         return total.toFixed(2);
-      } else if (useDailyTimeSummary && dailyTimeSummaries && dailyTimeSummaries.length > 0) {
-        const total = getGroupedDailyTimeSummaries().reduce((sum, record) => sum + (parseFloat(record.overtime_hours) || 0), 0);
-        return total.toFixed(2);
-      } else if (report && report.daily_records) {
-        const total = getGroupedRecordsForExport(report.daily_records).reduce((sum, record) => sum + (parseFloat(record.overtime_hours) || 0), 0);
+      } else if (report?.daily_records) {
+        const total = getGroupedRecordsForExport(report.daily_records || []).reduce((sum, record) => sum + (parseFloat(record.overtime_hours) || 0), 0);
         return total.toFixed(2);
       }
       return '0.00';
@@ -2628,118 +2255,36 @@ const ScheduleReport = () => {
             </div>
           </div>
 
-          {/* Data Source Toggle */}
-          <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-            <h3 className="text-lg font-semibold mb-3 text-gray-800">Data Source</h3>
-            <div className="space-y-2">
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="dataSource"
-                  value="admin"
-                  checked={useAdminStyleAPI}
-                  onChange={() => {
-                    setUseAdminStyleAPI(true);
-                    setUseDailyTimeSummary(false);
-                  }}
-                  className="text-blue-600"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  Admin Style (Recommended) - Single row per date like Django admin
-                </span>
-              </label>
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="dataSource"
-                  value="dailySummary"
-                  checked={useDailyTimeSummary && !useAdminStyleAPI}
-                  onChange={() => {
-                    setUseDailyTimeSummary(true);
-                    setUseAdminStyleAPI(false);
-                  }}
-                  className="text-blue-600"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  Daily Time Summary - Consolidated backend data
-                </span>
-              </label>
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="dataSource"
-                  value="legacy"
-                  checked={!useDailyTimeSummary && !useAdminStyleAPI}
-                  onChange={() => {
-                    setUseDailyTimeSummary(false);
-                    setUseAdminStyleAPI(false);
-                  }}
-                  className="text-blue-600"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  Legacy API - Original time attendance report
-                </span>
-              </label>
+                  {/* Admin Style API Info */}
+        <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="flex items-start space-x-2">
+            <InformationCircleIcon className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="text-xs text-blue-700">
+              <div className="font-medium mb-1">Admin Style API Active</div>
+              <div>Enhanced display with nightshift grouping and pattern detection:</div>
+              <ul className="list-disc list-inside mt-1 space-y-1">
+                <li>Single row per date like Django admin</li>
+                <li>Nightshifts spanning midnight are properly grouped</li>
+                <li>Pattern detection for consecutive incomplete nightshifts</li>
+                <li>Bulk correction capabilities for multiple days</li>
+              </ul>
             </div>
           </div>
+          
+          {/* Debug Info */}
+          <div className="mt-3 p-3 bg-white rounded border border-blue-200">
+            <div className="text-xs font-medium text-blue-800 mb-2">🔍 Debug Information:</div>
+            <div className="text-xs text-blue-700 space-y-1">
+              <div>Employee ID: {currentEmployeeId || 'Not set'}</div>
+              <div>Admin Style Data: {adminStyleData.length} records</div>
+              <div>Report Data: {report ? 'Available' : 'Not available'}</div>
+              <div>Filters: {filters.startDate} to {filters.endDate}</div>
+              <div>Auto-detected: {hasAutoDetected ? 'Yes' : 'No'}</div>
+            </div>
+          </div>
+        </div>
 
-          {/* Nightshift Grouping Toggle (only for legacy mode) */}
-          {!useDailyTimeSummary && (
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center space-x-2">
-              <ClockIcon className="w-4 h-4 text-blue-600" />
-              <span>Nightshift Display Options</span>
-            </label>
-            <div className="flex items-center space-x-3">
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="nightshiftGrouping"
-                  value="grouped"
-                  checked={groupNightshifts}
-                  onChange={() => setGroupNightshifts(true)}
-                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-700">Grouped View (Recommended)</span>
-                <span className="text-xs text-gray-500">Shows complete nightshifts on start date</span>
-              </label>
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="nightshiftGrouping"
-                  value="ungrouped"
-                  checked={!groupNightshifts}
-                  onChange={() => setGroupNightshifts(false)}
-                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-700">Separate Days View</span>
-                <span className="text-xs text-gray-500">Shows each day separately with individual time entries</span>
-              </label>
-            </div>
-            <div className="mt-2 text-xs text-gray-500">
-              {groupNightshifts 
-                ? "Nightshifts spanning midnight will be grouped on the start date for easier reading. Consecutive nightshifts (e.g., Monday-Friday) will be grouped together."
-                : "Each day will show its own time entries, including August 16th time-in for nightshifts."
-              }
-            </div>
-            {!groupNightshifts && (
-              <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                <div className="flex items-start space-x-2">
-                  <InformationCircleIcon className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-xs text-purple-700">
-                    <div className="font-medium mb-1">Separate Days View Active</div>
-                    <div>When viewing nightshifts separately:</div>
-                    <ul className="list-disc list-inside mt-1 space-y-1">
-                      <li>August 15th will show the time-in (e.g., 9:41 PM)</li>
-                      <li>August 16th will show as a separate row with the timeout (e.g., 1:47 AM)</li>
-                      <li>Purple rows indicate timeout-only entries from previous nightshifts</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          )}
+
 
           {/* Manual Date Picker Toggle */}
           <div className="mb-4">
@@ -2834,17 +2379,17 @@ const ScheduleReport = () => {
         </div>
 
         {/* Report Display */}
-        {report && (
+        {(report || adminStyleData.length > 0) && (
           <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
             {console.log('Rendering report:', report)}
             {console.log('Report structure:', {
-              hasEmployee: !!report.employee,
-              hasSummary: !!report.summary,
-              hasDailyRecords: !!report.daily_records,
-              dailyRecordsLength: report.daily_records?.length || 0
+              hasEmployee: !!report?.employee,
+              hasSummary: !!report?.summary,
+              hasDailyRecords: !!report?.daily_records,
+              dailyRecordsLength: report?.daily_records?.length || 0
             })}
-            {console.log('🔍 Daily records sample:', report.daily_records?.slice(0, 3))}
-            {console.log('🔍 Daily records structure check:', report.daily_records?.[0] ? Object.keys(report.daily_records[0]) : 'No records')}
+            {console.log('🔍 Daily records sample:', report?.daily_records?.slice(0, 3))}
+            {console.log('🔍 Daily records structure check:', report?.daily_records?.[0] ? Object.keys(report.daily_records[0]) : 'No records')}
             {/* Report Header */}
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
@@ -2894,19 +2439,19 @@ const ScheduleReport = () => {
                 <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg">
                   <UserIcon className="w-4 h-4 text-blue-600" />
                   <div>
-                    <strong>Employee:</strong> {report.employee.name} ({report.employee.employee_id})
+                    <strong>Employee:</strong> {report?.employee?.name || 'Current User'} ({report?.employee?.employee_id || currentEmployeeId})
                   </div>
                 </div>
                 <div className="flex items-center space-x-2 p-3 bg-green-50 rounded-lg">
                   <BuildingOfficeIcon className="w-4 h-4 text-green-600" />
                   <div>
-                    <strong>Department:</strong> {report.employee.department}
+                    <strong>Department:</strong> {report?.employee?.department || 'N/A'}
                   </div>
                 </div>
                 <div className="flex items-center space-x-2 p-3 bg-purple-50 rounded-lg">
                   <CalendarIcon className="w-4 h-4 text-purple-600" />
                   <div>
-                    <strong>Period:</strong> {moment(report.period.start_date).format('MMM DD')} - {moment(report.period.end_date).format('MMM DD, YYYY')}
+                    <strong>Period:</strong> {report?.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : `${moment(filters.startDate).format('MMM DD')} - ${moment(filters.endDate).format('MMM DD, YYYY')}`}
                   </div>
                 </div>
               </div>
@@ -2922,7 +2467,7 @@ const ScheduleReport = () => {
                     <div>
                       <p className="text-sm font-medium text-blue-900">Period</p>
                       <p className="text-lg font-semibold text-blue-700">
-                        {report.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : 'N/A'}
+                        {report?.period ? `${moment(report.period.start_date).format('MMM DD')} - ${moment(report.period.end_date).format('MMM DD, YYYY')}` : `${moment(filters.startDate).format('MMM DD')} - ${moment(filters.endDate).format('MMM DD, YYYY')}`}
                       </p>
                     </div>
                   </div>
@@ -3096,18 +2641,20 @@ const ScheduleReport = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {(() => {
-                      // Check if there are daily records to process
-                      if (!report.daily_records || report.daily_records.length === 0) {
+                      // Check if there are records to process (either report.daily_records or adminStyleData)
+                      if ((!report?.daily_records || report.daily_records.length === 0) && adminStyleData.length === 0) {
                         return (
                           <tr>
                             <td colSpan="12" className="px-6 py-8 text-center text-gray-500">
                               <div className="text-lg font-medium mb-2">No Daily Records Found</div>
-                              <div className="text-sm">The report was generated but no daily records are available.</div>
+                              <div className="text-sm">No data available for the selected period.</div>
                               <div className="text-xs mt-2 text-gray-400">
                                 Debug: {JSON.stringify({
-                                  hasDailyRecords: !!report.daily_records,
-                                  dailyRecordsLength: report.daily_records?.length || 0,
-                                  reportKeys: Object.keys(report || {})
+                                  hasDailyRecords: !!report?.daily_records,
+                                  dailyRecordsLength: report?.daily_records?.length || 0,
+                                  adminStyleDataLength: adminStyleData.length,
+                                  reportKeys: Object.keys(report || {}),
+                                  filters: filters
                                 })}
                               </div>
                             </td>
@@ -3115,29 +2662,26 @@ const ScheduleReport = () => {
                         );
                       }
                       
-                      // Get data based on selected source
+                      // Get data based on available sources
                       let displayRecords = [];
                       
                       console.log('🔍 Table rendering - Current states:', {
-                        useAdminStyleAPI,
-                        useDailyTimeSummary,
                         adminStyleDataLength: adminStyleData.length,
-                        dailyTimeSummariesLength: dailyTimeSummaries.length,
-                        hasReport: !!report
+                        hasReport: !!report,
+                        hasDailyRecords: !!report?.daily_records
                       });
                       
-                      if (useAdminStyleAPI && adminStyleData.length > 0) {
-                        // Use admin-style data (already formatted like Django admin)
+                      // Always prioritize Admin Style data
+                      if (adminStyleData.length > 0) {
                         displayRecords = adminStyleData;
                         console.log('✅ Using Admin Style data:', displayRecords.length, 'records');
-                      } else if (useDailyTimeSummary && dailyTimeSummaries.length > 0) {
-                        // Use grouped DailyTimeSummary data to prevent date repetition
-                        displayRecords = getGroupedDailyTimeSummaries();
-                        console.log('✅ Using DailyTimeSummary data:', displayRecords.length, 'records');
+                      } else if (report?.daily_records && report.daily_records.length > 0) {
+                        // Fallback to legacy data if no Admin Style data
+                        displayRecords = getGroupedRecordsForExport(report.daily_records || []);
+                        console.log('✅ Using Legacy data as fallback:', displayRecords.length, 'records');
                       } else {
-                        // Use legacy data with grouping
-                        displayRecords = getGroupedRecordsForExport(report.daily_records);
-                        console.log('✅ Using Legacy data:', displayRecords.length, 'records');
+                        console.log('❌ No data available from any source');
+                        displayRecords = [];
                       }
                       
                       // Process each record for display
@@ -3147,226 +2691,78 @@ const ScheduleReport = () => {
                         // DEBUG: Log the current record structure
                         console.log(`🔍 Processing display record ${i}:`, {
                           date: currentRecord.date,
-                          time_in: useAdminStyleAPI ? currentRecord.time_in : (currentRecord.time_in || currentRecord.time_in_formatted),
-                          time_out: useAdminStyleAPI ? currentRecord.time_out : (currentRecord.time_out || currentRecord.time_out_formatted),
-                          scheduled_in: useAdminStyleAPI ? currentRecord.scheduled_time_in : (currentRecord.scheduled_in || currentRecord.scheduled_time_in_formatted),
-                          scheduled_out: useAdminStyleAPI ? currentRecord.scheduled_time_out : (currentRecord.scheduled_out || currentRecord.scheduled_time_out_formatted),
+                          time_in: currentRecord.time_in,
+                          time_out: currentRecord.time_out,
+                          scheduled_in: currentRecord.scheduled_time_in,
+                          scheduled_out: currentRecord.scheduled_time_out,
                           hasTimeEntries: !!currentRecord.time_entries,
                           timeEntriesCount: currentRecord.time_entries?.length || 0,
-                          displayDate: useAdminStyleAPI ? currentRecord.display_date : currentRecord.displayDate,
-                          displayDay: useAdminStyleAPI ? currentRecord.display_day : currentRecord.displayDay,
-                          isNightshift: useAdminStyleAPI ? currentRecord.is_nightshift : currentRecord.isNightshift
+                          displayDate: currentRecord.display_date,
+                          displayDay: currentRecord.display_day,
+                          isNightshift: currentRecord.is_nightshift
                         });
                       }
                       
                       return displayRecords.map((record, index) => (
                         <tr key={index} className={`hover:bg-gray-50 transition-colors duration-200 ${
-                          useAdminStyleAPI ? (
-                            // Admin-style row styling (like Django admin)
-                            record.is_grouped_nightshift && record.spans_midnight ? 'nightshift-row bg-indigo-50 border-l-4 border-indigo-500' :
-                            record.is_nightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : ''
-                          ) : useDailyTimeSummary ? (
-                            // DailyTimeSummary row styling
-                            record.isNightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : ''
-                          ) : (
-                            // Legacy row styling
-                          record.isConsecutiveNightshift ? 'consecutive-nightshift-row bg-indigo-50 border-l-4 border-indigo-500' :
-                          record.isNightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : 
-                          record.isNightshiftTimeout ? 'nightshift-timeout-row bg-purple-50 border-l-4 border-purple-400' :
-                          record.hasPreviousNightshiftTimeout ? 'previous-nightshift-timeout-row bg-green-50 border-l-4 border-green-400' : ''
-                          )
+                          // Admin-style row styling (like Django admin)
+                          record.is_grouped_nightshift && record.spans_midnight ? 'nightshift-row bg-indigo-50 border-l-4 border-indigo-500' :
+                          record.is_nightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : ''
                         }`}>
                           <td className="px-6 py-4 text-sm font-medium text-gray-900">
                             <div className="flex flex-col">
-                              {useAdminStyleAPI ? (
-                                // Admin-style display (like Django admin)
-                                <>
-                                  {record.is_grouped_nightshift && record.spans_midnight ? (
-                                    <span className="font-semibold text-blue-700">
-                                      {record.grouped_display_date || `${moment(record.date).format('MMM DD')} - ${moment(record.next_day_date).format('MMM DD')}`}
-                                    </span>
-                                  ) : (
-                                    <span className={record.is_nightshift ? "font-semibold text-blue-700" : ""}>
-                                      {record.display_date}
-                                    </span>
-                                  )}
-                                  {record.is_grouped_nightshift && record.spans_midnight ? (
-                                    <div className="text-xs text-blue-600 font-normal">
-                                      🌙 Nightshift (Spans Midnight)
-                                    </div>
-                                  ) : record.is_nightshift ? (
-                                    <div className="text-xs text-blue-600 font-normal">
-                                      🌙 Nightshift
-                                    </div>
-                                  ) : null}
-                                </>
-                              ) : useDailyTimeSummary ? (
-                                // DailyTimeSummary display
-                                <>
-                                  <span className={record.isNightshift ? "font-semibold text-blue-700" : ""}>
-                                    {record.displayDate}
+                              {/* Admin-style display (like Django admin) */}
+                              <>
+                                {record.is_grouped_nightshift && record.spans_midnight ? (
+                                  <span className="font-semibold text-blue-700">
+                                    {record.grouped_display_date || `${moment(record.date).format('MMM DD')} - ${moment(record.next_day_date).format('MMM DD')}`}
                                   </span>
-                                  {record.isNightshift && (
-                                    <div className="text-xs text-blue-600 font-normal">
-                                      🌙 Nightshift
-                                    </div>
-                                  )}
-                                  {record.hasMultipleRecords && (
-                                    <div className="text-xs text-gray-500 font-normal">
-                                      📊 {record.recordCount} records
-                                    </div>
-                                  )}
-                                </>
-                              ) : (
-                                // Legacy display
-                                <>
-                              {record.isConsecutiveNightshift ? (
-                                <>
-                                  <span className="font-semibold text-indigo-700">
-                                    {record.displayDate}
+                                ) : (
+                                  <span className={record.is_nightshift ? "font-semibold text-blue-700" : ""}>
+                                    {record.display_date}
                                   </span>
-                                  <div className="text-xs text-indigo-600 font-normal">
-                                    🌙 {record.groupSize} consecutive nightshifts
+                                )}
+                                {record.is_grouped_nightshift && record.spans_midnight ? (
+                                  <div className="text-xs text-blue-600 font-normal">
+                                    🌙 Nightshift (Spans Midnight)
                                   </div>
-                                  <div className="text-xs text-indigo-500 font-normal">
-                                    {record.scheduledTimeRange}
+                                ) : record.is_nightshift ? (
+                                  <div className="text-xs text-blue-600 font-normal">
+                                    🌙 Nightshift
                                   </div>
-                                </>
-                              ) : (
-                                <>
-                                  {record.isNightshift && record.displayDateSpan ? (
-                                    <span className="font-semibold text-blue-700">
-                                      {record.displayDateSpan}
-                                    </span>
-                                  ) : (
-                                  <span>{moment(record.date).format('MMM DD')}</span>
-                                  )}
-                                  
-                                  {record.isNightshift && record.nextDayDate && !record.displayDateSpan && (
-                                    <div className="text-xs text-blue-600 font-normal">
-                                      → {moment(record.nextDayDate).format('MMM DD')}
-                                    </div>
-                                  )}
-                                  {record.isNightshiftTimeout && record.previousDayDate && (
-                                    <div className="text-xs text-purple-600 font-normal">
-                                      ← {moment(record.previousDayDate).format('MMM DD')}
-                                    </div>
-                                  )}
-                                  {record.isNightshift && !record.nextDayDate && record.isIncomplete && (
-                                    <div className="text-xs text-orange-600 font-normal">
-                                      ⚠️ Incomplete
-                                    </div>
-                                  )}
-                                  {record.hasPreviousNightshiftTimeout && (
-                                    <div className="text-xs text-green-600 font-normal">
-                                      ✓ Available for new time-in
-                                    </div>
-                                      )}
-                                    </>
-                                  )}
-                                </>
-                              )}
+                                ) : null}
+                              </>
                             </div>
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600">
                             <div className="flex flex-col">
-                              {useAdminStyleAPI ? (
-                                // Admin-style display (like Django admin)
-                                <>
-                                  {record.is_grouped_nightshift && record.spans_midnight ? (
-                                    <span className="font-semibold text-blue-700">
-                                      {record.grouped_display_day || `${moment(record.date).format('ddd')} - ${moment(record.next_day_date).format('ddd')}`}
-                                    </span>
-                                  ) : (
-                                    <span className={record.is_nightshift ? "font-semibold text-blue-700" : ""}>
-                                      {record.display_day}
-                                    </span>
-                                  )}
-                                </>
-                              ) : useDailyTimeSummary ? (
-                                // DailyTimeSummary display
-                                <>
-                                  <span className={record.isNightshift ? "font-semibold text-blue-700" : ""}>
-                                    {record.displayDay}
+                              {/* Admin-style display (like Django admin) */}
+                              <>
+                                {record.is_grouped_nightshift && record.spans_midnight ? (
+                                  <span className="font-semibold text-blue-700">
+                                    {record.grouped_display_day || `${moment(record.date).format('ddd')} - ${moment(record.next_day_date).format('ddd')}`}
                                   </span>
-                                </>
-                              ) : (
-                                // Legacy display
-                                <>
-                              {record.isConsecutiveNightshift ? (
-                                <>
-                                  <span className="font-semibold text-indigo-700">
-                                    {record.displayDay}
+                                ) : (
+                                  <span className={record.is_nightshift ? "font-semibold text-blue-700" : ""}>
+                                    {record.display_day}
                                   </span>
-                                  <div className="text-xs text-indigo-600 font-normal">
-                                    {record.groupSize} consecutive days
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  {record.isNightshift && record.displayDaySpan ? (
-                                    <span className="font-semibold text-blue-700">
-                                      {record.displayDaySpan}
-                                    </span>
-                                  ) : (
-                                  <span>{record.day}</span>
-                                  )}
-                                  
-                                  {record.isNightshift && record.nextDayDay && !record.displayDaySpan && (
-                                    <div className="text-xs text-blue-600 font-normal">
-                                      → {record.nextDayDay}
-                                    </div>
-                              )}
-                                  {record.isNightshiftTimeout && record.previousDayDay && (
-                                    <div className="text-xs text-purple-600 font-normal">
-                                      ← {record.previousDayDay}
-                                    </div>
-                                      )}
-                                    </>
-                                  )}
-                                </>
-                              )}
+                                )}
+                              </>
                             </div>
                           </td>
                           <td className="px-6 py-4 text-sm">
-                            {useAdminStyleAPI ? (
-                              // Admin-style status display (like Django admin)
-                              <>
-                                <span className={`status-pill ${getStatusColor(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date)}`}>
-                                  {getStatusIcon(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date)}
-                                  <span>{getStatusDisplay(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date)}</span>
-                                </span>
-                                {record.is_nightshift && (
-                                  <div className="nightshift-indicator text-xs text-blue-600 font-medium mt-1">
-                                    🌙 Nightshift
-                                  </div>
-                                )}
-                              </>
-                            ) : useDailyTimeSummary ? (
-                              // DailyTimeSummary status display
-                              <>
-                                <span className={`status-pill ${getStatusColor(record.status, record.scheduled_time_in_formatted, record.scheduled_time_out_formatted, record.time_in_formatted, record.date)}`}>
-                                  {getStatusIcon(record.status, record.scheduled_time_in_formatted, record.scheduled_time_out_formatted, record.time_in_formatted, record.date)}
-                                  <span>{getStatusDisplay(record.status, record.scheduled_time_in_formatted, record.scheduled_time_out_formatted, record.time_in_formatted, record.date)}</span>
-                                </span>
-                                {record.isNightshift && (
-                                  <div className="nightshift-indicator text-xs text-blue-600 font-medium mt-1">
-                                    🌙 Nightshift
-                                  </div>
-                                )}
-                              </>
-                            ) : (
-                              // Legacy status display
-                              <>
-                            <span className={`status-pill ${getStatusColor(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date)}`}>
-                              {getStatusIcon(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date)}
-                              <span>{getStatusDisplay(record.status, record.scheduled_in, record.scheduled_out, record.time_in, record.date)}</span>
-                            </span>
-                            {record.isNightshift && (
-                              <div className="nightshift-indicator text-xs text-blue-600 font-medium mt-1">
-                                🌙 Nightshift
-                              </div>
-                            )}
+                            {/* Admin-style status display (like Django admin) */}
+                            <>
+                              <span className={`status-pill ${getStatusColor(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date)}`}>
+                                {getStatusIcon(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date)}
+                                <span>{getStatusDisplay(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date)}</span>
+                              </span>
+                              {record.is_nightshift && (
+                                <div className="nightshift-indicator text-xs text-blue-600 font-medium mt-1">
+                                  🌙 Nightshift
+                                </div>
+                              )}
+                            </>
                             {record.isNightshiftTimeout && (
                               <div className="nightshift-timeout-indicator text-xs text-purple-600 font-medium mt-1">
                                 🕐 Nightshift Timeout
@@ -3376,369 +2772,96 @@ const ScheduleReport = () => {
                               <div className="previous-timeout-indicator text-xs text-green-600 font-medium mt-1">
                                 📝 Previous timeout used
                               </div>
-                                )}
-                              </>
                             )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useAdminStyleAPI ? (
-                              // Admin-style time display (like Django admin)
-                              record.time_in || '-'
-                            ) : useDailyTimeSummary ? (
-                              // DailyTimeSummary time display
-                              formatTime(record.time_in_formatted || record.event_time || record.time_in)
-                            ) : (
-                              // Legacy time display
-                              record.isNightshiftTimeout ? (
-                              <div className="text-purple-600 text-xs">
-                                <span className="font-medium">No time-in</span>
-                                <div className="text-purple-500">
-                                  (Timeout from previous nightshift)
-                                </div>
-                              </div>
-                            ) : (
-                              formatTime(record.event_time || record.time_in)
-                              )
-                            )}
+                            {/* Admin-style time display (like Django admin) */}
+                            {record.time_in || '-'}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useAdminStyleAPI ? (
-                              // Admin-style time out display (like Django admin)
-                              (() => {
-                                // Handle grouped nightshifts that span midnight
-                                if (record.is_grouped_nightshift && record.spans_midnight && record.time_out_from_next_day) {
-                                  return (
-                                    <div className="text-blue-600">
-                                      <span className="font-medium">{record.time_out_from_next_day}</span>
-                                      <div className="text-xs text-blue-500">
-                                        (Next day: {moment(record.next_day_date).format('MMM DD')})
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                                // Regular display
-                                return record.time_out || '-';
-                              })()
-                            ) : useDailyTimeSummary ? (
-                              // DailyTimeSummary time out display
-                              formatTime(record.time_out_formatted || record.time_out)
-                            ) : (
-                              // Legacy time out display
-                              (() => {
-                              // ENHANCED: Smart time out detection with comprehensive nightshift handling
-                              
-                              // 1. Check for next day timeout from nightshift grouping (highest priority)
-                              if (record.isNightshift && record.nextDayTimeout) {
+                            {/* Admin-style time out display (like Django admin) */}
+                            {(() => {
+                              // Handle grouped nightshifts that span midnight
+                              if (record.is_grouped_nightshift && record.spans_midnight && record.time_out_from_next_day) {
                                 return (
                                   <div className="text-blue-600">
-                                    <span className="font-medium">{formatTime(record.nextDayTimeout.event_time)}</span>
+                                    <span className="font-medium">{record.time_out_from_next_day}</span>
                                     <div className="text-xs text-blue-500">
-                                      (Next day: {moment(record.nextDayDate).format('MMM DD')})
+                                      (Next day: {moment(record.next_day_date).format('MMM DD')})
                                     </div>
                                   </div>
                                 );
                               }
-                              
-                              // 1.5. Handle nightshift timeout records (showing timeout from previous nightshift)
-                              if (record.isNightshiftTimeout && record.time_out && record.time_out !== '-') {
-                                return (
-                                  <div className="text-purple-600">
-                                    <span className="font-medium">{formatTime(record.time_out)}</span>
-                                    <div className="text-xs text-purple-500">
-                                      (From previous nightshift)
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              
-                              // 2. Try the direct time_out field (from DailyTimeSummary)
-                              if (record.time_out && record.time_out !== '-') {
-                                return formatTime(record.time_out);
-                              }
-                              
-                              // 3. Check if we have time_entries data from the enhanced API
-                              if (record.time_entries && Array.isArray(record.time_entries)) {
-                                // Find time out entry
-                                const timeOutEntry = record.time_entries.find(entry => 
-                                  entry.entry_type === 'time_out' && entry.event_time
-                                );
-                                
-                                if (timeOutEntry && timeOutEntry.event_time) {
-                                  return formatTime(timeOutEntry.event_time);
-                                }
-                              }
-                              
-                              // 4. Smart fallback: Look for time out in nearby records
-                              if (report.daily_records && report.daily_records.length > 0) {
-                                const currentIndex = report.daily_records.findIndex(r => r.date === record.date);
-                                
-                                if (currentIndex >= 0) {
-                                  // Check next day for time out (night shift pattern)
-                                  if (currentIndex < report.daily_records.length - 1) {
-                                    const nextRecord = report.daily_records[currentIndex + 1];
-                                    if (nextRecord && nextRecord.time_entries) {
-                                      const nextTimeOut = nextRecord.time_entries.find(entry => 
-                                        entry.entry_type === 'time_out' && entry.event_time
-                                      );
-                                      
-                                      if (nextTimeOut && nextTimeOut.event_time) {
-                                        const timeOutHour = parseInt(nextTimeOut.event_time.split(':')[0]);
-                                        // If time out is before 6 AM, it likely belongs to the previous day's night shift
-                                        if (timeOutHour < 6) {
-                                          return (
-                                            <div className="text-blue-600">
-                                              <span className="font-medium">{formatTime(nextTimeOut.event_time)}</span>
-                                              <div className="text-xs text-blue-500">
-                                                (Next day: {moment(nextRecord.date).format('MMM DD')})
-                                              </div>
-                                            </div>
-                                          );
-                                        }
-                                      }
-                                    }
-                                  }
-                                  
-                                  // Check previous day for night shift that ended today
-                                  if (currentIndex > 0) {
-                                    const prevRecord = report.daily_records[currentIndex - 1];
-                                    if (prevRecord && prevRecord.time_in && prevRecord.time_in !== '-') {
-                                      const timeInHour = parseInt((prevRecord.event_time || prevRecord.time_in).split(':')[0]);
-                                      // If previous day started at 6 PM or later, check if today has time out
-                                      if (timeInHour >= 18 && record.time_entries) {
-                                        const todayTimeOut = record.time_entries.find(entry => 
-                                          entry.entry_type === 'time_out' && entry.event_time
-                                        );
-                                        
-                                        if (todayTimeOut && todayTimeOut.event_time) {
-                                          const timeOutHour = parseInt(todayTimeOut.event_time.split(':')[0]);
-                                          // If time out is before 6 AM, it belongs to previous day's night shift
-                                          if (timeOutHour < 6) {
-                                            return (
-                                              <div className="text-blue-600">
-                                                <span className="font-medium">{formatTime(todayTimeOut.event_time)}</span>
-                                                <div className="text-xs text-blue-500">
-                                                  (Previous day: {moment(prevRecord.date).format('MMM DD')})
-                                                </div>
-                                              </div>
-                                            );
-                                          }
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                              
-                                // 5. Final fallback
-                              return '-';
-                              })()
-                            )}
+                              // Regular display
+                              return record.time_out || '-';
+                            })()}
                           </td>
 
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useAdminStyleAPI ? (
-                              // Admin-style scheduled time display (like Django admin)
-                              record.scheduled_time_in || '-'
-                            ) : useDailyTimeSummary ? (
-                              // DailyTimeSummary scheduled time display
-                              formatTime(record.scheduled_time_in_formatted || record.scheduled_time_in)
-                            ) : (
-                              // Legacy scheduled time display
-                              record.isNightshiftTimeout ? (
-                              <div className="text-purple-600 text-xs">
-                                <span className="font-medium">No schedule</span>
-                                <div className="text-purple-500">
-                                  (Timeout only)
-                                </div>
-                              </div>
-                            ) : (
-                              formatTime(record.scheduled_in)
-                              )
-                            )}
+                            {/* Admin-style scheduled time display (like Django admin) */}
+                            {record.scheduled_time_in || '-'}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useAdminStyleAPI ? (
-                              // Admin-style scheduled time display (like Django admin)
-                              record.scheduled_time_out || '-'
-                            ) : useDailyTimeSummary ? (
-                              // DailyTimeSummary scheduled time display
-                              formatTime(record.scheduled_time_out_formatted || record.scheduled_time_out)
-                            ) : (
-                              // Legacy scheduled time display
-                              record.isNightshiftTimeout ? (
-                              <div className="text-purple-600 text-xs">
-                                <span className="font-medium">No schedule</span>
-                                <div className="text-purple-500">
-                                  (Timeout only)
-                                </div>
-                              </div>
-                            ) : (
-                              formatTime(record.scheduled_out)
-                              )
-                            )}
+                            {/* Admin-style scheduled time display (like Django admin) */}
+                            {record.scheduled_time_out || '-'}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useDailyTimeSummary ? (
-                              // DailyTimeSummary BH display
-                              (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-'
-                            ) : (
-                              // Legacy BH calculation
-                              (() => {
-                              // DEBUG: Log the data being passed to calculateBilledHours
-                              console.log(`🔍 BH Calculation for ${record.date}:`, {
-                                time_in: record.time_in,
-                                time_out: record.time_out,
-                                scheduled_in: record.scheduled_in,
-                                scheduled_out: record.scheduled_out,
-                                date: record.date,
-                                hasTimeIn: !!record.time_in,
-                                hasTimeOut: !!record.time_out,
-                                hasScheduledIn: !!record.scheduled_in,
-                                hasScheduledOut: !!record.scheduled_out
-                              });
-                              
-                              if (record.isNightshiftTimeout) {
-                                return (
-                                  <div className="text-purple-600 text-xs">
-                                    <span className="font-medium">N/A</span>
-                                    <div className="text-purple-500">
-                                      (Timeout only)
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              
+                            {/* Admin-style BH display (like Django admin) */}
+                            {(() => {
                               // CRITICAL FIX: Check backend status first
                               if (record.status === 'incomplete' || record.status === 'shift_void') {
-                                console.log(`🚫 Backend status is ${record.status} - using backend BH for ${record.date}:`, record.billed_hours);
                                 return (record.billed_hours || 0) > 0 ? (record.billed_hours || 0) : '-';
                               }
                               
                               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-                                const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-                                console.log(`✅ BH Result for ${record.date}:`, bhMinutes);
+                                const bhMinutes = calculateBilledHours(record.time_in, record.time_out, record.scheduled_time_in, record.scheduled_time_out, record.date);
                                 return bhMinutes > 0 ? bhMinutes : '-';
                               }
-                              console.log(`❌ Missing data for BH calculation on ${record.date}`);
                               return '-';
-                              })()
-                            )}
+                            })()}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useDailyTimeSummary ? (
-                              // DailyTimeSummary LT display
-                              (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-'
-                            ) : (
-                              // Legacy LT calculation
-                              (() => {
-                              // DEBUG: Log the data being passed to calculateLateMinutes
-                              console.log(`🔍 Late Calculation for ${record.date}:`, {
-                                time_in: record.time_in,
-                                scheduled_in: record.scheduled_in,
-                                date: record.date,
-                                hasTimeIn: !!record.time_in,
-                                hasScheduledIn: !!record.scheduled_in
-                              });
-                              
-                              if (record.isNightshiftTimeout) {
-                                return (
-                                  <div className="text-purple-600 text-xs">
-                                    <span className="font-medium">N/A</span>
-                                    <div className="text-purple-500">
-                                      (Timeout only)
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              
+                            {/* Admin-style LT display (like Django admin) */}
+                            {(() => {
                               // CRITICAL FIX: Check backend status first
                               if (record.status === 'incomplete' || record.status === 'shift_void') {
-                                console.log(`🚫 Backend status is ${record.status} - using backend LT for ${record.date}:`, record.late_minutes);
                                 return (record.late_minutes || 0) > 0 ? (record.late_minutes || 0) : '-';
                               }
                               
-                              if (record.time_in && record.time_in !== '-' && record.scheduled_in && record.scheduled_in !== '-') {
-                                const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_in, record.date);
-                                console.log(`✅ Late Result for ${record.date}:`, lateMinutes);
+                              if (record.time_in && record.time_in !== '-' && record.scheduled_time_in && record.scheduled_time_in !== '-') {
+                                const lateMinutes = calculateLateMinutes(record.time_in, record.scheduled_time_in, record.date);
                                 return lateMinutes > 0 ? lateMinutes : '-';
                               }
-                              console.log(`❌ Missing data for Late calculation on ${record.date}`);
                               return '-';
-                              })()
-                            )}
+                            })()}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useDailyTimeSummary ? (
-                              // DailyTimeSummary UT display
-                              (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-'
-                            ) : (
-                              // Legacy UT calculation
-                              (() => {
-                              // DEBUG: Log the data being passed to calculateUndertimeMinutes
-                              console.log(`🔍 UT Calculation for ${record.date}:`, {
-                                time_in: record.time_in,
-                                time_out: record.time_out,
-                                scheduled_in: record.scheduled_in,
-                                scheduled_out: record.scheduled_out,
-                                date: record.date,
-                                hasTimeIn: !!record.time_in,
-                                hasTimeOut: !!record.time_out,
-                                hasScheduledIn: !!record.scheduled_in,
-                                hasScheduledOut: !!record.scheduled_out
-                              });
-                              
-                              if (record.isNightshiftTimeout) {
-                                return (
-                                  <div className="text-purple-600 text-xs">
-                                    <span className="font-medium">N/A</span>
-                                    <div className="text-purple-500">
-                                      (Timeout only)
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              
+                            {/* Admin-style UT display (like Django admin) */}
+                            {(() => {
                               // CRITICAL FIX: Check backend status first
                               if (record.status === 'incomplete' || record.status === 'shift_void') {
-                                console.log(`🚫 Backend status is ${record.status} - using backend UT for ${record.date}:`, record.undertime_minutes);
                                 return (record.undertime_minutes || 0) > 0 ? (record.undertime_minutes || 0) : '-';
                               }
                               
                               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-' && 
-                                  record.scheduled_in && record.scheduled_in !== '-' && record.scheduled_out && record.scheduled_out !== '-') {
-                                const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-                                console.log(`✅ UT Result for ${record.date}:`, utMinutes);
+                                  record.scheduled_time_in && record.scheduled_time_in !== '-' && record.scheduled_time_out && record.scheduled_time_out !== '-') {
+                                const utMinutes = calculateUndertimeMinutes(record.time_in, record.time_out, record.scheduled_time_in, record.scheduled_time_out, record.date);
                                 return utMinutes > 0 ? utMinutes : '-';
                               }
-                              console.log(`❌ Missing data for UT calculation on ${record.date}`);
                               return '-';
-                              })()
-                            )}
+                            })()}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useDailyTimeSummary ? (
-                              // DailyTimeSummary ND display
-                              (record.night_differential || 0) > 0 ? `${record.night_differential}h` : '-'
-                            ) : (
-                              // Legacy ND calculation
-                              (() => {
-                              // Clean ND calculation without excessive logging
-                              
+                            {/* Admin-style ND display (like Django admin) */}
+                            {(() => {
                               // CRITICAL FIX: Check backend status first
                               if (record.status === 'incomplete' || record.status === 'shift_void') {
-                                console.log(`🚫 Backend status is ${record.status} - using backend ND for ${record.date}:`, record.night_differential);
                                 return (record.night_differential || 0) > 0 ? `${record.night_differential}h` : '-';
                               }
                               
                               // Only calculate ND if we have both time in and time out on the same day
                               if (record.time_in && record.time_in !== '-' && record.time_out && record.time_out !== '-') {
-                                console.log(`🔍 ND Calculation for ${record.date}:`, {
-                                  time_in: record.time_in,
-                                  time_out: record.time_out,
-                                  date: record.date
-                                });
-                                const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-                                console.log(`✅ ND Result for ${record.date}:`, ndHours);
+                                const ndHours = calculateNightDifferential(record.time_in, record.time_out, record.scheduled_time_in, record.scheduled_time_out, record.date);
                                 return ndHours > 0 ? `${ndHours}h` : '-';
                               }
                               
@@ -3749,8 +2872,8 @@ const ScheduleReport = () => {
                                 // Check if this is a night shift (started at 6 PM or later)
                                 if (timeInMoment.hour() >= 18) {
                                   // Look ahead for time out on next day
-                                  if (index < report.daily_records.length - 1) {
-                                    const nextRecord = report.daily_records[index + 1];
+                                                                if (report?.daily_records && index < report.daily_records.length - 1) {
+                                const nextRecord = (report.daily_records || [])[index + 1];
                                     
                                     if (nextRecord && nextRecord.time_out && nextRecord.time_out !== '-') {
                                       const nextTimeOutMoment = moment(nextRecord.time_out, 'HH:mm:ss');
@@ -3758,8 +2881,7 @@ const ScheduleReport = () => {
                                       // Next day time out is before 6 AM (night differential period)
                                       if (nextTimeOutMoment.hour() < 6) {
                                         // Calculate ND for this night shift spanning midnight
-                                        const ndHours = calculateNightDifferential(record.time_in, nextRecord.time_out, record.scheduled_in, record.scheduled_out, record.date);
-                                        console.log(`Night shift ND calculation for ${record.date}:`, { time_in: record.time_in, nextTimeOut: nextRecord.time_out, ndHours });
+                                        const ndHours = calculateNightDifferential(record.time_in, nextRecord.time_out, record.scheduled_time_in, record.scheduled_time_out, record.date);
                                         return ndHours > 0 ? `${ndHours}h` : '-';
                                       }
                                     }
@@ -3771,41 +2893,31 @@ const ScheduleReport = () => {
                               // BUT only if this day actually has a schedule (not "Not Yet Scheduled")
                               if (record.time_out && record.time_out !== '-') {
                                 const timeOutMoment = moment(record.time_out, 'HH:mm:ss');
-                                console.log(`Checking if ${record.date} time out belongs to previous night shift:`, { timeOut: record.time_out, timeOutHour: timeOutMoment.hour() });
                                 
                                 // If time out is before 6 AM, it might belong to a previous night shift
-                                if (timeOutMoment.hour() < 6 && index > 0) {
-                                  const prevRecord = report.daily_records[index - 1];
+                                if (report?.daily_records && timeOutMoment.hour() < 6 && index > 0) {
+                                  const prevRecord = (report.daily_records || [])[index - 1];
                                   if (prevRecord && prevRecord.time_in && prevRecord.time_in !== '-') {
                                     const prevTimeInMoment = moment(prevRecord.time_in, 'HH:mm:ss');
-                                    console.log(`Previous record check:`, { prevRecord: { date: prevRecord.date, time_in: prevRecord.time_in }, prevTimeInHour: prevTimeInMoment.hour() });
                                     
                                     // If previous day started at 6 PM or later, this time out belongs to that night shift
                                     // BUT only calculate ND if this day has a schedule (not "Not Yet Scheduled")
-                                    if (prevTimeInMoment.hour() >= 18 && record.scheduled_in && record.scheduled_in !== '-') {
-                                      const ndHours = calculateNightDifferential(prevRecord.time_in, record.time_out, record.scheduled_in, record.scheduled_out, record.date);
-                                      console.log(`Previous night shift ND calculation for ${record.date}:`, { prevTimeIn: prevRecord.time_in, timeOut: record.time_out, ndHours });
+                                    if (prevTimeInMoment.hour() >= 18 && record.scheduled_time_in && record.scheduled_time_in !== '-') {
+                                      const ndHours = calculateNightDifferential(prevRecord.time_in, record.time_out, record.scheduled_time_in, record.scheduled_time_out, record.date);
                                       return ndHours > 0 ? `${ndHours}h` : '-';
                                     }
                                   }
                                 }
                               }
                               
-                              console.log(`No ND for ${record.date}`);
                               return '-';
-                              })()
-                            )}
+                            })()}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                            {useDailyTimeSummary ? (
-                              // DailyTimeSummary OT display
-                              (record.overtime_hours || 0) > 0 ? `${record.overtime_hours}h` : '-'
-                            ) : (
-                              // Legacy OT calculation
-                              (() => {
-                              // OT calculation from DailyTimeSummary or TimeEntry
+                            {/* Admin-style OT display (like Django admin) */}
+                            {(() => {
+                              // OT calculation from Admin Style API
                               if (record.overtime_hours && record.overtime_hours > 0) {
-                                // Use the calculated overtime from DailyTimeSummary
                                 return `${record.overtime_hours}h`;
                               }
                               
@@ -3824,8 +2936,7 @@ const ScheduleReport = () => {
                               }
                               
                               return '-';
-                              })()
-                            )}
+                            })()}
                           </td>
                         </tr>
                       ));
@@ -3936,15 +3047,15 @@ const ScheduleReport = () => {
         )}
 
         {/* No Report State */}
-        {!report && !loading && (
+        {!report && !loading && adminStyleData.length === 0 && (
           <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-12 text-center">
             <div className="text-gray-500">
               <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                 <DocumentChartBarIcon className="w-8 h-8 text-gray-400" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Report Generated</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Data Available</h3>
               <p className="text-gray-500 max-w-md mx-auto mb-6">
-                Set your filters and click "Generate Report" to view your TIME ATTENDANCE report.
+                No time attendance data found for the selected period. Try adjusting your date filters or check if data exists for this employee.
               </p>
               
               {/* Download Format Information */}
