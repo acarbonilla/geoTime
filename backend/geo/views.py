@@ -4241,7 +4241,9 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
                         'next_day_date': record.get('next_day_date'),
                         'time_out_from_next_day': record.get('time_out_from_next_day'),
                         'grouped_display_date': record.get('grouped_display_date'),
-                        'grouped_display_day': record.get('grouped_display_day')
+                        'grouped_display_day': record.get('grouped_display_day'),
+                        # Additional nightshift detection
+                        'is_nightshift_spans_midnight': record.get('is_nightshift_spans_midnight', False)
                     }
                     admin_formatted_data.append(admin_record)
                 except Exception as record_error:
@@ -4331,7 +4333,7 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         while i < len(data):
             current = data[i]
             
-            # Check if current record is a nightshift that might be incomplete
+            # Check if current record is a nightshift that spans midnight
             if self._is_nightshift(current) and self._is_incomplete_shift(current):
                 # Look for the next day's record that might have the timeout
                 if i + 1 < len(data):
@@ -4352,6 +4354,24 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
                         grouped.append(grouped_record)
                         i += 2  # Skip both records since they're now grouped
                         continue
+                else:
+                    # No next record, but this is still a nightshift that spans midnight
+                    # Mark it as such for better display
+                    current['is_nightshift_spans_midnight'] = True
+                    current['spans_midnight'] = True
+                    # Try to determine if time-out is from next day
+                    if current.get('time_out_formatted') and current.get('time_out_formatted') != '-':
+                        try:
+                            from datetime import datetime
+                            time_out = datetime.strptime(current['time_out_formatted'], '%I:%M %p').time()
+                            # If time-out is early morning, it's likely from next day
+                            if time_out.hour < 12:
+                                current['time_out_from_next_day'] = current['time_out_formatted']
+                                current['next_day_date'] = self._get_next_day_date(current['date'])
+                                current['grouped_display_date'] = f"{self._format_display_date(current['date'])} - {self._format_display_date(current['next_day_date'])}"
+                                current['grouped_display_day'] = f"{self._format_display_day(current['date'])} - {self._format_display_day(current['next_day_date'])}"
+                        except:
+                            pass
             
             # Add record as-is if not grouped
             grouped.append(current)
@@ -4379,7 +4399,7 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
             return False
     
     def _is_incomplete_shift(self, record):
-        """Check if a nightshift record is incomplete (missing time out)"""
+        """Check if a nightshift record is incomplete or spans midnight"""
         # Check if this looks like an incomplete nightshift
         time_in = record.get('time_in_formatted')
         time_out = record.get('time_out_formatted')
@@ -4388,7 +4408,7 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         if time_in and time_in != '-' and (not time_out or time_out == '-'):
             return True
             
-        # Also check if the scheduled time suggests it should span midnight
+        # Check if the scheduled time suggests it should span midnight
         scheduled_in = record.get('scheduled_time_in')
         scheduled_out = record.get('scheduled_time_out')
         
@@ -4398,8 +4418,21 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
                 time_in = datetime.strptime(scheduled_in, '%I:%M %p').time()
                 time_out = datetime.strptime(scheduled_out, '%I:%M %p').time()
                 
-                # If scheduled time spans midnight, it's likely incomplete
-                return time_in.hour > time_out.hour
+                # If scheduled time spans midnight, it's a nightshift
+                if time_in.hour > time_out.hour:
+                    return True
+                    
+                # Also check if actual times span midnight
+                if time_in and time_out and time_in != '-' and time_out != '-':
+                    try:
+                        actual_in = datetime.strptime(time_in, '%I:%M %p').time()
+                        actual_out = datetime.strptime(time_out, '%I:%M %p').time()
+                        
+                        # If actual time-out is early morning (before 12 PM), it spans midnight
+                        if actual_out.hour < 12 and actual_in.hour >= 18:
+                            return True
+                    except:
+                        pass
             except:
                 pass
         
@@ -4583,6 +4616,16 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             date_obj = datetime.strptime(date_str, '%Y-%m-%d')
             return date_obj.strftime('%a')
+        except:
+            return date_str
+    
+    def _get_next_day_date(self, date_str):
+        """Get the next day's date for nightshifts spanning midnight"""
+        from datetime import datetime, timedelta
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            next_day = date_obj + timedelta(days=1)
+            return next_day.strftime('%Y-%m-%d')
         except:
             return date_str
 
