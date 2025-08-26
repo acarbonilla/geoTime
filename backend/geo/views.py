@@ -4335,6 +4335,27 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
             
             # Check if current record is a nightshift that spans midnight
             if self._is_nightshift(current) and self._is_incomplete_shift(current):
+                # CRITICAL FIX: Handle case where current record has time out but no time in
+                if (not current.get('time_in_formatted') or current.get('time_in_formatted') == '-') and \
+                   (current.get('time_out_formatted') and current.get('time_out_formatted') != '-'):
+                    # This is a timeout-only record from a previous nightshift
+                    # Look for the previous day's record that might have the time in
+                    if i > 0:
+                        prev_record = data[i - 1]
+                        if self._has_timein_for_next_day_timeout(prev_record, current):
+                            # Group them together by updating the previous record
+                            if grouped and len(grouped) > 0:
+                                last_grouped = grouped[-1]
+                                last_grouped['time_out_from_next_day'] = current['time_out_formatted']
+                                last_grouped['is_grouped_nightshift'] = True
+                                last_grouped['spans_midnight'] = True
+                                last_grouped['next_day_date'] = current['date']
+                                last_grouped['grouped_display_date'] = f"{self._format_display_date(last_grouped['date'])} - {self._format_display_date(current['date'])}"
+                                last_grouped['grouped_display_day'] = f"{self._format_display_day(last_grouped['date'])} - {self._format_display_day(current['date'])}"
+                                # Skip adding this record since it's now part of the previous record
+                                i += 1
+                                continue
+                
                 # Look for the next day's record that might have the timeout
                 if i + 1 < len(data):
                     next_record = data[i + 1]
@@ -4408,6 +4429,10 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         if time_in and time_in != '-' and (not time_out or time_out == '-'):
             return True
             
+        # CRITICAL FIX: Also check if this has time out but no time in (timeout from previous nightshift)
+        if time_out and time_out != '-' and (not time_in or time_in == '-'):
+            return True
+            
         # Check if the scheduled time suggests it should span midnight
         scheduled_in = record.get('scheduled_time_in')
         scheduled_out = record.get('scheduled_time_out')
@@ -4463,6 +4488,38 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
                 scheduled_out_obj = datetime.strptime(scheduled_out, '%I:%M %p').time()
                 # If scheduled to end early morning, actual timeout should also be early morning
                 if scheduled_out_obj.hour < 12 and time_out_obj.hour < 12:
+                    return True
+                    
+        except:
+            pass
+        
+        return False
+    
+    def _has_timein_for_next_day_timeout(self, prev_record, current_record):
+        """
+        Check if the previous day's record has a time in that belongs to the current day's timeout.
+        This helps identify when a nightshift spans midnight.
+        """
+        # Check if previous record has a time in
+        time_in = prev_record.get('time_in_formatted')
+        if not time_in or time_in == '-':
+            return False
+        
+        # Check if the time in is late evening (typical nightshift start)
+        try:
+            from datetime import datetime
+            time_in_obj = datetime.strptime(time_in, '%I:%M %p').time()
+            
+            # Late evening time in (6 PM or later) suggests it's a nightshift start
+            if time_in_obj.hour >= 18:
+                return True
+                
+            # Also check if the current record's scheduled time suggests it should start late evening
+            scheduled_in = prev_record.get('scheduled_time_in')
+            if scheduled_in:
+                scheduled_in_obj = datetime.strptime(scheduled_in, '%I:%M %p').time()
+                # If scheduled to start late evening, actual time in should also be late evening
+                if scheduled_in_obj.hour >= 18 and time_in_obj.hour >= 18:
                     return True
                     
         except:
