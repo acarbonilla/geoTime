@@ -4785,3 +4785,73 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         except:
             return date_str
 
+    @action(detail=False, methods=['get'])
+    def debug_patterns(self, request):
+        """
+        Debug endpoint to show exactly what data is being processed for pattern detection.
+        This helps troubleshoot why patterns might not be detected.
+        """
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            serializer = self.get_serializer(queryset, many=True)
+            data = serializer.data
+            
+            print(f"[DEBUG] Debug endpoint: Raw data count: {len(data)}")
+            
+            # Show sample of raw data
+            if data:
+                sample_record = data[0]
+                print(f"[DEBUG] Sample record keys: {list(sample_record.keys())}")
+                print(f"[DEBUG] Sample record: {sample_record}")
+            
+            # Group the data
+            grouped_data = self._group_nightshift_records(data)
+            print(f"[DEBUG] Debug endpoint: Grouped data count: {len(grouped_data)}")
+            
+            # Show sample of grouped data
+            if grouped_data:
+                sample_grouped = grouped_data[0]
+                print(f"[DEBUG] Sample grouped record keys: {list(sample_grouped.keys())}")
+                print(f"[DEBUG] Sample grouped record: {sample_grouped}")
+            
+            # Test individual methods on sample data
+            if grouped_data:
+                sample = grouped_data[0]
+                is_nightshift = self._is_nightshift(sample)
+                is_incomplete = self._is_incomplete_shift(sample)
+                print(f"[DEBUG] Sample record analysis:")
+                print(f"  - Date: {sample.get('date')}")
+                print(f"  - Is nightshift: {is_nightshift}")
+                print(f"  - Is incomplete: {is_incomplete}")
+                print(f"  - Scheduled in: {sample.get('scheduled_time_in')} / {sample.get('scheduled_time_in_formatted')}")
+                print(f"  - Scheduled out: {sample.get('scheduled_time_out')} / {sample.get('scheduled_time_out_formatted')}")
+                print(f"  - Time in: {sample.get('time_in')} / {sample.get('time_in_formatted')}")
+                print(f"  - Time out: {sample.get('time_out')} / {sample.get('time_out_formatted')}")
+            
+            # Detect patterns with full debug output
+            patterns = self.detect_consecutive_nightshift_patterns(grouped_data)
+            
+            return Response({
+                'raw_data_count': len(data),
+                'grouped_data_count': len(grouped_data),
+                'patterns_found': len(patterns),
+                'patterns': patterns,
+                'debug_info': {
+                    'raw_sample_keys': list(data[0].keys()) if data else [],
+                    'grouped_sample_keys': list(grouped_data[0].keys()) if grouped_data else [],
+                    'sample_analysis': {
+                        'is_nightshift': self._is_nightshift(grouped_data[0]) if grouped_data else False,
+                        'is_incomplete': self._is_incomplete_shift(grouped_data[0]) if grouped_data else False
+                    } if grouped_data else {}
+                }
+            })
+            
+        except Exception as e:
+            print(f"❌ Debug patterns endpoint error: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Debug endpoint failed: {str(e)}'},
+                status=500
+            )
+
