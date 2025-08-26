@@ -1152,7 +1152,7 @@ const ScheduleReport = () => {
           return baseStatus;
         })(),
         'Time In': formatTime(record.time_in),
-        'Time Out': record.time_out || '-',
+        'Time Out': record.displayTimeOut || record.time_out || '-',
         'Scheduled In': formatTime(record.scheduled_time_in),
         'Scheduled Out': formatTime(record.scheduled_time_out),
         'BH (min)': (() => {
@@ -1466,7 +1466,7 @@ const ScheduleReport = () => {
                     return baseStatus;
                   })(),
                   formatTime(record.time_in_formatted || record.time_in),
-                  formatTime(record.time_out_formatted || record.time_out),
+                  formatTime(record.displayTimeOut || record.time_out_formatted || record.time_out),
                   formatTime(record.scheduled_time_in_formatted || record.scheduled_time_in),
                   formatTime(record.scheduled_time_out_formatted || record.scheduled_time_out),
                   (() => {
@@ -2792,8 +2792,23 @@ const ScheduleReport = () => {
                                   </div>
                                 );
                               }
-                              // Regular display
-                              return record.time_out || '-';
+                              
+                              // CRITICAL FIX: Use displayTimeOut for nightshift timeouts that span midnight
+                              if (record.displayTimeOut && record.displayTimeOut !== '-') {
+                                return (
+                                  <div className="text-blue-600">
+                                    <span className="font-medium">{record.displayTimeOut}</span>
+                                    {record.nextDayTimeout && (
+                                      <div className="text-xs text-blue-500">
+                                        (Next day: {moment(record.nextDayDate).format('MMM DD')})
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              
+                              // Regular display - use displayTimeOut if available for nightshift timeouts
+                              return record.displayTimeOut || record.time_out || '-';
                             })()}
                           </td>
 
