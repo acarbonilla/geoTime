@@ -4285,7 +4285,9 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
             # Detect consecutive nightshift patterns for bulk correction
             print("🔍 Admin Style API: Detecting patterns...")
             try:
-                consecutive_patterns = self.detect_consecutive_nightshift_patterns(data)
+                # CRITICAL FIX: Use grouped_data instead of original data for pattern detection
+                # The grouped data has the proper nightshift structure for pattern detection
+                consecutive_patterns = self.detect_consecutive_nightshift_patterns(grouped_data)
                 print(f"🔍 Admin Style API: Found {len(consecutive_patterns)} patterns")
             except Exception as e:
                 print(f"Pattern detection error: {e}")
@@ -4481,8 +4483,9 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
     
     def _is_nightshift(self, record):
         """Determine if a record represents a night shift"""
-        scheduled_in = record.get('scheduled_time_in')
-        scheduled_out = record.get('scheduled_time_out')
+        # Handle both original and grouped data structures
+        scheduled_in = record.get('scheduled_time_in') or record.get('scheduled_time_in_formatted')
+        scheduled_out = record.get('scheduled_time_out') or record.get('scheduled_time_out_formatted')
         
         if not scheduled_in or not scheduled_out:
             return False
@@ -4500,9 +4503,9 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
     
     def _is_incomplete_shift(self, record):
         """Check if a nightshift record is incomplete or spans midnight"""
-        # Check if this looks like an incomplete nightshift
-        time_in = record.get('time_in_formatted')
-        time_out = record.get('time_out_formatted')
+        # Handle both original and grouped data structures
+        time_in = record.get('time_in_formatted') or record.get('time_in')
+        time_out = record.get('time_out_formatted') or record.get('time_out')
         
         # If has time in but no time out, it's incomplete
         if time_in and time_in != '-' and (not time_out or time_out == '-'):
@@ -4613,22 +4616,28 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         """
         try:
             if not data:
+                print("[DEBUG] Pattern detection: No data provided")
                 return []
                 
+            print(f"[DEBUG] Pattern detection: Analyzing {len(data)} records")
             patterns = []
             i = 0
             
             while i < len(data):
                 try:
                     current = data[i]
+                    print(f"[DEBUG] Record {i}: date={current.get('date')}, is_nightshift={self._is_nightshift(current)}, is_incomplete={self._is_incomplete_shift(current)}")
                     
                     # Check if current record starts a consecutive nightshift pattern
                     if self._is_nightshift(current) and self._is_incomplete_shift(current):
+                        print(f"[DEBUG] Found potential pattern start at record {i}")
                         pattern = self._extract_consecutive_pattern(data, i)
                         if pattern and pattern['length'] > 1:
+                            print(f"[DEBUG] Pattern found: {pattern['description']}")
                             patterns.append(pattern)
                             i += pattern['length']  # Skip processed records
                         else:
+                            print(f"[DEBUG] No pattern found starting at record {i}")
                             i += 1
                     else:
                         i += 1
@@ -4636,6 +4645,7 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
                     print(f"Error processing record {i}: {e}")
                     i += 1  # Skip problematic record
             
+            print(f"[DEBUG] Pattern detection complete: found {len(patterns)} patterns")
             return patterns
         except Exception as e:
             print(f"Pattern detection failed: {e}")
@@ -4652,6 +4662,7 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         current = data[start_index]
         pattern_records = [current]
         current_date = self._parse_date(current['date'])
+        print(f"[DEBUG] Extracting pattern starting at {current['date']}")
         
         # Look ahead for consecutive days with similar nightshift patterns
         i = start_index + 1
@@ -4659,21 +4670,30 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
             next_record = data[i]
             next_date = self._parse_date(next_record['date'])
             
+            print(f"[DEBUG] Checking next record {i}: date={next_date}, is_consecutive={self._is_consecutive_day(current_date, next_date)}")
+            
             # Check if this is the next consecutive day
             if not self._is_consecutive_day(current_date, next_date):
+                print(f"[DEBUG] Not consecutive day, stopping pattern")
                 break
                 
             # Check if this day also has an incomplete nightshift
             if self._is_nightshift(next_record) and self._is_incomplete_shift(next_record):
+                print(f"[DEBUG] Next record is nightshift and incomplete")
                 # Check if the nightshift patterns are similar (same schedule times)
                 if self._has_similar_nightshift_pattern(current, next_record):
+                    print(f"[DEBUG] Patterns are similar, adding to pattern")
                     pattern_records.append(next_record)
                     current_date = next_date
                     i += 1
                 else:
+                    print(f"[DEBUG] Patterns are not similar, stopping pattern")
                     break
             else:
+                print(f"[DEBUG] Next record is not nightshift or not incomplete, stopping pattern")
                 break
+        
+        print(f"[DEBUG] Pattern extraction complete: {len(pattern_records)} records")
         
         # Only return pattern if we have multiple days
         if len(pattern_records) > 1:
@@ -4684,8 +4704,8 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
                 'length': len(pattern_records),
                 'records': pattern_records,
                 'pattern_type': 'consecutive_nightshift',
-                'scheduled_start_time': pattern_records[0].get('scheduled_time_in', ''),
-                'scheduled_end_time': pattern_records[0].get('scheduled_time_out', ''),
+                'scheduled_start_time': pattern_records[0].get('scheduled_time_in', '') or pattern_records[0].get('scheduled_time_in_formatted', ''),
+                'scheduled_end_time': pattern_records[0].get('scheduled_time_out', '') or pattern_records[0].get('scheduled_time_out_formatted', ''),
                 'total_days': len(pattern_records),
                 'missing_timeouts': len([r for r in pattern_records if not r.get('time_out') or r.get('time_out') == '-']),
                 'description': f"{len(pattern_records)} consecutive nightshifts from {pattern_records[0]['date']} to {pattern_records[-1]['date']}"
@@ -4703,11 +4723,11 @@ class DailyTimeSummaryAdminViewSet(viewsets.ReadOnlyModelViewSet):
         Check if two records have similar nightshift patterns.
         This helps identify consecutive days that should be corrected together.
         """
-        # Check if both have similar scheduled times
-        scheduled_in1 = record1.get('scheduled_time_in')
-        scheduled_out1 = record1.get('scheduled_time_out')
-        scheduled_in2 = record2.get('scheduled_time_in')
-        scheduled_out2 = record2.get('scheduled_time_out')
+        # Handle both original and grouped data structures
+        scheduled_in1 = record1.get('scheduled_time_in') or record1.get('scheduled_time_in_formatted')
+        scheduled_out1 = record1.get('scheduled_time_out') or record1.get('scheduled_time_out_formatted')
+        scheduled_in2 = record2.get('scheduled_time_in') or record2.get('scheduled_time_in_formatted')
+        scheduled_out2 = record2.get('scheduled_time_out') or record2.get('scheduled_time_out_formatted')
         
         if not all([scheduled_in1, scheduled_out1, scheduled_in2, scheduled_out2]):
             return False
