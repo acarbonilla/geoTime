@@ -534,9 +534,9 @@ const ScheduleReport = () => {
       return 0;
     }
     
-    // Parse time strings using the record's date as context
-    const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
-    let timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
+    // Parse time strings using the record's date as context - handle 12-hour format
+    const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`, 'YYYY-MM-DD h:mm A');
+    let timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`, 'YYYY-MM-DD h:mm A');
     
     if (!timeInMoment.isValid() || !timeOutMoment.isValid()) {
       return 0;
@@ -548,9 +548,9 @@ const ScheduleReport = () => {
       console.log('Shift spans midnight, adjusted timeOutMoment:', timeOutMoment.format('YYYY-MM-DD HH:mm:ss'));
     }
     
-    // Apply same abuse prevention logic as calculateBilledHours
-    const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
-    const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
+    // Apply same abuse prevention logic as calculateBilledHours - handle 12-hour format
+    const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`, 'YYYY-MM-DD h:mm A');
+    const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`, 'YYYY-MM-DD h:mm A');
     
     if (scheduledOutMoment.isBefore(scheduledInMoment)) {
       scheduledOutMoment.add(1, 'day');
@@ -646,8 +646,8 @@ const ScheduleReport = () => {
       return 0;
     }
     
-    const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
-    const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
+    const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`, 'YYYY-MM-DD h:mm A');
+    const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`, 'YYYY-MM-DD h:mm A');
     
     if (!timeInMoment.isValid() || !scheduledInMoment.isValid()) {
       return 0;
@@ -689,9 +689,9 @@ const ScheduleReport = () => {
       return 0;
     }
     
-    // Parse scheduled times for UT calculation
-    const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
-    const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
+    // Parse scheduled times for UT calculation - handle 12-hour format
+    const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`, 'YYYY-MM-DD h:mm A');
+    const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`, 'YYYY-MM-DD h:mm A');
     
     if (!scheduledInMoment.isValid() || !scheduledOutMoment.isValid()) {
       return 0;
@@ -764,13 +764,13 @@ const ScheduleReport = () => {
          return 0;
        }
 
-       // Parse actual time worked (time out - time in)
-       const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`);
-       let timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`);
+       // Parse actual time worked (time out - time in) - handle 12-hour format
+       const timeInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeIn}`, 'YYYY-MM-DD h:mm A');
+       let timeOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${timeOut}`, 'YYYY-MM-DD h:mm A');
        
-       // Parse scheduled times for abuse prevention
-       const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`);
-       const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`);
+       // Parse scheduled times for abuse prevention - handle 12-hour format
+       const scheduledInMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledIn}`, 'YYYY-MM-DD h:mm A');
+       const scheduledOutMoment = moment(`${baseDate.format('YYYY-MM-DD')} ${scheduledOut}`, 'YYYY-MM-DD h:mm A');
        
        if (!timeInMoment.isValid() || !timeOutMoment.isValid() || 
            !scheduledInMoment.isValid() || !scheduledOutMoment.isValid()) {
@@ -2882,7 +2882,7 @@ const ScheduleReport = () => {
                               
                               // For night shifts spanning midnight, look ahead for time out
                               if (record.time_in && record.time_in !== '-' && (!record.time_out || record.time_out === '-')) {
-                                const timeInMoment = moment(record.time_in, 'HH:mm:ss');
+                                const timeInMoment = moment(record.time_in, 'h:mm A');
                                 
                                 // Check if this is a night shift (started at 6 PM or later)
                                 if (timeInMoment.hour() >= 18) {
@@ -2891,7 +2891,7 @@ const ScheduleReport = () => {
                                 const nextRecord = (report.daily_records || [])[index + 1];
                                     
                                     if (nextRecord && nextRecord.time_out && nextRecord.time_out !== '-') {
-                                      const nextTimeOutMoment = moment(nextRecord.time_out, 'HH:mm:ss');
+                                      const nextTimeOutMoment = moment(nextRecord.time_out, 'h:mm A');
                                       
                                       // Next day time out is before 6 AM (night differential period)
                                       if (nextTimeOutMoment.hour() < 6) {
@@ -2907,13 +2907,13 @@ const ScheduleReport = () => {
                               // Check if this record has a time out that belongs to a previous day's night shift
                               // BUT only if this day actually has a schedule (not "Not Yet Scheduled")
                               if (record.time_out && record.time_out !== '-') {
-                                const timeOutMoment = moment(record.time_out, 'HH:mm:ss');
+                                const timeOutMoment = moment(record.time_out, 'h:mm A');
                                 
                                 // If time out is before 6 AM, it might belong to a previous night shift
                                 if (report?.daily_records && timeOutMoment.hour() < 6 && index > 0) {
                                   const prevRecord = (report.daily_records || [])[index - 1];
                                   if (prevRecord && prevRecord.time_in && prevRecord.time_in !== '-') {
-                                    const prevTimeInMoment = moment(prevRecord.time_in, 'HH:mm:ss');
+                                    const prevTimeInMoment = moment(prevRecord.time_in, 'h:mm A');
                                     
                                     // If previous day started at 6 PM or later, this time out belongs to that night shift
                                     // BUT only calculate ND if this day has a schedule (not "Not Yet Scheduled")
