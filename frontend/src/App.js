@@ -150,13 +150,11 @@ function App() {
             />
             {/* Navbar for authenticated users - only show in full view */}
             {isAuthenticated && shouldShowNavbar() && (
-              <div style={{ position: 'relative', zIndex: 1000 }}>
-                <Navbar user={user} employee={employee} onLogout={handleLogout} />
-              </div>
+              <Navbar user={user} employee={employee} onLogout={handleLogout} />
             )}
             
-            {/* Main content area with proper spacing from navbar */}
-            <div className="main-content" style={{ paddingTop: isAuthenticated && shouldShowNavbar() ? '80px' : '0' }}>
+            {/* Main content area */}
+            <div className="main-content">
               <Routes>
                 <Route 
                   path="/" 

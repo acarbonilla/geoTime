@@ -40,7 +40,8 @@ import {
   FaSignOutAlt,
   FaExclamationTriangle,
   FaFilter,
-  FaCalendarAlt
+  FaCalendarAlt,
+  FaTools
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -2560,81 +2561,87 @@ const ScheduleReport = () => {
               <div className="px-6 py-4 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-900">Daily Time Records</h3>
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+              <div className="overflow-x-auto max-h-[calc(100vh-300px)]">
+                <table className="min-w-full divide-y divide-gray-200 text-sm compact-table">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaCalendar className="w-3 h-3" />
                           <span>Date</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaCalendarDay className="w-3 h-3" />
                           <span>Day</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaInfoCircle className="w-3 h-3" />
                           <span>Status</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaSignInAlt className="w-3 h-3" />
                           <span>Time In</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaSignOutAlt className="w-3 h-3" />
                           <span>Time Out</span>
                         </div>
                       </th>
 
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaClock className="w-3 h-3" />
                           <span>Scheduled In</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaClock className="w-3 h-3" />
                           <span>Scheduled Out</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaHourglassHalf className="w-3 h-3" />
                           <span>BH (min)</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaExclamationTriangle className="w-3 h-3" />
                           <span>LT</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaExclamationTriangle className="w-3 h-3" />
                           <span>UT</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaHourglassHalf className="w-3 h-3" />
                           <span>ND</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                         <div className="flex items-center space-x-2">
                           <FaExclamationTriangle className="w-3 h-3" />
                           <span>OT</span>
+                        </div>
+                      </th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FaTools className="w-3 h-3" />
+                          <span>Actions</span>
                         </div>
                       </th>
                     </tr>
@@ -2645,7 +2652,7 @@ const ScheduleReport = () => {
                       if ((!report?.daily_records || report.daily_records.length === 0) && adminStyleData.length === 0) {
                         return (
                           <tr>
-                            <td colSpan="12" className="px-6 py-8 text-center text-gray-500">
+                            <td colSpan="12" className="px-3 py-4 text-center text-gray-500">
                               <div className="text-lg font-medium mb-2">No Daily Records Found</div>
                               <div className="text-sm">No data available for the selected period.</div>
                               <div className="text-xs mt-2 text-gray-400">
@@ -2709,7 +2716,7 @@ const ScheduleReport = () => {
                           record.is_grouped_nightshift && record.spans_midnight ? 'nightshift-row bg-indigo-50 border-l-4 border-indigo-500' :
                           record.is_nightshift ? 'nightshift-row bg-blue-50 border-l-4 border-blue-400' : ''
                         }`}>
-                          <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                          <td className="px-3 py-2 text-sm font-medium text-gray-900">
                             <div className="flex flex-col">
                               {/* Admin-style display (like Django admin) */}
                               <>
@@ -2734,7 +2741,7 @@ const ScheduleReport = () => {
                               </>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-600">
+                          <td className="px-3 py-2 text-sm text-gray-600">
                             <div className="flex flex-col">
                               {/* Admin-style display (like Django admin) */}
                               <>
@@ -2750,7 +2757,7 @@ const ScheduleReport = () => {
                               </>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-sm">
+                          <td className="px-3 py-2 text-sm">
                             {/* Admin-style status display (like Django admin) */}
                             <>
                               <span className={`status-pill ${getStatusColor(record.status, record.scheduled_time_in, record.scheduled_time_out, record.time_in, record.date)}`}>
@@ -2774,11 +2781,11 @@ const ScheduleReport = () => {
                               </div>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                          <td className="px-3 py-2 text-sm text-gray-900 font-medium">
                             {/* Admin-style time display (like Django admin) */}
                             {record.time_in || '-'}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                          <td className="px-3 py-2 text-sm text-gray-900 font-medium">
                             {/* Admin-style time out display (like Django admin) */}
                             {(() => {
                               // Handle grouped nightshifts that span midnight
@@ -2812,15 +2819,15 @@ const ScheduleReport = () => {
                             })()}
                           </td>
 
-                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                          <td className="px-3 py-2 text-sm text-gray-900 font-medium">
                             {/* Admin-style scheduled time display (like Django admin) */}
                             {record.scheduled_time_in || '-'}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                          <td className="px-3 py-2 text-sm text-gray-900 font-medium">
                             {/* Admin-style scheduled time display (like Django admin) */}
                             {record.scheduled_time_out || '-'}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                          <td className="px-3 py-2 text-sm text-gray-900 font-medium">
                             {/* Admin-style BH display (like Django admin) */}
                             {(() => {
                               // CRITICAL FIX: Check backend status first
@@ -2835,7 +2842,7 @@ const ScheduleReport = () => {
                               return '-';
                             })()}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                          <td className="px-3 py-2 text-sm text-gray-900 font-medium">
                             {/* Admin-style LT display (like Django admin) */}
                             {(() => {
                               // CRITICAL FIX: Check backend status first
@@ -2850,7 +2857,7 @@ const ScheduleReport = () => {
                               return '-';
                             })()}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                          <td className="px-3 py-2 text-sm text-gray-900 font-medium">
                             {/* Admin-style UT display (like Django admin) */}
                             {(() => {
                               // CRITICAL FIX: Check backend status first
@@ -2866,7 +2873,7 @@ const ScheduleReport = () => {
                               return '-';
                             })()}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                                    <td className="px-3 py-2 text-sm text-gray-900 font-medium">
                             {/* Admin-style ND display (like Django admin) */}
                             {(() => {
                               // CRITICAL FIX: Check backend status first
@@ -2914,7 +2921,7 @@ const ScheduleReport = () => {
                                   const prevRecord = (report.daily_records || [])[index - 1];
                                   if (prevRecord && prevRecord.time_in && prevRecord.time_in !== '-') {
                                     const prevTimeInMoment = moment(prevRecord.time_in, 'h:mm A');
-                                    
+                                
                                     // If previous day started at 6 PM or later, this time out belongs to that night shift
                                     // BUT only calculate ND if this day has a schedule (not "Not Yet Scheduled")
                                     if (prevTimeInMoment.hour() >= 18 && record.scheduled_time_in && record.scheduled_time_in !== '-') {
@@ -2928,7 +2935,7 @@ const ScheduleReport = () => {
                               return '-';
                             })()}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                          <td className="px-3 py-2 text-sm text-gray-900 font-medium">
                             {/* Admin-style OT display (like Django admin) */}
                             {(() => {
                               // OT calculation from Admin Style API
@@ -2952,6 +2959,53 @@ const ScheduleReport = () => {
                               
                               return '-';
                             })()}
+                          </td>
+                          <td className="px-3 py-2 text-sm text-gray-900 font-medium">
+                            {/* Actions column with time correction buttons */}
+                            <div className="flex flex-col space-y-2">
+                              {/* Individual time correction button */}
+                              {record.status === 'incomplete' || record.status === 'shift_void' ? (
+                                <button
+                                  onClick={() => {
+                                    setSelectedPattern({
+                                      id: `single_${record.date}`,
+                                      start_date: record.date,
+                                      end_date: record.date,
+                                      total_days: 1,
+                                      missing_timeouts: 1,
+                                      description: `Single day correction for ${record.date}`,
+                                      records: [record]
+                                    });
+                                    setShowTimeCorrectionDrawer(true);
+                                  }}
+                                  className="px-3 py-1 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700 transition-colors flex items-center space-x-1"
+                                >
+                                  <span>🕐</span>
+                                  <span>Correct</span>
+                                </button>
+                              ) : null}
+                              
+                              {/* Pattern-based correction button (if this record is part of a pattern) */}
+                              {consecutivePatterns.length > 0 && consecutivePatterns.some(pattern => 
+                                pattern.records.some(r => r.date === record.date)
+                              ) && (
+                                <button
+                                  onClick={() => {
+                                    const pattern = consecutivePatterns.find(p => 
+                                      p.records.some(r => r.date === record.date)
+                                    );
+                                    if (pattern) {
+                                      setSelectedPattern(pattern);
+                                      setShowTimeCorrectionDrawer(true);
+                                    }
+                                  }}
+                                  className="px-3 py-1 bg-indigo-600 text-white text-xs rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-1"
+                                >
+                                  <span>🌙</span>
+                                  <span>Pattern</span>
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ));
@@ -3207,6 +3261,37 @@ This pattern can be corrected with a single bulk correction request instead of $
             color: #7c3aed;
             font-size: 0.75rem;
             margin-top: 0.25rem;
+          }
+          
+          /* Compact table styles */
+          .compact-table {
+            font-size: 0.875rem;
+            line-height: 1.25rem;
+          }
+          
+          .compact-table td {
+            padding: 0.5rem 0.75rem;
+            vertical-align: top;
+          }
+          
+          .compact-table th {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+          
+          /* Responsive table */
+          @media (max-width: 1024px) {
+            .compact-table {
+              font-size: 0.75rem;
+            }
+            
+            .compact-table td,
+            .compact-table th {
+              padding: 0.375rem 0.5rem;
+            }
           }
         `
       }} />

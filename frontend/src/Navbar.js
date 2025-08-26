@@ -120,7 +120,7 @@ const Navbar = ({ user, employee, onLogout }) => {
   };
 
   return (
-    <nav className="navbar-fixed bg-gradient-to-r from-blue-900 via-blue-800 to-purple-900 shadow-2xl border-b transition-all duration-500" style={{ zIndex: 1000 }}>
+    <nav className="sticky top-0 bg-gradient-to-r from-blue-900 via-blue-800 to-purple-900 shadow-2xl border-b transition-all duration-500" style={{ zIndex: 1000 }}>
       <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
         <div className="flex justify-between items-center py-3 min-w-0 h-16">
           {/* Left: Logo/App Name and Role */}
