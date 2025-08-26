@@ -326,6 +326,9 @@ class TimeCorrectionRequest(models.Model):
     requested_time_out = models.TimeField(null=True, blank=True)
     reason = models.TextField()
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    # New fields for bulk correction functionality
+    correction_type = models.CharField(max_length=50, blank=True, null=True, help_text='Type of correction (e.g., bulk_nightshift_timeout)')
+    pattern_id = models.CharField(max_length=100, blank=True, null=True, help_text='ID of the pattern this correction belongs to')
     # New fields added for approval functionality
     approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_correction_requests')
     comments = models.TextField(blank=True, null=True)

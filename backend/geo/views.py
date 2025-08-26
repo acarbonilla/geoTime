@@ -2169,6 +2169,85 @@ class TimeCorrectionRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def bulk_nightshift(self, request):
+        """Handle bulk nightshift time correction requests"""
+        print(f"[DEBUG] Bulk nightshift correction request received")
+        try:
+            data = request.data
+            print(f"[DEBUG] Bulk request data: {data}")
+            
+            # Validate required fields
+            required_fields = ['pattern_id', 'start_date', 'end_date', 'total_days', 'dates', 'reason']
+            for field in required_fields:
+                if field not in data:
+                    return Response(
+                        {'detail': f'Missing required field: {field}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Get user and employee profile
+            user = request.user
+            if not hasattr(user, 'employee_profile'):
+                return Response(
+                    {'detail': 'User has no associated employee profile'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            employee = user.employee_profile
+            
+            # Create individual time correction requests for each date
+            created_requests = []
+            dates = data.get('dates', [])
+            
+            for date in dates:
+                try:
+                    # Create correction request data for this date
+                    correction_data = {
+                        'employee': employee.id,
+                        'date': date,
+                        'requested_time_in': None,  # Will be filled based on pattern
+                        'requested_time_out': None,  # Will be filled based on pattern
+                        'reason': data['reason'],
+                        'correction_type': 'bulk_nightshift_timeout',
+                        'pattern_id': data['pattern_id'],
+                        'status': 'pending'
+                    }
+                    
+                    # Create the correction request
+                    serializer = self.get_serializer(data=correction_data)
+                    serializer.is_valid(raise_exception=True)
+                    correction_request = serializer.save()
+                    created_requests.append(correction_request)
+                    
+                    print(f"[DEBUG] Created correction request for {date}: {correction_request.id}")
+                    
+                except Exception as e:
+                    print(f"[DEBUG] Error creating correction request for {date}: {e}")
+                    continue
+            
+            if not created_requests:
+                return Response(
+                    {'detail': 'Failed to create any correction requests'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Return success response with created requests
+            return Response({
+                'detail': f'Successfully created {len(created_requests)} bulk correction requests',
+                'created_requests': len(created_requests),
+                'pattern_id': data['pattern_id'],
+                'dates': dates,
+                'status': 'pending'
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            print(f"[DEBUG] Error in bulk nightshift correction: {e}")
+            return Response(
+                {'detail': f'Bulk correction failed: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def approve(self, request, pk=None):
         """Approve a time correction request and apply the correction to TimeEntry"""

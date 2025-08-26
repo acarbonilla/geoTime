@@ -262,7 +262,7 @@ class TimeCorrectionRequestSerializer(serializers.ModelSerializer):
         model = TimeCorrectionRequest
         fields = [
             'id', 'employee', 'employee_name', 'date', 'requested_time_in', 'requested_time_out',
-            'reason', 'status', 'approver', 'approver_name', 'comments', 'approved_date',
+            'reason', 'status', 'correction_type', 'pattern_id', 'approver', 'approver_name', 'comments', 'approved_date',
             'submitted_at', 'reviewed_at', 'reviewed_by', 'reviewed_by_name', 'response_message'
         ]
         read_only_fields = ['id', 'submitted_at', 'reviewed_at', 'reviewed_by', 'employee_name', 'approver_name', 'reviewed_by_name', 'approved_date']
