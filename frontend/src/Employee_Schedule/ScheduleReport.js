@@ -379,6 +379,7 @@ const ScheduleReport = () => {
         // Extract consecutive patterns if available
         if (response.data.consecutive_patterns && Array.isArray(response.data.consecutive_patterns)) {
           console.log('🌙 Found consecutive nightshift patterns:', response.data.consecutive_patterns.length);
+          console.log('🌙 Pattern data structure:', response.data.consecutive_patterns);
           setConsecutivePatterns(response.data.consecutive_patterns);
           setShowPatternPanel(response.data.consecutive_patterns.length > 0);
         } else {
@@ -829,6 +830,30 @@ const ScheduleReport = () => {
        return 0;
      }
    };
+
+  // Helper function to check if a schedule traverses midnight (e.g., 7:00 PM - 4:00 AM)
+  const isScheduleTraversingMidnight = (scheduledTimeIn, scheduledTimeOut) => {
+    if (!scheduledTimeIn || !scheduledTimeOut || scheduledTimeIn === '-' || scheduledTimeOut === '-') {
+      return false;
+    }
+    
+    try {
+      // Parse times using moment.js
+      const timeIn = moment(`2000-01-01 ${scheduledTimeIn}`, 'HH:mm');
+      const timeOut = moment(`2000-01-01 ${scheduledTimeOut}`, 'HH:mm');
+      
+      if (!timeIn.isValid() || !timeOut.isValid()) {
+        return false;
+      }
+      
+      // Check if the schedule traverses midnight
+      // This happens when time_out is earlier than time_in (e.g., 7:00 PM - 4:00 AM)
+      return timeOut.isBefore(timeIn);
+    } catch (error) {
+      console.error('Error checking if schedule traverses midnight:', error);
+      return false;
+    }
+  };
 
   const calculateSummaryTotals = (dailyRecords) => {
     if (!dailyRecords || dailyRecords.length === 0) {
@@ -2962,9 +2987,22 @@ const ScheduleReport = () => {
                           </td>
                           <td className="px-3 py-2 text-sm text-gray-900 font-medium">
                             {/* Actions column with time correction buttons */}
+                            {/* 
+                              Time correction buttons now appear for:
+                              1. Records with 'incomplete' or 'shift_void' status
+                              2. Records with schedules that traverse midnight (e.g., 7:00 PM - 4:00 AM)
+                              This ensures corrections can be requested even if a timeout exists from a past date
+                            */}
                             <div className="flex flex-col space-y-2">
                               {/* Individual time correction button */}
-                              {record.status === 'incomplete' || record.status === 'shift_void' ? (
+                              {(record.status === 'incomplete' || record.status === 'shift_void' || 
+                                (() => {
+                                  const traversesMidnight = isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out);
+                                  if (traversesMidnight) {
+                                    console.log(`🌙 Schedule traverses midnight for ${record.date}: ${record.scheduled_time_in} - ${record.scheduled_time_out}`);
+                                  }
+                                  return traversesMidnight;
+                                })()) ? (
                                 <button
                                   onClick={() => {
                                     setSelectedPattern({
@@ -2973,6 +3011,7 @@ const ScheduleReport = () => {
                                       end_date: record.date,
                                       total_days: 1,
                                       missing_timeouts: 1,
+                                      pattern_type: 'single_day', // Add pattern type
                                       description: `Single day correction for ${record.date}`,
                                       records: [record]
                                     });
@@ -2982,6 +3021,9 @@ const ScheduleReport = () => {
                                 >
                                   <span>🕐</span>
                                   <span>Correct</span>
+                                  {isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out) && (
+                                    <span className="ml-1 text-xs opacity-75">🌙</span>
+                                  )}
                                 </button>
                               ) : null}
                               
@@ -2995,6 +3037,7 @@ const ScheduleReport = () => {
                                       p.records.some(r => r.date === record.date)
                                     );
                                     if (pattern) {
+                                      console.log('🌙 Pattern button clicked, pattern data:', pattern);
                                       setSelectedPattern(pattern);
                                       setShowTimeCorrectionDrawer(true);
                                     }
@@ -3050,7 +3093,7 @@ const ScheduleReport = () => {
                       Pattern {index + 1}
                     </span>
                     <span className="text-sm text-indigo-600 font-medium">
-                      {pattern.total_days} days
+                      {pattern.total_days || pattern.length} days
                     </span>
                   </div>
                   
@@ -3157,10 +3200,10 @@ const ScheduleReport = () => {
           
           // Show confirmation dialog
           const confirmed = window.confirm(
-            `Are you sure you want to create a bulk correction request for ${pattern.total_days} consecutive nightshifts?\n\n` +
+            `Are you sure you want to create a bulk correction request for ${pattern.total_days || pattern.length} consecutive nightshifts?\n\n` +
             `Date Range: ${moment(pattern.start_date).format('MMM DD')} - ${moment(pattern.end_date).format('MMM DD')}\n` +
             `Schedule: ${pattern.scheduled_start_time} - ${pattern.scheduled_end_time}\n\n` +
-            `This will create a single correction request instead of ${pattern.total_days} individual requests.`
+            `This will create a single correction request instead of ${pattern.total_days || pattern.length} individual requests.`
           );
           
                   if (confirmed) {
@@ -3179,7 +3222,7 @@ const ScheduleReport = () => {
 
 Pattern ID: ${pattern.id}
 Date Range: ${moment(pattern.start_date).format('MMM DD, YYYY')} - ${moment(pattern.end_date).format('MMM DD, YYYY')}
-Total Days: ${pattern.total_days}
+Total Days: ${pattern.total_days || pattern.length}
 Missing Timeouts: ${pattern.missing_timeouts}
 Schedule: ${pattern.scheduled_start_time} - ${pattern.scheduled_end_time}
 
@@ -3190,7 +3233,7 @@ ${pattern.records.map((record, index) =>
   `${index + 1}. ${record.date}: ${record.time_in || 'No time in'} - ${record.time_out || 'Missing timeout'}`
 ).join('\n')}
 
-This pattern can be corrected with a single bulk correction request instead of ${pattern.total_days} individual requests.
+This pattern can be corrected with a single bulk correction request instead of ${pattern.total_days || pattern.length} individual requests.
           `;
           
           alert(details);
@@ -3306,6 +3349,39 @@ This pattern can be corrected with a single bulk correction request instead of $
         employee={null} // Will be set from user context
         pattern={selectedPattern}
       />
+      
+      {/* Debug info - remove after testing */}
+      {selectedPattern && (
+        <div className="fixed bottom-4 right-4 bg-gray-800 text-white p-4 rounded-lg text-xs max-w-md z-50">
+          <div className="font-bold mb-2">Debug: Selected Pattern</div>
+          <div>ID: {selectedPattern.id}</div>
+          <div>Type: {selectedPattern.pattern_type}</div>
+          <div>Days: {selectedPattern.total_days || selectedPattern.length}</div>
+          <div>Start: {selectedPattern.start_date}</div>
+          <div>End: {selectedPattern.end_date}</div>
+          <div>Records: {selectedPattern.records?.length || 0}</div>
+        </div>
+      )}
+
+      {/* Debug info for schedule traversal - remove after testing */}
+      <div className="fixed bottom-4 left-4 bg-blue-800 text-white p-4 rounded-lg text-xs max-w-md z-50">
+        <div className="font-bold mb-2">Debug: Schedule Traversal</div>
+        <div>Total Records: {dailyRecords?.length || 0}</div>
+        <div>Records with Midnight Traversal: {
+          dailyRecords?.filter(record => 
+            isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out)
+          ).length || 0
+        }</div>
+        <div className="mt-2 text-xs opacity-75">
+          {dailyRecords?.filter(record => 
+            isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out)
+          ).slice(0, 3).map(record => (
+            <div key={record.date}>
+              {record.date}: {record.scheduled_time_in} - {record.scheduled_time_out}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };

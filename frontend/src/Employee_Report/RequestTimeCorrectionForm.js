@@ -17,7 +17,9 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
 
   // Check if this is a bulk correction from pattern detection
   useEffect(() => {
+    console.log('🔍 Pattern data received:', pattern);
     if (pattern && pattern.pattern_type === 'consecutive_nightshift') {
+      console.log('🌙 Setting up bulk correction mode for pattern:', pattern);
       setIsBulkCorrection(true);
       setBulkDates(pattern.records.map(record => record.date));
       setBulkSchedule({
@@ -27,6 +29,8 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
       
       // Pre-populate reason for bulk correction
       setReason(`Bulk correction for ${pattern.total_days} consecutive nightshifts from ${pattern.start_date} to ${pattern.end_date}. Missing timeouts for all days.`);
+    } else {
+      console.log('📝 No pattern or not consecutive nightshift, staying in single mode');
     }
   }, [pattern]);
 
@@ -211,7 +215,7 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
               Bulk Nightshift Correction
             </h3>
             <p className="text-sm text-indigo-600">
-              Pattern detected: {pattern.total_days} consecutive nightshifts
+              Pattern detected: {pattern.total_days || pattern.length} consecutive nightshifts
             </p>
           </div>
         </div>
@@ -274,9 +278,9 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
             rows={4}
             required
           />
-          <p className="text-xs text-gray-500 mt-1">
-            This reason will apply to all {pattern.total_days} days in the pattern
-          </p>
+                      <p className="text-xs text-gray-500 mt-1">
+              This reason will apply to all {pattern.total_days || pattern.length} days in the pattern
+            </p>
         </div>
       </div>
     </div>
@@ -372,10 +376,33 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
           type="button"
           className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold"
           onClick={() => {
-            setIsBulkCorrection(false);
-            setBulkDates([]);
-            setBulkSchedule({ start: '', end: '' });
-            setReason('');
+            console.log('🔄 Switch button clicked. Current mode:', isBulkCorrection ? 'bulk' : 'single');
+            console.log('📊 Pattern data available:', pattern);
+            
+            if (isBulkCorrection) {
+              // Currently in bulk mode, switch to single
+              console.log('🔄 Switching from bulk to single mode');
+              setIsBulkCorrection(false);
+              setBulkDates([]);
+              setBulkSchedule({ start: '', end: '' });
+              setReason('');
+            } else {
+              // Currently in single mode, switch to bulk
+              console.log('🔄 Switching from single to bulk mode');
+              setIsBulkCorrection(true);
+              // Pre-populate bulk fields if we have a pattern
+              if (pattern) {
+                console.log('📊 Pre-populating bulk fields with pattern data');
+                setBulkDates(pattern.records.map(record => record.date));
+                setBulkSchedule({
+                  start: pattern.scheduled_start_time || '',
+                  end: pattern.scheduled_end_time || ''
+                });
+                setReason(`Bulk correction for ${pattern.total_days || pattern.length} consecutive nightshifts from ${pattern.start_date} to ${pattern.end_date}. Missing timeouts for all days.`);
+              } else {
+                console.log('⚠️ No pattern data available for bulk mode');
+              }
+            }
           }}
           disabled={loading}
         >
@@ -393,7 +420,7 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
               {isBulkCorrection ? 'Submitting Bulk...' : 'Submitting...'}
             </>
           ) : (
-            isBulkCorrection ? `Submit Bulk Request (${pattern?.total_days || 0} days)` : 'Submit Request'
+            isBulkCorrection ? `Submit Bulk Request (${pattern?.total_days || pattern?.length || 0} days)` : 'Submit Request'
           )}
         </button>
       </div>
