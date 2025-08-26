@@ -3350,38 +3350,9 @@ This pattern can be corrected with a single bulk correction request instead of $
         pattern={selectedPattern}
       />
       
-      {/* Debug info - remove after testing */}
-      {selectedPattern && (
-        <div className="fixed bottom-4 right-4 bg-gray-800 text-white p-4 rounded-lg text-xs max-w-md z-50">
-          <div className="font-bold mb-2">Debug: Selected Pattern</div>
-          <div>ID: {selectedPattern.id}</div>
-          <div>Type: {selectedPattern.pattern_type}</div>
-          <div>Days: {selectedPattern.total_days || selectedPattern.length}</div>
-          <div>Start: {selectedPattern.start_date}</div>
-          <div>End: {selectedPattern.end_date}</div>
-          <div>Records: {selectedPattern.records?.length || 0}</div>
-        </div>
-      )}
 
-      {/* Debug info for schedule traversal - remove after testing */}
-      <div className="fixed bottom-4 left-4 bg-blue-800 text-white p-4 rounded-lg text-xs max-w-md z-50">
-        <div className="font-bold mb-2">Debug: Schedule Traversal</div>
-        <div>Total Records: {report?.daily_records?.length || 0}</div>
-        <div>Records with Midnight Traversal: {
-          report?.daily_records?.filter(record => 
-            isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out)
-          ).length || 0
-        }</div>
-        <div className="mt-2 text-xs opacity-75">
-          {report?.daily_records?.filter(record => 
-            isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out)
-          ).slice(0, 3).map(record => (
-            <div key={record.date}>
-              {record.date}: {record.scheduled_time_in} - {record.scheduled_time_out}
-            </div>
-          ))}
-        </div>
-      </div>
+
+      
     </div>
   );
 };
