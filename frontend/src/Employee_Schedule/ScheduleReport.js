@@ -3042,19 +3042,7 @@ const ScheduleReport = () => {
                               This ensures corrections can be requested even if a timeout exists from a past date
                             */}
                             <div className="flex flex-col space-y-2">
-                              {/* Delete button for time entries */}
-                              {(record.time_in || record.time_out) && (
-                                <button
-                                  onClick={() => handleDeleteTimeEntry(record)}
-                                  className="px-3 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700 transition-colors flex items-center space-x-1"
-                                  title="Delete time entry"
-                                >
-                                  <span>🗑️</span>
-                                  <span>Delete</span>
-                                </button>
-                              )}
-                              
-                              {/* Individual time correction button */}
+                              {/* Individual time correction button - shows when correction is needed */}
                               {(record.status === 'incomplete' || record.status === 'shift_void' || 
                                 (() => {
                                   const traversesMidnight = isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out);
@@ -3071,7 +3059,52 @@ const ScheduleReport = () => {
                                       end_date: record.date,
                                       total_days: 1,
                                       missing_timeouts: 1,
-                                      pattern_type: 'single_day', // Add pattern type
+                                      pattern_type: 'single_day',
+                                      description: `Single day correction for ${record.date}`,
+                                      records: [record]
+                                    });
+                                    setShowTimeCorrectionDrawer(true);
+                                  }}
+                                  className="px-3 py-1 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700 transition-colors flex items-center space-x-1"
+                                >
+                                  <span>🕐</span>
+                                  <span>Correct</span>
+                                  {isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out) && (
+                                    <span className="ml-1 text-xs opacity-75">🌙</span>
+                                  )}
+                                </button>
+                              ) : null}
+                              
+                              {/* Delete button - shows after correction is done or for cleanup */}
+                              {(record.time_in || record.time_out) && (
+                                <button
+                                  onClick={() => handleDeleteTimeEntry(record)}
+                                  className="px-3 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700 transition-colors flex items-center space-x-1"
+                                  title="Delete time entry (use after correction or for cleanup)"
+                                >
+                                  <span>🗑️</span>
+                                  <span>Delete</span>
+                                </button>
+                              )}
+                              
+                              {/* Individual time correction button - shows when correction is needed */}
+                              {(record.status === 'incomplete' || record.status === 'shift_void' || 
+                                (() => {
+                                  const traversesMidnight = isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out);
+                                  if (traversesMidnight) {
+                                    console.log(`🌙 Schedule traverses midnight for ${record.date}: ${record.scheduled_time_in} - ${record.scheduled_time_out}`);
+                                  }
+                                  return traversesMidnight;
+                                })()) ? (
+                                <button
+                                  onClick={() => {
+                                    setSelectedPattern({
+                                      id: `single_${record.date}`,
+                                      start_date: record.date,
+                                      end_date: record.date,
+                                      total_days: 1,
+                                      missing_timeouts: 1,
+                                      pattern_type: 'single_day',
                                       description: `Single day correction for ${record.date}`,
                                       records: [record]
                                     });
