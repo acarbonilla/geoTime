@@ -28,7 +28,18 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
       });
       
       // Pre-populate reason for bulk correction
-      setReason(`Bulk correction for ${pattern.total_days} consecutive nightshifts from ${pattern.start_date} to ${pattern.end_date}. Missing timeouts for all days.`);
+      setReason(`Bulk correction for ${pattern.total_days || pattern.length} consecutive nightshifts from ${pattern.start_date} to ${pattern.end_date}. Missing timeouts for all days.`);
+    } else if (pattern && pattern.pattern_type === 'single_day') {
+      console.log('📝 Single day pattern detected, setting up for potential bulk expansion');
+      setIsBulkCorrection(true);
+      setBulkDates([pattern.start_date]);
+      setBulkSchedule({
+        start: pattern.scheduled_start_time || '',
+        end: pattern.scheduled_end_time || ''
+      });
+      
+      // Pre-populate reason for single day that can be expanded
+      setReason(`Time correction for ${pattern.start_date}. You can add more dates to make this a bulk request.`);
     } else {
       console.log('📝 No pattern or not consecutive nightshift, staying in single mode');
     }
@@ -112,6 +123,13 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
   };
 
   const handleBulkSubmit = async () => {
+    // Validate that at least one date is selected
+    if (bulkDates.length === 0) {
+      setError('Please select at least one date for the bulk correction');
+      setLoading(false);
+      return;
+    }
+    
     // Validate reason is provided
     if (!reason.trim()) {
       setError('Please provide a reason for the bulk time correction');
@@ -120,13 +138,18 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
     }
     
     try {
+      // Calculate date range from selected dates
+      const sortedDates = [...bulkDates].sort();
+      const startDate = sortedDates[0];
+      const endDate = sortedDates[sortedDates.length - 1];
+      
       // Create bulk correction request
       const bulkRequestData = {
-        pattern_id: pattern.id,
-        pattern_type: 'consecutive_nightshift',
-        start_date: pattern.start_date,
-        end_date: pattern.end_date,
-        total_days: pattern.total_days,
+        pattern_id: pattern?.id || null,
+        pattern_type: pattern?.pattern_type || 'custom_bulk',
+        start_date: startDate,
+        end_date: endDate,
+        total_days: bulkDates.length,
         dates: bulkDates,
         scheduled_start_time: bulkSchedule.start,
         scheduled_end_time: bulkSchedule.end,
@@ -144,7 +167,7 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
       });
       
       console.log("Bulk response:", response);
-      setSuccess(`Bulk correction request submitted successfully for ${pattern.total_days} consecutive nightshifts!`);
+      setSuccess(`Bulk correction request submitted successfully for ${bulkDates.length} days!`);
       
       // Reset form
       setReason('');
@@ -215,7 +238,10 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
               Bulk Nightshift Correction
             </h3>
             <p className="text-sm text-indigo-600">
-              Pattern detected: {pattern.total_days || pattern.length} consecutive nightshifts
+              {pattern?.pattern_type === 'consecutive_nightshift' 
+                ? `Pattern detected: ${pattern.total_days || pattern.length} consecutive nightshifts`
+                : `Bulk correction: ${bulkDates.length} selected days`
+              }
             </p>
           </div>
         </div>
@@ -224,25 +250,25 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
           <div>
             <span className="font-medium text-gray-700">Date Range:</span>
             <span className="ml-2 text-gray-600">
-              {pattern.start_date} to {pattern.end_date}
+              {bulkDates.length > 0 ? `${Math.min(...bulkDates)} to ${Math.max(...bulkDates)}` : 'No dates selected'}
             </span>
           </div>
           <div>
             <span className="font-medium text-gray-700">Schedule:</span>
             <span className="ml-2 text-gray-600">
-              {pattern.scheduled_start_time} - {pattern.scheduled_end_time}
+              {bulkSchedule.start || pattern?.scheduled_start_time || '-'} - {bulkSchedule.end || pattern?.scheduled_end_time || '-'}
             </span>
           </div>
           <div>
-            <span className="font-medium text-gray-700">Missing Timeouts:</span>
-            <span className="ml-2 text-red-600 font-medium">
-              {pattern.missing_timeouts} days
+            <span className="font-medium text-gray-700">Total Days:</span>
+            <span className="ml-2 text-blue-600 font-medium">
+              {bulkDates.length} days
             </span>
           </div>
           <div>
             <span className="font-medium text-gray-700">Pattern Type:</span>
             <span className="ml-2 text-gray-600 capitalize">
-              {pattern.pattern_type.replace('_', ' ')}
+              {pattern?.pattern_type ? pattern.pattern_type.replace('_', ' ') : 'Custom Bulk'}
             </span>
           </div>
         </div>
@@ -254,16 +280,69 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Affected Dates ({bulkDates.length} days)
           </label>
+          
+          {/* Date Management Controls */}
+          <div className="flex gap-2 mb-3">
+            <input
+              type="date"
+              className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              onChange={(e) => {
+                const newDate = e.target.value;
+                if (newDate && !bulkDates.includes(newDate)) {
+                  setBulkDates([...bulkDates, newDate].sort());
+                }
+              }}
+              placeholder="Add new date"
+            />
+            <button
+              type="button"
+              className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 transition-colors"
+              onClick={() => {
+                const today = new Date().toISOString().split('T')[0];
+                if (!bulkDates.includes(today)) {
+                  setBulkDates([...bulkDates, today].sort());
+                }
+              }}
+            >
+              Add Today
+            </button>
+            {bulkDates.length > 0 && (
+              <button
+                type="button"
+                className="px-3 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 transition-colors"
+                onClick={() => setBulkDates([])}
+                title="Clear all dates"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+          
+          {/* Display Selected Dates with Remove Option */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
             {bulkDates.map((date, index) => (
-              <div key={index} className="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm text-center">
-                {new Date(date).toLocaleDateString('en-US', { 
+              <div key={index} className="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm text-center flex items-center justify-between group">
+                <span>{new Date(date).toLocaleDateString('en-US', { 
                   month: 'short', 
                   day: 'numeric' 
-                })}
+                })}</span>
+                <button
+                  type="button"
+                  className="ml-2 text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => {
+                    setBulkDates(bulkDates.filter((_, i) => i !== index));
+                  }}
+                  title="Remove date"
+                >
+                  ×
+                </button>
               </div>
             ))}
           </div>
+          
+          {bulkDates.length === 0 && (
+            <p className="text-sm text-gray-500 italic">No dates selected. Add dates above to create a bulk correction request.</p>
+          )}
         </div>
 
         <div>
@@ -279,7 +358,7 @@ const RequestTimeCorrectionForm = ({ employee, pattern = null }) => {
             required
           />
                       <p className="text-xs text-gray-500 mt-1">
-              This reason will apply to all {pattern.total_days || pattern.length} days in the pattern
+              This reason will apply to all {bulkDates.length} selected days
             </p>
         </div>
       </div>
