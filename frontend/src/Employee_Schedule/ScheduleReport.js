@@ -3366,14 +3366,14 @@ This pattern can be corrected with a single bulk correction request instead of $
       {/* Debug info for schedule traversal - remove after testing */}
       <div className="fixed bottom-4 left-4 bg-blue-800 text-white p-4 rounded-lg text-xs max-w-md z-50">
         <div className="font-bold mb-2">Debug: Schedule Traversal</div>
-        <div>Total Records: {dailyRecords?.length || 0}</div>
+        <div>Total Records: {report?.daily_records?.length || 0}</div>
         <div>Records with Midnight Traversal: {
-          dailyRecords?.filter(record => 
+          report?.daily_records?.filter(record => 
             isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out)
           ).length || 0
         }</div>
         <div className="mt-2 text-xs opacity-75">
-          {dailyRecords?.filter(record => 
+          {report?.daily_records?.filter(record => 
             isScheduleTraversingMidnight(record.scheduled_time_in, record.scheduled_time_out)
           ).slice(0, 3).map(record => (
             <div key={record.date}>
