@@ -408,6 +408,54 @@ const ScheduleReport = () => {
     }));
   };
 
+  const handleDeleteTimeEntry = async (record) => {
+    // Confirm deletion with user
+    if (!window.confirm(`Are you sure you want to delete the time entry for ${record.date}?\n\nTime In: ${record.time_in || 'None'}\nTime Out: ${record.time_out || 'None'}\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting time entry:', record);
+      
+      // Prepare the data to send
+      const deleteData = {
+        date: record.date,
+        employee_id: currentEmployeeId,
+        time_in: record.time_in || null,
+        time_out: record.time_out || null
+      };
+
+      // Send delete request to backend
+      const response = await axiosInstance.delete('time-entries/delete/', {
+        data: deleteData
+      });
+
+      console.log('✅ Time entry deleted successfully:', response.data);
+      
+      // Show success message
+      alert(`Time entry for ${record.date} has been deleted successfully.`);
+      
+      // Refresh the data to reflect the changes
+      if (adminStyleData.length > 0) {
+        await loadAdminStyleData();
+      } else if (report?.daily_records) {
+        await loadReport();
+      }
+      
+    } catch (error) {
+      console.error('❌ Error deleting time entry:', error);
+      
+      let errorMessage = 'Failed to delete time entry.';
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      alert(`Error: ${errorMessage}`);
+    }
+  };
+
   const handleCutOffPeriodChange = useCallback(async (e) => {
     const { value } = e.target;
     setFilters(prev => ({
@@ -2994,6 +3042,18 @@ const ScheduleReport = () => {
                               This ensures corrections can be requested even if a timeout exists from a past date
                             */}
                             <div className="flex flex-col space-y-2">
+                              {/* Delete button for time entries */}
+                              {(record.time_in || record.time_out) && (
+                                <button
+                                  onClick={() => handleDeleteTimeEntry(record)}
+                                  className="px-3 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700 transition-colors flex items-center space-x-1"
+                                  title="Delete time entry"
+                                >
+                                  <span>🗑️</span>
+                                  <span>Delete</span>
+                                </button>
+                              )}
+                              
                               {/* Individual time correction button */}
                               {(record.status === 'incomplete' || record.status === 'shift_void' || 
                                 (() => {
