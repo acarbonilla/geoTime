@@ -3075,12 +3075,12 @@ const ScheduleReport = () => {
                                 </button>
                               ) : null}
                               
-                              {/* Delete button - shows after correction is done or for cleanup */}
-                              {(record.time_in || record.time_out) && (
+                              {/* Delete button - shows only when incomplete and no time registered */}
+                              {(record.status === 'incomplete' || record.status === 'shift_void') && !record.time_in && !record.time_out && (
                                 <button
                                   onClick={() => handleDeleteTimeEntry(record)}
                                   className="px-3 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700 transition-colors flex items-center space-x-1"
-                                  title="Delete time entry (use after correction or for cleanup)"
+                                  title="Delete incomplete schedule with no time registered"
                                 >
                                   <span>🗑️</span>
                                   <span>Delete</span>
