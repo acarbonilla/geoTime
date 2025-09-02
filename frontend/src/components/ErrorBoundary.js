@@ -7,6 +7,21 @@ class ErrorBoundary extends React.Component {
   }
 
   static getDerivedStateFromError(error) {
+    // Check if it's a geolocation error - don't show error UI for these
+    if (error.constructor?.name === 'GeolocationPositionError' ||
+        (error.code !== undefined && error.message !== undefined && 
+         (error.code === 1 || error.code === 2 || error.code === 3))) {
+      return { hasError: false }; // Don't show error UI for geolocation errors
+    }
+    
+    // Check for other geolocation-related errors
+    if (error && error.message && 
+        (error.message.includes('geolocation') || 
+         error.message.includes('location') ||
+         error.message.includes('permission'))) {
+      return { hasError: false }; // Don't show error UI for geolocation errors
+    }
+    
     // Update state so the next render will show the fallback UI
     return { hasError: true };
   }
@@ -16,13 +31,41 @@ class ErrorBoundary extends React.Component {
     console.warn('ErrorBoundary caught an error:', error, errorInfo);
     
     // Check if it's a geolocation error
-    if (error && error.message && 
-        (error.message.includes('geolocation') || 
-         error.message.includes('location') ||
-         error.message.includes('permission'))) {
-      console.warn('Geolocation error caught by ErrorBoundary:', error.message);
-      // Don't set hasError for geolocation issues, just log them
-      return;
+    if (error) {
+      // Check if it's a GeolocationPositionError
+      if (error.constructor?.name === 'GeolocationPositionError' ||
+          (error.code !== undefined && error.message !== undefined && 
+           (error.code === 1 || error.code === 2 || error.code === 3))) {
+        
+        let errorMessage = 'Location access error';
+        switch (error.code) {
+          case 1: // PERMISSION_DENIED
+            errorMessage = 'Location permission denied. Please enable location services.';
+            break;
+          case 2: // POSITION_UNAVAILABLE
+            errorMessage = 'Location information is unavailable.';
+            break;
+          case 3: // TIMEOUT
+            errorMessage = 'Location request timed out.';
+            break;
+          default:
+            errorMessage = error.message || 'Unable to get your location.';
+        }
+        
+        console.warn('Geolocation error caught by ErrorBoundary:', errorMessage);
+        // Don't set hasError for geolocation issues, just log them
+        return;
+      }
+      
+      // Check for other geolocation-related errors
+      if (error.message && 
+          (error.message.includes('geolocation') || 
+           error.message.includes('location') ||
+           error.message.includes('permission'))) {
+        console.warn('Geolocation error caught by ErrorBoundary:', error.message);
+        // Don't set hasError for geolocation issues, just log them
+        return;
+      }
     }
     
     this.setState({

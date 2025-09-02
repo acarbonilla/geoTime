@@ -1,0 +1,5 @@
+[33m668c6bd[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m Fix build error: Replace dailyRecords with report?.daily_records in debug panel
+[33m5ad3acc[m[33m ([m[1;31morigin/main[m[33m)[m Implement schedule-based time correction button logic and fix Switch to Bulk functionality
+[33m707567a[m feat: Implement sticky navbar and optimize table layout for better UX
+[33md3b1eeb[m Add debug endpoint for pattern detection troubleshooting
+[33mde4cb2b[m CRITICAL FIX: Fix pattern detection to work with grouped nightshift data and add debug logging

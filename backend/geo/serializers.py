@@ -354,7 +354,7 @@ class EmployeeScheduleSerializer(serializers.ModelSerializer):
             'is_night_shift', 'template_used', 'notes', 'created_at', 'updated_at',
             'employee_name', 'template_name', 'formatted_time', 'duration_hours'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'employee']  # Make employee read-only to prevent modification
+        read_only_fields = ['created_at', 'updated_at']  # Allow employee field to be set during creation
 
     def validate(self, data):
         # Get the request and user
@@ -386,26 +386,36 @@ class EmployeeScheduleSerializer(serializers.ModelSerializer):
         
         # Team leaders can manage their own schedules and team members' schedules
         if employee.role == 'team_leader':
-            # For team leaders, we don't need to validate employee field changes
-            # since it's read-only and they can manage team member schedules
+            # For team leaders, validate they can only create schedules for team members or themselves
+            target_employee_id = data.get('employee')
+            if target_employee_id:
+                from .models import Employee
+                try:
+                    target_employee = Employee.objects.get(id=target_employee_id)
+                    # Check if target employee is someone the team leader can manage
+                    if not Employee.objects.filter(
+                        department=target_employee.department,
+                        department__team_leaders=employee,
+                        employment_status='active'
+                    ).exists():
+                        raise serializers.ValidationError("You can only create schedules for employees in departments you lead.")
+                except Employee.DoesNotExist:
+                    raise serializers.ValidationError("Target employee not found.")
+            else:
+                # No employee specified, default to team leader's own schedule
+                data['employee'] = employee.id
             return data
         
         # Regular employees can only manage their own schedules
-        # Since employee field is now read-only, we don't need to set it during updates
-        # The backend will preserve the existing employee field
         if employee.role == 'employee':
-            logger.info(f"Employee user updating schedule - employee field will be preserved")
+            # Ensure they can only create their own schedules
+            data['employee'] = employee.id
+            logger.info(f"Employee user creating schedule - employee field set to: {employee.id}")
         
         return data
 
     def create(self, validated_data):
-        """Override create to automatically set the employee field"""
-        request = self.context.get('request')
-        if request and hasattr(request.user, 'employee_profile'):
-            # For regular employees, ensure they can only create their own schedules
-            if request.user.employee_profile.role == 'employee':
-                validated_data['employee'] = request.user.employee_profile
-        
+        """Create method - employee field is already set in validation"""
         return super().create(validated_data)
 
 

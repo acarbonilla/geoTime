@@ -2968,6 +2968,9 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
         logger.info(f"Schedule creation - Date: {schedule_date}, Target Employee ID: {target_employee_id}")
         logger.info(f"Request data keys: {list(request.data.keys())}")
         
+        # Employee field logic is now handled in the serializer
+        # The serializer will automatically set the employee field for team leaders and regular employees
+        
         # For team leaders, validate they can only create schedules for team members
         if hasattr(request.user, 'employee_profile') and request.user.employee_profile.role == 'team_leader':
             if target_employee_id:
@@ -2994,10 +2997,6 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
                     
                     logger.info(f"Team leader creating schedule for team member: {target_employee.employee_id} (DB ID: {target_employee.id})")
                     
-                    # Only check for existing schedule if we're trying to create one
-                    # This prevents blocking legitimate new schedule creation
-                    logger.info(f"Proceeding with schedule creation for team member")
-                    
                 except Exception as e:
                     logger.error(f"Error finding target employee: {str(e)}")
                     return Response(
@@ -3005,26 +3004,17 @@ class EmployeeScheduleViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST
                     )
             else:
-                # No employee specified, default to team leader's own schedule
-                request.data['employee'] = request.user.employee_profile.id
-                logger.info(f"Team leader creating schedule for themselves (DB ID: {request.user.employee_profile.id})")
-                
-                # Only check for existing schedule if we're trying to create one
-                logger.info(f"Proceeding with schedule creation for team leader")
+                logger.info(f"Team leader creating schedule for themselves")
         
         # For regular employees, ensure they can only create their own schedules
         elif not request.user.is_staff:
-            request.data['employee'] = request.user.employee_profile.id
-            
-            # Only check for existing schedule if we're trying to create one
-            logger.info(f"Proceeding with schedule creation for regular employee")
+            logger.info(f"Regular employee creating schedule for themselves")
         
 
         
 
         
         logger.info(f"Final request data before creation: {request.data}")
-        logger.info(f"Employee field value: {request.data.get('employee')}")
         
         try:
             return super().create(request, *args, **kwargs)

@@ -56,13 +56,45 @@ function App() {
       console.warn('Runtime error caught by global handler:', event.error);
       
       // Handle geolocation errors specifically
-      if (event.error && event.error.message && 
-          (event.error.message.includes('geolocation') || 
-           event.error.message.includes('location') ||
-           event.error.message.includes('permission'))) {
-        console.warn('Geolocation runtime error caught by global handler:', event.error.message);
-        // Prevent the error from being displayed as a runtime error
-        event.preventDefault();
+      if (event.error) {
+        const error = event.error;
+        
+        // Check if it's a GeolocationPositionError
+        if (error.constructor?.name === 'GeolocationPositionError' ||
+            (error.code !== undefined && error.message !== undefined && 
+             (error.code === 1 || error.code === 2 || error.code === 3))) {
+          
+          // Handle different types of geolocation errors
+          let errorMessage = 'Location access error';
+          switch (error.code) {
+            case 1: // PERMISSION_DENIED
+              errorMessage = 'Location permission denied. Please enable location services in your browser settings.';
+              break;
+            case 2: // POSITION_UNAVAILABLE
+              errorMessage = 'Location information is unavailable. Please check your GPS/network connection.';
+              break;
+            case 3: // TIMEOUT
+              errorMessage = 'Location request timed out. Please try again.';
+              break;
+            default:
+              errorMessage = error.message || 'Unable to get your location.';
+          }
+          
+          console.warn('Geolocation error handled by global handler:', errorMessage);
+          // Prevent the error from being displayed as a runtime error
+          event.preventDefault();
+          return;
+        }
+        
+        // Handle other geolocation-related errors
+        if (error.message && 
+            (error.message.includes('geolocation') || 
+             error.message.includes('location') ||
+             error.message.includes('permission'))) {
+          console.warn('Geolocation runtime error caught by global handler:', error.message);
+          // Prevent the error from being displayed as a runtime error
+          event.preventDefault();
+        }
       }
     };
 

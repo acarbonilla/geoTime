@@ -22,21 +22,26 @@ export const getCurrentPosition = (options = {}) => {
         
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            errorMessage = 'Location permission denied. Please enable location services.';
+            errorMessage = 'Location permission denied. Please enable location services in your browser settings.';
             break;
           case error.POSITION_UNAVAILABLE:
-            errorMessage = 'Location information is unavailable.';
+            errorMessage = 'Location information is unavailable. Please check your GPS/network connection.';
             break;
           case error.TIMEOUT:
-            errorMessage = 'Location request timed out.';
+            errorMessage = 'Location request timed out. Please try again.';
             break;
           default:
-            errorMessage = error.message || 'An unknown error occurred.';
+            errorMessage = error.message || 'Unable to get your location. Please try again.';
         }
         
         // Log the error for debugging but don't throw
         console.warn('Geolocation error:', errorMessage, error);
-        reject(new Error(errorMessage));
+        
+        // Create a more detailed error object
+        const geolocationError = new Error(errorMessage);
+        geolocationError.code = error.code;
+        geolocationError.originalError = error;
+        reject(geolocationError);
       },
       { ...defaultOptions, ...options }
     );
@@ -59,7 +64,23 @@ export const watchPosition = (callback, options = {}) => {
     return navigator.geolocation.watchPosition(
       callback,
       (error) => {
-        console.warn('Geolocation watch error:', error);
+        let errorMessage = 'Geolocation watch error';
+        
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location permission denied for watch. Please enable location services.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information unavailable for watch.';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location watch timed out.';
+            break;
+          default:
+            errorMessage = error.message || 'Geolocation watch error occurred.';
+        }
+        
+        console.warn('Geolocation watch error:', errorMessage, error);
         // Don't throw, just log the error
       },
       { ...defaultOptions, ...options }
